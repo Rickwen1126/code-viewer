@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.git/
+*.log
+.env*
+coverage/
+.DS_Store
+.vscode/
+.idea/
+experiments/
+nanobanana-output/
+images/
+specs/
+docs/
+*.pen

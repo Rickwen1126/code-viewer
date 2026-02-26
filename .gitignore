@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.tmp
+
+# Logs
+*.log
+
+# Test coverage
+coverage/
+
+# Docker
+*.local
+
+# Nanobanana output (AI image generation)
+nanobanana-output/
+
+# experimental
+experiments/

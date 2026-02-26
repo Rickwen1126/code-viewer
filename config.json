@@ -1,0 +1,10 @@
+{
+  "projects": [
+    {
+      "id": "proj-1",
+      "name": "my-app",
+      "rootPath": "/workspace/my-app"
+    }
+  ],
+  "port": 3000
+}

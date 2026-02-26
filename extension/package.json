@@ -1,0 +1,27 @@
+{
+  "name": "code-viewer-bridge",
+  "displayName": "Code Viewer Bridge",
+  "description": "WebSocket bridge for Code Viewer mobile client",
+  "version": "0.1.0",
+  "publisher": "code-viewer",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {},
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "dev": "node esbuild.mjs --watch"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "@code-viewer/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "esbuild": "^0.24.2",
+    "@types/vscode": "^1.96.0",
+    "@types/ws": "^8.5.14"
+  }
+}

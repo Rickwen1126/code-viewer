@@ -1,0 +1,34 @@
+services:
+  code-server:
+    image: codercom/code-server:4.96.4
+    environment:
+      - DOCKER_USER=$USER
+    volumes:
+      - ./projects:/workspace:ro
+      - ./extension/dist:/extensions/code-viewer-bridge
+      - code-server-data:/home/coder/.local/share/code-server
+    command: >
+      --auth none
+      --bind-addr 0.0.0.0:8080
+      --extensions-dir /extensions
+      --disable-telemetry
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./projects:/workspace:ro
+    environment:
+      CODE_SERVER_URL: "http://code-server:8080"
+      NODE_ENV: production
+    depends_on:
+      - code-server
+    restart: unless-stopped
+
+volumes:
+  code-server-data:
