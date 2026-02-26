@@ -131,8 +131,9 @@ MUST 優先於技術完備性。
 - **VSCode 後端**：code-server（headless 模式）
 - **通訊協定**：Extension 主動以 WebSocket 連向 Backend
 - **部署方式**：Docker Compose（含 Cloudflared tunnel）
-- **降級策略**：code-server 離線時 MUST 自動降級至
-  Tree-sitter / ctags fallback，基本功能不中斷
+- **降級策略**：code-server 離線時 MUST 自動降級，基本功能不中斷。
+  檔案瀏覽降級至 Backend 直接讀取檔案系統；
+  code intelligence 降級至 Tree-sitter / ctags（後續 Phase scope）
 - **Workspace 管理**：透過 `workspace.updateWorkspaceFolders()`
   動態管理，不活躍的 workspace SHOULD 自動 timeout 移除
 
