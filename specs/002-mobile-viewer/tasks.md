@@ -45,7 +45,7 @@
 - [ ] T011 Implement WS connection manager（extensions Map, frontends Map, heartbeat timer, stale detection 40s, stale cleanup 5min）in backend/src/ws/manager.ts
 - [ ] T012 Implement WS upgrade handler for /ws/extension and /ws/frontend endpoints（connection.welcome, workspace.register handling）in backend/src/ws/handler.ts
 - [ ] T013 Implement message relay（Frontend request → Extension forward → response route back; Extension event → Frontend broadcast）in backend/src/ws/relay.ts
-- [ ] T014 Implement session cache（fileTreeCache, workspaceInfoCache with 5min TTL）in backend/src/cache/session.ts
+- [ ] T014 Implement session cache（fileTreeCache with 5min TTL）in backend/src/cache/session.ts
 
 ### 2C: Extension WS Client
 
@@ -61,7 +61,7 @@
 - [ ] T021 Implement useCache hook（get, set, invalidate per store）in frontend/src/hooks/use-cache.ts
 - [ ] T022 Setup React Router v7 with tab layout（6 tabs as nested routes, Activity for tab state preservation）in frontend/src/app.tsx
 - [ ] T023 Implement TabBar component（6 tabs: Workspaces, Files, Git, Tours, Chat, Review; 56px height + safe-area; Lucide icons; active indicator; badge support）in frontend/src/components/tab-bar.tsx
-- [ ] T024 Implement ConnectionStatus component（connected/reconnecting/disconnected states; top banner）in frontend/src/components/connection-status.tsx
+- [ ] T024 Implement ConnectionStatus component（connected/reconnecting/disconnected states; top banner; error states for TIMEOUT/NOT_CONNECTED/EXTENSION_OFFLINE with user-friendly prompts）in frontend/src/components/connection-status.tsx
 - [ ] T025 Configure PWA manifest（name, icons, theme-color, display: standalone）in frontend/public/manifest.json
 
 **Checkpoint**: 三端可連線 — Backend 啟動，Extension 連上 Backend 並 register workspace，
@@ -84,10 +84,9 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 - [ ] T028 [US1] Implement workspace selector page（connection.listWorkspaces → card list with rootPath, gitBranch, status indicator; connection.selectWorkspace on tap）in frontend/src/pages/workspaces/
 - [ ] T029 [US1] Implement useWorkspace hook（selected workspace state, selectWorkspace action, extensionConnected/Disconnected event handling）in frontend/src/hooks/use-workspace.ts
-- [ ] T030 [US1] Implement file browser page（file.tree → collapsible directory tree; gitignored files dimmed; dirty indicator dot; tap file → navigate to code viewer）in frontend/src/pages/files/
-- [ ] T031 [US1] Implement Shiki code-block component（createHighlighter with JS engine + dark-plus theme; codeToTokens per-line; line numbers gutter; Web Worker for >300 lines）in frontend/src/components/code-block.tsx
-- [ ] T032 [US1] Implement code viewer page（file.read → code-block; loading skeleton; file name + languageId header; dirty banner）in frontend/src/pages/files/
-- [ ] T033 [US1] Implement virtual scrolling for large files >300 lines with @tanstack/react-virtual wrapping code-block lines in frontend/src/pages/files/
+- [ ] T030 [US1] Implement file browser page（file.tree → collapsible directory tree; gitignored files dimmed; dirty indicator dot; tap file → navigate to code viewer; subscribe to file.treeChanged event → 即時更新樹狀結構）in frontend/src/pages/files/
+- [ ] T031 [US1] Implement Shiki code-block component（react-shiki ShikiHighlighter with JS engine + dark-plus theme; line numbers gutter）in frontend/src/components/code-block.tsx
+- [ ] T032 [US1] Implement code viewer page（file.read → code-block; loading skeleton; file name + languageId header; dirty banner; >5MB files show info shell with "請在 Desktop 查看" prompt; subscribe to file.contentChanged event → 即時更新內容與 dirty 標記）in frontend/src/pages/files/
 - [ ] T034 [US1] Implement offline file cache — on file.tree.result update IndexedDB file-tree store; on file.read.result update file-content store with 24h TTL; offline fallback reads from cache in frontend/src/hooks/use-cache.ts
 - [ ] T035 [US1] Implement swipe-back gesture with react-swipeable（left-edge 20px trigger zone, >100px threshold → navigate(-1), translateX animation）in frontend/src/app.tsx
 
@@ -130,8 +129,8 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Frontend
 
-- [ ] T044 [US3] Implement git changes page — git.status → branch name header + ahead/behind badges + changed files list（status icon color: green=added, yellow=modified, red=deleted）in frontend/src/pages/git/
-- [ ] T045 [US3] Implement diff-view component — unified view; Shiki highlighted old/new lines; add(green)/delete(red)/normal styling; hunk headers; virtual scrolling for large diffs in frontend/src/components/diff-view.tsx
+- [ ] T044 [US3] Implement git changes page — git.status → branch name header + ahead/behind badges + changed files list（status icon color: green=added, yellow=modified, red=deleted; subscribe to git.statusChanged event → 即時更新 branch 與修改列表）in frontend/src/pages/git/
+- [ ] T045 [US3] Implement diff-view component — unified view; Shiki highlighted old/new lines; add(green)/delete(red)/normal styling; hunk headers in frontend/src/components/diff-view.tsx
 - [ ] T046 [US3] Implement git diff detail page — tap changed file → git.diff → diff-view component in frontend/src/pages/git/
 - [ ] T047 [US3] Implement offline git-status cache in IndexedDB git-status store in frontend/src/hooks/use-cache.ts
 
@@ -151,7 +150,7 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Frontend
 
-- [ ] T049 [US4] Implement chat session list page — chat.listSessions → session cards（title, mode badge, lastActiveAt, turnCount）; tap → navigate to conversation in frontend/src/pages/chat/
+- [ ] T049 [US4] Implement chat session list page — chat.listSessions → session cards（title, mode badge, lastActiveAt, turnCount）; subscribe to chat.sessionUpdated event → 即時更新 turnCount 與排序; tap → navigate to conversation in frontend/src/pages/chat/
 - [ ] T050 [US4] Implement chat conversation page — chat.getHistory → message bubbles（user right, copilot left）; input bar at bottom with send button; chat.send on submit in frontend/src/pages/chat/
 - [ ] T051 [US4] Implement streaming response — subscribe to chat.stream.chunk events; append chunks to current turn response; blinking cursor during streaming; auto-scroll to bottom in frontend/src/pages/chat/
 - [ ] T052 [US4] Implement code block syntax highlighting in chat messages — detect markdown fenced code blocks in response → render with code-block component（reuse from US1）in frontend/src/pages/chat/
@@ -213,6 +212,7 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 - [ ] T067 [P] Add safe-area handling（env(safe-area-inset-*) for notch + home indicator）across all layout components
 - [ ] T068 Performance audit — Shiki bundle size check（target <135KB gzip）, virtual scrolling validation, WS message size profiling
 - [ ] T069 Validate quickstart.md end-to-end — follow all steps on clean machine, verify all 5 startup steps work
+- [ ] T070 E2E success criteria validation with Playwright — SC-001 app→file tree <5s, SC-002 file→highlighted <2s, SC-003 Go to Definition <3s, SC-004 chat streaming first token <5s, SC-005 touch response <200ms, SC-006 offline cached file <1s, SC-007 complete code review flow without returning to desktop
 
 ---
 
@@ -302,3 +302,7 @@ Task: T018-T025 (WS client + navigation shell)
 - code-block component（US1 T031）被 US4 chat + US6 tour 重用
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
+
+## Known Issues (MVP)
+
+- **大檔案渲染效能**：MVP 使用 react-shiki 整塊渲染，1000+ 行的檔案在手機上可能出現滑動卡頓。後續可改為 `codeToTokens` 逐行渲染 + `@tanstack/react-virtual` 虛擬化解決。

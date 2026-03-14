@@ -99,24 +99,6 @@
 { ok: true }
 ```
 
-### `workspace.info`
-**Direction**: Frontend → Backend → Extension
-**Response**: `workspace.info.result`
-**Cache**: Backend 快取 5 分鐘
-
-```typescript
-// Request payload
-{}
-
-// Response payload
-{
-  name: string
-  rootPath: string
-  gitBranch: string | null
-  vscodeVersion: string
-  extensionCount: number
-}
-```
 
 ---
 
@@ -403,7 +385,7 @@
 {
   sessionId?: string    // 既有 session 追問；null = 新 session
   message: string
-  mode?: 'ask' | 'agent'
+  mode?: 'ask' | 'agent' | 'plan'
 }
 
 // Stream chunk (event, N 次)
@@ -613,7 +595,6 @@
 | `connection.extensionConnected` | B→F | Event | Connection |
 | `connection.extensionDisconnected` | B→F | Event | Connection |
 | `workspace.register` | E→B | Req/Res | Workspace |
-| `workspace.info` | F→B→E | Req/Res | Workspace |
 | `file.tree` | F→B→E | Req/Res | File |
 | `file.read` | F→B→E | Req/Res | File |
 | `file.treeChanged` | E→B→F | Event | File |

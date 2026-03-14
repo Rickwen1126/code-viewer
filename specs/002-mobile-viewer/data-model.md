@@ -270,11 +270,10 @@ frontends: Map<string, { ws: WebSocket, selectedExtensionId: string | null }>
 
 // 快取（減少重複請求 Extension）
 fileTreeCache: Map<string, { data: FileTreeNode[], updatedAt: number }>       // TTL 5min
-workspaceInfoCache: Map<string, { data: WorkspaceInfo, updatedAt: number }>   // TTL 5min
 ```
 
 **記憶體清理**：
 - Extension 斷線 → 移除對應 entry + fileTreeCache
 - Frontend 斷線 → 移除對應 entry
-- fileTreeCache / workspaceInfoCache 有 5 分鐘 TTL，過期重新向 Extension 請求
+- fileTreeCache 有 5 分鐘 TTL，過期重新向 Extension 請求
 - Extension stale 超過 5 分鐘未重連 → 移除對應 entry + 所有快取
