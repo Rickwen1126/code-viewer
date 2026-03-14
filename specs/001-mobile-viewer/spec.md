@@ -149,9 +149,8 @@ tap approve 後回 Desktop 看到修改已被接受。
 ### User Story 6 — 手機上瀏覽 Code Tour (Priority: P6)
 
 使用者的專案中有 `.tours/` 目錄下的 CodeTour 檔案，
-想在手機上按步驟閱讀 Tour：每一步顯示對應的程式碼片段、
-說明文字、以及行內標註（Annotations）。也可以在特定步驟
-標記問題或疑問。
+想在手機上按步驟閱讀 Tour：每一步顯示對應的程式碼片段與說明文字。
+Read-only，與 VS Code 的 CodeTour 體驗一致。
 
 **Why this priority**: Code Tour 是既有功能的延續，
 design.pen 中已有完整畫面設計（Tour List + Tour Detail）。
@@ -167,14 +166,11 @@ design.pen 中已有完整畫面設計（Tour List + Tour Detail）。
    **Then** 看到所有 Tour 的列表（標題、步驟數、進度狀態）
 2. **Given** 使用者選擇了一個 Tour，
    **When** 進入 Tour 詳情頁，
-   **Then** 看到目前步驟的程式碼片段（語法高亮）、說明文字、以及行標註
+   **Then** 看到目前步驟的程式碼片段（語法高亮）與說明文字
 3. **Given** 使用者正在閱讀某個 Tour 步驟，
    **When** tap「Next Step」或 swipe left，
    **Then** 前進到下一步，程式碼片段和說明文字同步更新
-4. **Given** 使用者在某個 Tour 步驟有疑問，
-   **When** 在 Annotations 區域提出問題，
-   **Then** 問題被記錄，可在電腦端用 AI 回答
-5. **Given** 使用者看到步驟中的 `View in Code Viewer` 連結，
+4. **Given** 使用者看到步驟中的 `View in Code Viewer` 連結，
    **When** tap 該連結，
    **Then** 跳轉到 Code Viewer 的對應檔案和行號位置
 
