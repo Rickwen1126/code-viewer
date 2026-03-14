@@ -1,6 +1,6 @@
 # Feature Specification: Mobile Code Viewer
 
-**Feature Branch**: `001-mobile-viewer`
+**Feature Branch**: `002-mobile-viewer`
 **Created**: 2026-03-14
 **Status**: Draft
 **Input**: PRD v2 — Desktop VS Code 的 Mobile 延伸，把 VS Code 的檔案瀏覽、LSP、Git、Copilot 能力搬到手機上，觸控優化呈現。

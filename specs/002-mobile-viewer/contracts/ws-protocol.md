@@ -1,6 +1,6 @@
 # WebSocket Protocol: Mobile Code Viewer
 
-**Branch**: `001-mobile-viewer` | **Date**: 2026-03-14
+**Branch**: `002-mobile-viewer` | **Date**: 2026-03-14
 **Input**: [data-model.md](../data-model.md), [spec.md](../spec.md)
 
 ---
