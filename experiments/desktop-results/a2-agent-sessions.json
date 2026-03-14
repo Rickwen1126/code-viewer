@@ -1,0 +1,118 @@
+{
+  "status": "pass",
+  "raw_size_bytes": 9204123,
+  "data_type": "list",
+  "total_sessions": 262,
+  "type_distribution": {
+    "vm": 22,
+    "openai": 22,
+    "claude": 17,
+    "worktree": 201
+  },
+  "status_distribution": {
+    "1": 262
+  },
+  "provider_distribution": {
+    "local": 22,
+    "openai-codex": 22,
+    "claude-code": 17,
+    "copilotcli": 201
+  },
+  "sessions_with_labels": 262,
+  "sample_sessions": [
+    {
+      "index": 0,
+      "label": "TabHandle State Management and Design Considerations",
+      "providerType": "local",
+      "providerLabel": "Local",
+      "icon": "vm",
+      "status": 1,
+      "resource_decoded": {
+        "raw": "vscode-chat-session://local/ZDJhNWYxZGItYjk2My00ZDlkLWI4ZDEtZDQ1M2I5YTE1MTFi",
+        "decoded_session_id": "d2a5f1db-b963-4d9d-b8d1-d453b9a1511b",
+        "provider": "local"
+      },
+      "timing": {
+        "created": "2026-03-14T13:37:15.941000",
+        "lastRequestStarted": "2026-03-14T14:24:26.287000"
+      }
+    },
+    {
+      "index": 1,
+      "label": "Puppeteer-core type casting explanation",
+      "providerType": "local",
+      "providerLabel": "Local",
+      "icon": "vm",
+      "status": 1,
+      "resource_decoded": {
+        "raw": "vscode-chat-session://local/YzUzMmMyZjAtY2M3ZS00ZGM5LTg1NmUtZGE0NzhkMzlkMGJj",
+        "decoded_session_id": "c532c2f0-cc7e-4dc9-856e-da478d39d0bc",
+        "provider": "local"
+      },
+      "timing": {
+        "created": "2026-03-10T21:32:28.242000",
+        "lastRequestStarted": "2026-03-12T16:49:50.972000"
+      }
+    },
+    {
+      "index": 2,
+      "label": "AsyncTask history design and undo support",
+      "providerType": "local",
+      "providerLabel": "Local",
+      "icon": "vm",
+      "status": 1,
+      "resource_decoded": {
+        "raw": "vscode-chat-session://local/ZDcyYjFmYTItOGJiMC00MjBiLTgzYzEtOGI4MDc3MzZkZmE0",
+        "decoded_session_id": "d72b1fa2-8bb0-420b-83c1-8b807736dfa4",
+        "provider": "local"
+      },
+      "timing": {
+        "created": "2026-03-12T16:51:13.338000",
+        "lastRequestStarted": "2026-03-12T16:56:34.828000"
+      }
+    },
+    {
+      "index": 3,
+      "label": "容器化專案與驗證問題討論",
+      "providerType": "local",
+      "providerLabel": "Local",
+      "icon": "vm",
+      "status": 1,
+      "resource_decoded": {
+        "raw": "vscode-chat-session://local/NzMzYzBjOTktMTE2OC00NTkyLWE1Y2EtOTQwMjA0Y2QzMjk1",
+        "decoded_session_id": "733c0c99-1168-4592-a5ca-940204cd3295",
+        "provider": "local"
+      },
+      "timing": {
+        "created": "2026-03-12T17:08:30.702000",
+        "lastRequestStarted": "2026-03-12T17:16:52.509000"
+      }
+    },
+    {
+      "index": 4,
+      "label": "TaskStore 设计与 state.json 的比较",
+      "providerType": "local",
+      "providerLabel": "Local",
+      "icon": "vm",
+      "status": 1,
+      "resource_decoded": {
+        "raw": "vscode-chat-session://local/OTlhNzBhZTUtNTQyMi00YmQxLWJhNGEtMWJiYzJjMTUyZmMy",
+        "decoded_session_id": "99a70ae5-5422-4bd1-ba4a-1bbc2c152fc2",
+        "provider": "local"
+      },
+      "timing": {
+        "created": "2026-03-12T18:14:14.443000",
+        "lastRequestStarted": "2026-03-12T19:19:16.045000"
+      }
+    }
+  ],
+  "session_fields": [
+    "providerType",
+    "providerLabel",
+    "resource",
+    "icon",
+    "label",
+    "status",
+    "timing"
+  ]
+}

@@ -1,0 +1,33 @@
+services:
+  code-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.code-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./test-workspace:/home/coder/workspace
+      # Persist extensions across restarts
+      - cs-extensions:/extensions
+      # Persist Copilot auth token across restarts
+      - copilot-auth:/home/coder/.config/github-copilot
+    environment:
+      - AUTO_RUN_EXPERIMENTS=0
+      - WS_TEST_URL=ws://test-backend:9900
+    depends_on:
+      - test-backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  test-backend:
+    build:
+      context: ./test-backend
+      dockerfile: Dockerfile
+    ports:
+      - "9900:9900"
+    environment:
+      - PORT=9900
+
+volumes:
+  cs-extensions:
+  copilot-auth:

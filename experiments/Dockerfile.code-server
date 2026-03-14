@@ -1,0 +1,65 @@
+FROM codercom/code-server:4.109.2
+
+# Switch to root to create extensions dir and install git
+USER root
+RUN mkdir -p /extensions && chown coder:coder /extensions
+RUN apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1 || true
+USER coder
+
+# Copy and install our custom experiment extension VSIX
+COPY extension/*.vsix /tmp/ext/
+RUN for f in /tmp/ext/*.vsix; do \
+      code-server --install-extension "$f" --extensions-dir /extensions && \
+      echo "Installed: $f"; \
+    done
+
+# Copy and install third-party extensions (Copilot etc.)
+# Uses directory copy so it doesn't fail when no .vsix files exist
+COPY third-party-vsix/ /tmp/third-party/
+RUN for f in /tmp/third-party/*.vsix; do \
+      [ -f "$f" ] && \
+      code-server --install-extension "$f" --extensions-dir /extensions && \
+      echo "Installed third-party: $f"; \
+    done || true
+
+# Patch product.json to allow Copilot's proposed APIs
+# code-server's product.json lacks extensionAllowedProposedApi, causing
+# Copilot to be silently rejected at extension scan time.
+USER root
+# 1) Patch product.json: allow Copilot's proposed APIs
+RUN PRODUCT_JSON="/usr/lib/code-server/lib/vscode/product.json" && \
+    /usr/lib/code-server/lib/node -e " \
+      const fs = require('fs'); \
+      const p = JSON.parse(fs.readFileSync('${PRODUCT_JSON}', 'utf8')); \
+      if (!p.extensionAllowedProposedApi || Array.isArray(p.extensionAllowedProposedApi)) { \
+        p.extensionAllowedProposedApi = {}; \
+      } \
+      p.extensionAllowedProposedApi['GitHub.copilot'] = ['inlineCompletionsAdditions', 'devDeviceId']; \
+      p.extensionKind = p.extensionKind || {}; \
+      p.extensionKind['GitHub.copilot'] = ['workspace']; \
+      fs.writeFileSync('${PRODUCT_JSON}', JSON.stringify(p, null, 2)); \
+      console.log('product.json patched'); \
+    "
+# 2) Patch Copilot's own package.json: force extensionKind + remove enabledApiProposals
+RUN COPILOT_PKG="/extensions/github.copilot-1.388.0/package.json" && \
+    /usr/lib/code-server/lib/node -e " \
+      const fs = require('fs'); \
+      const p = JSON.parse(fs.readFileSync('${COPILOT_PKG}', 'utf8')); \
+      p.extensionKind = ['workspace']; \
+      delete p.enabledApiProposals; \
+      delete p.extensionPack; \
+      fs.writeFileSync('${COPILOT_PKG}', JSON.stringify(p, null, 2)); \
+      console.log('Copilot package.json patched: extensionKind=[workspace], removed enabledApiProposals & extensionPack'); \
+    "
+USER coder
+
+# Set workspace
+WORKDIR /home/coder/workspace
+
+ENTRYPOINT ["code-server", \
+  "--auth", "none", \
+  "--bind-addr", "0.0.0.0:8080", \
+  "--extensions-dir", "/extensions", \
+  "--disable-telemetry", \
+  "--disable-update-check", \
+  "/home/coder/workspace"]

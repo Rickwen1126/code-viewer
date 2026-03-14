@@ -1,0 +1,112 @@
+{
+  "status": "pass",
+  "workspace": "225bf85cde240ff7fb78927c4f23b4ea",
+  "db_path": "/Users/rickwen/Library/Application Support/Code/User/workspaceStorage/225bf85cde240ff7fb78927c4f23b4ea/state.vscdb",
+  "raw_size_bytes": 63029,
+  "top_level_keys": [
+    "history"
+  ],
+  "history_providers": [
+    "copilot"
+  ],
+  "provider_copilot": {
+    "entry_count": 40,
+    "sample_fields": [
+      "inputText",
+      "attachments",
+      "mode",
+      "selectedModel",
+      "selections",
+      "contrib"
+    ],
+    "has_copilot_responses": true,
+    "models_used": [
+      "copilot/claude-haiku-4.5",
+      "copilot/gpt-5.4"
+    ],
+    "modes_used": [
+      "agent"
+    ]
+  },
+  "view_copilot": {
+    "exists": true,
+    "top_level_keys": [
+      "sessionResource",
+      "inputText",
+      "attachments",
+      "mode",
+      "selectedModel",
+      "selections",
+      "contrib"
+    ],
+    "size_bytes": 1588
+  },
+  "session_store_index": {
+    "version": 1,
+    "session_count": 24,
+    "session_fields": [
+      "sessionId",
+      "title",
+      "lastMessageDate",
+      "timing",
+      "initialLocation",
+      "hasPendingEdits",
+      "isEmpty",
+      "isExternal",
+      "lastResponseState"
+    ],
+    "sessions": [
+      {
+        "sessionId": "c532c2f0-cc7e-4dc9-856e-da478d39d0bc",
+        "title": "Puppeteer-core type casting explanation",
+        "created": 1773149548242,
+        "lastRequestStarted": 1773305390972,
+        "lastResponseState": 1,
+        "isEmpty": false,
+        "initialLocation": "panel"
+      },
+      {
+        "sessionId": "d72b1fa2-8bb0-420b-83c1-8b807736dfa4",
+        "title": "AsyncTask history design and undo support",
+        "created": 1773305473338,
+        "lastRequestStarted": 1773305794828,
+        "lastResponseState": 1,
+        "isEmpty": false,
+        "initialLocation": "panel"
+      },
+      {
+        "sessionId": "733c0c99-1168-4592-a5ca-940204cd3295",
+        "title": "容器化專案與驗證問題討論",
+        "created": 1773306510702,
+        "lastRequestStarted": 1773307012509,
+        "lastResponseState": 1,
+        "isEmpty": false,
+        "initialLocation": "panel"
+      },
+      {
+        "sessionId": "99a70ae5-5422-4bd1-ba4a-1bbc2c152fc2",
+        "title": "TaskStore 设计与 state.json 的比较",
+        "created": 1773310454443,
+        "lastRequestStarted": 1773314356045,
+        "lastResponseState": 1,
+        "isEmpty": false,
+        "initialLocation": "panel"
+      },
+      {
+        "sessionId": "36c9b34a-f79a-4373-98f9-4dd6487ec914",
+        "title": "Explanation of active selection in TypeScript code",
+        "created": 1773314140283,
+        "lastRequestStarted": 1773314313402,
+        "lastResponseState": 1,
+        "isEmpty": false,
+        "initialLocation": "panel"
+      }
+    ]
+  },
+  "agent_sessions_state": {
+    "exists": true,
+    "type": "list",
+    "size_bytes": 2659,
+    "count": 24
+  }
+}

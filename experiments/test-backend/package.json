@@ -1,0 +1,12 @@
+{
+  "name": "test-backend",
+  "version": "0.0.1",
+  "description": "Simple WebSocket echo server for extension experiment",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

@@ -4,7 +4,9 @@ node_modules/
 # Build outputs
 dist/
 build/
+out/
 *.tsbuildinfo
+*.vsix
 
 # Environment
 .env*
@@ -32,5 +34,9 @@ coverage/
 # Nanobanana output (AI image generation)
 nanobanana-output/
 
-# experimental
-experiments/
+# Experiment artifacts (debug screenshots, test workspaces)
+experiments/.progress/
+experiments/test-workspace/
+
+# Worktrees
+.worktrees/

@@ -1,0 +1,306 @@
+{
+  "status": "pass",
+  "workspaces_checked": 10,
+  "workspaces_with_chat": 10,
+  "chat_sessions_dirs_empty": 0,
+  "chat_sessions_dirs_with_files": 9,
+  "key_structure_consistent": false,
+  "workspace_details": [
+    {
+      "workspace_id": "8965e72ae14c81979680e9ca8dd7af18",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.ChatSessionStore.index",
+        "chat.customModes",
+        "chat.untitledInputState",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews",
+        "workbench.view.chat.sessions.state"
+      ],
+      "key_count": 12,
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 5,
+      "chatSessions_non_empty_files": 5,
+      "session_index_version": 1,
+      "session_count": 5,
+      "workspace_path": "file:///Users/rickwen/code/FFmpeg"
+    },
+    {
+      "workspace_id": "ec4a46c797f1e0096ec71f0032293a0d",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "chat.ChatSessionStore.index",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews"
+      ],
+      "key_count": 6,
+      "missing_vs_reference": [
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.customModes",
+        "chat.untitledInputState",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "workbench.view.chat.sessions.state"
+      ],
+      "extra_vs_reference": [],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 1,
+      "chatSessions_non_empty_files": 1,
+      "session_index_version": 1,
+      "session_count": 1,
+      "workspace_path": "file:///Users/rickwen/code/codex"
+    },
+    {
+      "workspace_id": "c34a7659f76511be156d50ee7deecb71",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "chat.ChatSessionStore.index",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews"
+      ],
+      "key_count": 7,
+      "missing_vs_reference": [
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.customModes",
+        "chat.untitledInputState",
+        "workbench.view.chat.sessions.state"
+      ],
+      "extra_vs_reference": [],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 1,
+      "chatSessions_non_empty_files": 1,
+      "session_index_version": 1,
+      "session_count": 1,
+      "workspace_path": "vscode-remote://dev-container%2B7b22686f737450617468223a222f55736572732f7269636b77656e2f636f64652f73706c69745f706f6463617374222c226c6f63616c446f636b6572223a66616c73652c2273657474696e6773223a7b22636f6e74657874223a226465736b746f702d6c696e7578227d2c22636f6e66696746696c65223a7b22246d6964223a312c22667350617468223a222f55736572732f7269636b77656e2f636f64652f73706c69745f706f64636173742f2e646576636f6e7461696e65722f646576636f6e7461696e65722e6a736f6e222c2265787465726e616c223a2266696c653a2f2f2f55736572732f7269636b77656e2f636f64652f73706c69745f706f64636173742f2e646576636f6e7461696e65722f646576636f6e7461696e65722e6a736f6e222c2270617468223a222f55736572732f7269636b77656e2f636f64652f73706c69745f706f64636173742f2e646576636f6e7461696e65722f646576636f6e7461696e65722e6a736f6e222c22736368656d65223a2266696c65227d7d/workspaces/split_podcast"
+    },
+    {
+      "workspace_id": "66d0428461fc2bc429065f2ef37fdaab",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "chat.ChatSessionStore.index",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews"
+      ],
+      "key_count": 6,
+      "missing_vs_reference": [
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.customModes",
+        "chat.untitledInputState",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "workbench.view.chat.sessions.state"
+      ],
+      "extra_vs_reference": [],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 5,
+      "chatSessions_non_empty_files": 5,
+      "session_index_version": 1,
+      "session_count": 5,
+      "workspace_path": "vscode-remote://dev-container%2B7b22686f737450617468223a222f55736572732f7269636b77656e2f636f64652f626f742f77726f6e6767656e222c226c6f63616c446f636b6572223a66616c73652c2273657474696e6773223a7b22636f6e74657874223a226465736b746f702d6c696e7578227d2c22636f6e66696746696c65223a7b22246d6964223a312c22667350617468223a222f55736572732f7269636b77656e2f636f64652f626f742f77726f6e6767656e2f2e646576636f6e7461696e65722f646576636f6e7461696e65722e6a736f6e222c2265787465726e616c223a2266696c653a2f2f2f55736572732f7269636b77656e2f636f64652f626f742f77726f6e6767656e2f2e646576636f6e7461696e65722f646576636f6e7461696e65722e6a736f6e222c2270617468223a222f55736572732f7269636b77656e2f636f64652f626f742f77726f6e6767656e2f2e646576636f6e7461696e65722f646576636f6e7461696e65722e6a736f6e222c22736368656d65223a2266696c65227d7d/workspaces/wronggen"
+    },
+    {
+      "workspace_id": "4e294ed96971bccac48649af247d56ed",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "agentSessions.model.cache",
+        "agentSessions.readDateBaseline2",
+        "agentSessions.state.cache",
+        "chat.ChatSessionStore.index",
+        "chat.customModes",
+        "chat.quick.hasSetDefaultModeByExperiment",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews",
+        "workbench.view.chat.sessions.state"
+      ],
+      "key_count": 13,
+      "missing_vs_reference": [
+        "chat.untitledInputState"
+      ],
+      "extra_vs_reference": [
+        "agentSessions.readDateBaseline2",
+        "chat.quick.hasSetDefaultModeByExperiment"
+      ],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 3,
+      "chatSessions_non_empty_files": 3,
+      "session_index_version": 1,
+      "session_count": 3,
+      "workspace_path": "file:///Users/rickwen/code/webrtc"
+    },
+    {
+      "workspace_id": "242e2b1cbf3b7deefe757bf917db1d6b",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "chat.ChatSessionStore.index",
+        "chat.customModes",
+        "workbench.panel.chat",
+        "workbench.view.chat.sessions.state"
+      ],
+      "key_count": 5,
+      "missing_vs_reference": [
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.untitledInputState",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat.numberOfVisibleViews"
+      ],
+      "extra_vs_reference": [],
+      "chatSessions_dir_exists": false,
+      "session_index_version": 1,
+      "session_count": 0,
+      "workspace_path": "file:///Users/rickwen/code"
+    },
+    {
+      "workspace_id": "2deeeb8ada34949c8ba28d6a101bc14c",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "chat.ChatSessionStore.index",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews"
+      ],
+      "key_count": 6,
+      "missing_vs_reference": [
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.customModes",
+        "chat.untitledInputState",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "workbench.view.chat.sessions.state"
+      ],
+      "extra_vs_reference": [],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 1,
+      "chatSessions_non_empty_files": 1,
+      "session_index_version": 1,
+      "session_count": 1,
+      "workspace_path": "file:///Users/rickwen/code/codex/codex-cli"
+    },
+    {
+      "workspace_id": "52ac1098045f533cf7ed16ed6eeb72b1",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.ChatSessionStore.index",
+        "chat.customModes",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews"
+      ],
+      "key_count": 10,
+      "missing_vs_reference": [
+        "chat.untitledInputState",
+        "workbench.view.chat.sessions.state"
+      ],
+      "extra_vs_reference": [],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 1,
+      "chatSessions_non_empty_files": 1,
+      "session_index_version": 1,
+      "session_count": 1,
+      "workspace_path": "file:///Users/rickwen/agent-os"
+    },
+    {
+      "workspace_id": "7d6a703975ac899c595eebc9e560b80d",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.ChatSessionStore.index",
+        "chat.customModes",
+        "chat.quick.hasSetDefaultModeByExperiment",
+        "chat.terminalSessions",
+        "chat.untitledInputState",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "chat/selectedTools",
+        "memento/chat-todo-list",
+        "memento/interactive-session",
+        "memento/interactive-session-editor-copilot",
+        "memento/interactive-session-view-copilot",
+        "memento/webviewView.chatgpt.sidebarView",
+        "terminalChat.toolSessionMappings",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews",
+        "workbench.view.chat.sessions.state"
+      ],
+      "key_count": 19,
+      "missing_vs_reference": [],
+      "extra_vs_reference": [
+        "chat.quick.hasSetDefaultModeByExperiment",
+        "chat.terminalSessions",
+        "chat/selectedTools",
+        "memento/chat-todo-list",
+        "memento/interactive-session-editor-copilot",
+        "memento/webviewView.chatgpt.sidebarView",
+        "terminalChat.toolSessionMappings"
+      ],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 32,
+      "chatSessions_non_empty_files": 20,
+      "session_index_version": 1,
+      "session_count": 25,
+      "workspace_path": "file:///Users/rickwen/webric"
+    },
+    {
+      "workspace_id": "2dbf40d209b2c87407759d5ac040be3a",
+      "is_target": false,
+      "relevant_keys": [
+        "GitHub.copilot-chat",
+        "chat.ChatSessionStore.index",
+        "chat.customModes",
+        "chat.view.hasSetDefaultModeByExperiment",
+        "memento/interactive-session",
+        "memento/interactive-session-view-copilot",
+        "workbench.panel.chat",
+        "workbench.panel.chat.numberOfVisibleViews",
+        "workbench.view.chat.sessions.state"
+      ],
+      "key_count": 9,
+      "missing_vs_reference": [
+        "agentSessions.model.cache",
+        "agentSessions.state.cache",
+        "chat.untitledInputState"
+      ],
+      "extra_vs_reference": [],
+      "chatSessions_dir_exists": true,
+      "chatSessions_file_count": 1,
+      "chatSessions_non_empty_files": 1,
+      "session_index_version": 1,
+      "session_count": 1,
+      "workspace_path": "file:///Users/rickwen/code/gemini-notes-workspace"
+    }
+  ],
+  "format_migration_confirmed": false,
+  "summary": "Checked 10 workspaces, 10 have chat data, key structure varies, chatSessions dirs: 0 empty, 9 with files"
+}
