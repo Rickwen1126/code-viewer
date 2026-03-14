@@ -129,7 +129,7 @@ Frontend                 Backend                  Extension
 2. 檢查 Frontend 是否已 `selectWorkspace`
 3. 將 request 原封不動轉發給對應 Extension
 4. 收到 Extension response 後原封不動轉回 Frontend
-5. **快取策略**：`file.tree` 和 `workspace.info` 的結果會在 Backend 快取
+5. **快取策略**：`file.tree` 的結果會在 Backend 快取
 
 **超時**：Frontend request 超過 30 秒未收到 response，Backend 回傳 timeout error。
 

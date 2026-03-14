@@ -27,13 +27,13 @@
 2. **Given** 使用者在工作區選擇頁面，
    **When** 選擇其中一個 VS Code 實體，
    **Then** 進入該 workspace，看到完整檔案樹（含 gitignored 檔案）
-2. **Given** 使用者正在手機上瀏覽檔案樹，
+3. **Given** 使用者正在手機上瀏覽檔案樹，
    **When** 點選一個 `.ts` 檔案，
    **Then** 看到有語法高亮、行號的程式碼，可觸控滑動瀏覽
-3. **Given** Desktop VS Code 中有一個未存檔的修改檔案，
+4. **Given** Desktop VS Code 中有一個未存檔的修改檔案，
    **When** 使用者在手機上瀏覽該檔案，
    **Then** 看到的是含未存檔修改的最新內容，且有視覺標示表示未存檔
-4. **Given** Desktop VS Code 未執行或 Extension 未連線，
+5. **Given** Desktop VS Code 未執行或 Extension 未連線，
    **When** 使用者開啟 Mobile Viewer，
    **Then** 看到明確的離線狀態提示，已快取的檔案內容仍可瀏覽
 
@@ -191,8 +191,9 @@ design.pen 中已有完整畫面設計（Tour List + Tour Detail）。
 - 某個 VS Code 視窗被關閉（Extension 斷線）怎麼辦？
   → 工作區選擇頁面即時移除該實體；若使用者正在操作該 workspace，
   顯示斷線提示並引導回到選擇頁面
-- 非常大的檔案（例如 10 萬行的 generated code）怎麼辦？
-  → MUST 採用分段載入策略，避免手機記憶體溢出
+- 非常大的檔案（超過 5MB）怎麼辦？
+  → MUST 顯示檔案資訊外殼（檔名、大小、語言類型），不載入內容，
+  提示使用者「檔案過大，請在 Desktop 查看」
 - Copilot 回答包含程式碼區塊時怎麼辦？
   → Chat 中的程式碼區塊 MUST 也有語法高亮，與檔案瀏覽一致
 
@@ -324,7 +325,7 @@ design.pen 中已有完整畫面設計（Tour List + Tour Detail）。
 - **FR-010**: 系統 MUST 顯示 Desktop VS Code workspace 的完整檔案樹
 - **FR-011**: 系統 MUST 顯示 gitignored 檔案（與 Desktop VS Code 一致）
 - **FR-012**: 系統 MUST 顯示未存檔的檔案內容（dirty buffer）
-- **FR-013**: 系統 MUST 對檔案內容提供語法高亮，支援所有主流程式語言
+- **FR-013**: 系統 MUST 根據檔案的 languageId 動態載入對應的 Shiki 語法高亮（code splitting 按需載入，不預載所有語言）
 - **FR-014**: 系統 MUST 支援觸控滑動瀏覽程式碼，回應流暢無卡頓
 - **FR-015**: 系統 MUST 在離線時仍可瀏覽已快取的檔案內容
 

@@ -16,7 +16,7 @@ Frontend 為 React + Shiki 的觸控優化 PWA。
 **Primary Dependencies**:
 - Extension: `vscode` API, `ws`（WS client）
 - Backend: `hono` + `@hono/node-ws` + `@hono/node-server`
-- Frontend: `react` 19, `shiki` v2（JS engine）, `react-shiki`, React Router v7, `@tanstack/react-virtual`, `diff`（jsdiff）
+- Frontend: `react` 19.2+, `shiki` v2（JS engine）, `react-shiki`, React Router v7
 - Shared: 共用 WS message 型別定義（`packages/shared`）
 
 **Storage**: Backend 記憶體快取（session state）；Frontend localStorage/IndexedDB（離線快取）
@@ -100,11 +100,12 @@ packages/
 extension/               # VS Code Extension（WS client）
 ├── src/
 │   ├── extension.ts     # Entry point, activation
-│   ├── providers/       # File, LSP, Git, Copilot 各 provider
+│   ├── providers/       # File, LSP, Git, Copilot, Tour 各 provider
 │   │   ├── file-provider.ts
 │   │   ├── lsp-provider.ts
 │   │   ├── git-provider.ts
-│   │   └── copilot-provider.ts
+│   │   ├── copilot-provider.ts
+│   │   └── tour-provider.ts
 │   └── ws/
 │       └── client.ts    # WS client, auto-reconnect, message routing
 ├── package.json
