@@ -1,7 +1,7 @@
 # Implementation Plan: Mobile Code Viewer
 
-**Branch**: `001-mobile-viewer` | **Date**: 2026-03-14 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/001-mobile-viewer/spec.md`
+**Branch**: `002-mobile-viewer` | **Date**: 2026-03-14 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/002-mobile-viewer/spec.md`
 
 ## Summary
 
@@ -77,7 +77,7 @@ Frontend 為 React + Shiki 的觸控優化 PWA。
 ### Documentation (this feature)
 
 ```text
-specs/001-mobile-viewer/
+specs/002-mobile-viewer/
 ├── plan.md              # 本文件
 ├── research.md          # Phase 0: 技術研究
 ├── data-model.md        # Phase 1: 資料模型

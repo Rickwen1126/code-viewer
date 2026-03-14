@@ -1,6 +1,6 @@
 # Phase 0 Research: Mobile Code Viewer
 
-**Branch**: `001-mobile-viewer` | **Date**: 2026-03-14
+**Branch**: `002-mobile-viewer` | **Date**: 2026-03-14
 **Input**: Technical Context from [plan.md](./plan.md)
 
 ---
