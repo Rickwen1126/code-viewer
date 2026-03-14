@@ -1,25 +1,20 @@
 <!--
 Sync Impact Report
-- Version change: N/A → 1.0.0 (initial ratification)
+- Version change: 1.0.0 → 1.1.0 (MINOR — new principle added, technical constraints materially updated)
+- Modified principles:
+  - §III "VSCode 能力最大化": mechanism changed from code-server to Desktop VS Code Extension
+  - §V "後端極簡": scope narrowed to pure WS relay + session cache
 - Added principles:
-  1. Mobile-First 設計
-  2. Review 功能優先
-  3. VSCode 能力最大化
-  4. Extension API 委託
-  5. 後端極簡
-  6. UI/UX 至上
-  7. 繁體中文文件規範
-- Added sections:
-  - Core Principles (7 principles)
-  - 技術約束
-  - 開發工作流
-  - Governance
-- Removed sections: N/A (initial creation)
+  - §VIII "Copilot 鏡像整合"
+- Added sections: N/A
+- Removed sections: N/A
+- Modified sections:
+  - 技術約束: VSCode 後端、部署方式、降級策略、Workspace 管理全部更新
 - Templates requiring updates:
-  - .specify/templates/plan-template.md ✅ no update needed
+  - .specify/templates/plan-template.md ✅ no update needed (Constitution Check is dynamic)
   - .specify/templates/spec-template.md ✅ no update needed
   - .specify/templates/tasks-template.md ✅ no update needed
-  - .specify/templates/commands/ — no command files exist
+  - .specify/templates/commands/ — directory does not exist
 - Follow-up TODOs: none
 -->
 
@@ -56,17 +51,20 @@ Sync Impact Report
 
 ### III. VSCode 能力最大化
 
-MUST 盡可能利用 VSCode / code-server 已有的能力，避免重複實作。
+MUST 盡可能利用使用者本機 Desktop VS Code 已有的能力，避免重複實作。
 
-- 語言支援（LSP、語法解析、diagnostics）MUST 完全委託 VSCode
+- 語言支援（LSP、語法解析、diagnostics）MUST 完全委託
+  使用者本機的 Desktop VS Code
 - 所有 code intelligence 功能 MUST 以 VSCode Extension API
   為主要資料來源
 - 不得自行實作任何程式語言的 parser 或 type checker
 - 搜尋功能可例外使用 ripgrep 直接執行
   （因不依賴 LSP 且效能更佳）
 
-**理由**：VSCode 生態系已涵蓋數百種語言的支援，
-自行實作不僅浪費資源，品質也必然不如 VSCode 原生支援。
+**理由**：使用者的 Desktop VS Code 已具備完整的語言支援生態系，
+包含已安裝的 Extensions、LSP servers、以及 Copilot 等 AI 能力。
+透過 Extension 直接存取這些能力，比自行架設 code-server 更穩定、
+更完整、且維護成本更低。
 
 ### IV. Extension API 委託
 
@@ -76,6 +74,7 @@ MUST 從 VSCode Extension API 取得所需能力。
 - 檔案系統操作 MUST 透過 `workspace.fs` API
 - 程式碼導航 MUST 透過 `execute*Provider` 系列 API
 - Git 狀態 MUST 透過 Git Extension API
+- AI 能力 MUST 透過 `vscode.lm` API 或 Copilot Commands
 - 只有在 Extension API 確實不提供的功能，才允許自行實作
 - 自行實作前 MUST 先確認 Extension API 無法滿足需求並記錄理由
 
@@ -84,17 +83,19 @@ MUST 從 VSCode Extension API 取得所需能力。
 
 ### V. 後端極簡
 
-後端 MUST 保持最簡單的架構，主要職責為 proxy / pass-through。
+後端 MUST 保持最簡單的架構，職責限縮為 WebSocket relay
+與 session 快取。
 
-- 後端 MUST NOT 包含業務邏輯，
-  除非該邏輯無法在前端或 Extension 中執行
-- API 設計 MUST 以透傳 Extension 回應為主，避免加工轉換
-- 搜尋（ripgrep）與檔案系統直接存取為允許的例外
-- 快取層 SHOULD 保持簡單（記憶體快取為主）
-- 資料庫使用 SHOULD 限制在必要場景（如 Q&A 問答儲存）
+- 後端 MUST NOT 包含業務邏輯，所有智慧均在 Extension 端
+- 後端的主要角色為 WebSocket relay：
+  Mobile ↔ Backend ↔ Extension（Desktop VS Code）
+- Session 狀態（對話歷史、檔案狀態）SHOULD 以記憶體快取為主
+- 後端 MUST NOT 直接存取程式碼或執行 code intelligence
+- 資料庫使用 SHOULD 限制在必要場景（如持久化 session）
 
 **理由**：後端越簡單，維護成本越低、除錯越容易。
-複雜邏輯應集中在 VSCode Extension 和前端 UI。
+所有智慧集中在使用者本機的 VS Code Extension，
+後端只負責把 Mobile 和 Desktop 連起來。
 
 ### VI. UI/UX 至上
 
@@ -124,17 +125,49 @@ MUST 優先於技術完備性。
 **理由**：繁體中文為團隊主要溝通語言，
 使用母語撰寫規格文件能提高理解精確度並降低溝通成本。
 
+### VIII. Copilot 鏡像整合
+
+Copilot 相關功能 MUST 鏡像 VS Code 原生行為，
+MUST NOT 自行實作 AI 對話或程式碼生成邏輯。
+
+- Chat 對話 MUST 透過 `vscode.lm` API 或
+  `workbench.action.chat.open` + `previousRequests` 達成
+- Edit review MUST 透過 `chat.review.apply/discard`、
+  `chat.undoEdit/redoEdit` 等 Commands 達成
+- Tool approval MUST 透過 `chat.acceptTool/skipTool`、
+  `chat.acceptElicitation` 等 Commands 達成
+- Session 接續 MUST 透過讀取 `.jsonl` session 檔案 +
+  `openSessionInEditorGroup` 達成
+- API 變動追蹤 MUST 透過 `microsoft/vscode`（MIT）與
+  `microsoft/vscode-copilot-chat`（MIT）開源碼 diff 監控
+
+**理由**：VS Code Copilot 的所有互動皆可透過 Public API
+與 Commands 程式化操作（已由實驗 Phase A/B/C 全面驗證）。
+鏡像而非重造確保功能完整且隨 VS Code 更新自動受益。
+兩個核心 repo 皆為 MIT 開源，API 變動可第一時間追蹤。
+
 ## 技術約束
 
 - **前端框架**：React + Shiki（語法高亮在瀏覽器端渲染）
-- **後端框架**：Hono（已有基礎建設）
-- **VSCode 後端**：code-server（headless 模式）
+- **後端框架**：Hono（輕量 WebSocket relay）
+- **VSCode 整合**：Desktop VS Code Extension（使用者本機安裝）
 - **通訊協定**：Extension 主動以 WebSocket 連向 Backend
-- **部署方式**：Docker Compose（含 Cloudflared tunnel）
-- **降級策略**：code-server 離線時 MUST 自動降級至
-  Tree-sitter / ctags fallback，基本功能不中斷
-- **Workspace 管理**：透過 `workspace.updateWorkspaceFolders()`
-  動態管理，不活躍的 workspace SHOULD 自動 timeout 移除
+  （Extension MUST NOT 開啟任何 port）
+- **AI 能力**：透過 `vscode.lm` API 存取使用者已訂閱的
+  Copilot 模型（50+ models，含 GPT、Claude、Gemini）
+- **部署方式**：Backend 可獨立部署（Docker 或直接執行），
+  Extension 以 `.vsix` 安裝至使用者本機 VS Code
+- **前置條件**：使用者 MUST 在本機執行 Desktop VS Code
+  並安裝本專案 Extension，Backend 需可從 Mobile 端存取
+- **降級策略**：Desktop VS Code 離線時，Mobile 端 MUST
+  顯示明確的離線狀態提示，已快取的檔案內容 SHOULD 仍可瀏覽
+- **API 穩定度分層**：
+  1. Public API（⭐⭐⭐⭐⭐）：`vscode.lm`、LSP、
+     `workspace.fs`、Git — 有版本保證
+  2. Commands（⭐⭐⭐⭐）：`chat.open`、`review.apply`、
+     `acceptTool` — 透過開源 source diff 追蹤
+  3. 檔案/SQLite（⭐⭐⭐）：chatSessions `.jsonl`、
+     `state.vscdb` — 主力用 Public API 可不依賴
 
 ## 開發工作流
 
@@ -144,6 +177,7 @@ MUST 優先於技術完備性。
 - 新增自行實作的功能前，MUST 先確認 Extension API 無法滿足
   並在 PR 中記錄理由
 - 前端變更 MUST 在實際行動裝置上驗證（非僅模擬器）
+- Extension API 使用 SHOULD 優先選擇穩定度最高的層級
 
 ## Governance
 
@@ -158,4 +192,4 @@ MUST 優先於技術完備性。
 - 所有 PR MUST 驗證是否符合 Constitution 原則
 - 複雜度超出原則限制的設計 MUST 附上正當理由
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-19 | **Last Amended**: 2026-02-19
+**Version**: 1.1.0 | **Ratified**: 2026-02-19 | **Last Amended**: 2026-03-14
