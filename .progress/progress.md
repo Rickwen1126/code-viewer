@@ -1,3 +1,61 @@
+## 2026-03-12 22:17 — SHIP Phase 3-7 + Vitest, Lab 01 notes complete
+
+**Goal**: SHIP knowledge confirmation for Phase 3-7 implementation + Vitest testing strategy
+
+**Done**:
+- Reviewed Lab 01 tour insights (`.worktrees/labs-phase2/.tours/lab-01-protocol.tour`) — user's own insights on type constraints, scoped error codes, config fallback, MethodMap
+- Created semantic note: `ob:dev/vscode/Lab01Protocol協議設計與型別約束心智模型@2026-03-03.md` (32 observations, 4 analogical anchor images)
+- Created flashcards: `ob:dev/vscode/Flashcards-Lab01Protocol協議設計與型別約束心智模型@2026-03-03.md` (11 cards)
+- Switched semantic-note + flashcards skills to **English-only** language rule
+- Started Vitest insight-learning: covered #1 (why Vitest exists — shared Vite transform pipeline) and partially #2 (test runner architecture — discovery by naming convention). Stopped at Question 6.
+- Completed SHIP: `.ship/SHIP-code-viewer-vitest-testing@20260312.md`
+  - 3 [B]locks: Vitest runner architecture, Mocking mechanism, Testing Hono routes
+  - 2 [R]isky: React component testing, Async/WebSocket testing
+  - 11 [N]ice-to-know items
+  - All gaps are [A] type (AI knows, user doesn't) — no spike needed
+
+**Decisions**:
+- All note/flashcard content switched to English (skills updated: `semantic-note/SKILL.md`, `flashcards/SKILL.md`)
+- User's English learning workflow: notes in English → Socratic review in English → Gemini bridge for expression gaps → log pairs for spaced repetition
+
+**State**: SHIP saved, 3 [B]locks unresolved. Vitest Socratic teaching paused at Knowledge Point #2 (test runner architecture). User confirmed wants to learn ALL 12 knowledge points + R + N items.
+
+**Next**:
+- [ ] Resume Vitest insight-learning from Knowledge Point #2 (Question 6: test discovery convention tradeoff)
+- [ ] Resolve B1 (runner architecture) → B2 (mocking) → B3 (Hono testing) → R1 → R2
+- [ ] After all [B]locks resolved → update SHIP status → start Phase 3 implementation
+- [ ] Create hands-on labs for Vitest in `.worktrees/labs-phase2/labs/`
+
+---
+
+## 2026-02-26 16:22 — Phase 1+2 實作完成 + insight-learning 知識盤點
+
+**Goal**: 實作 Foundation feature 的 Phase 1 (Setup) + Phase 2 (Foundational)，並對 Phase 2 架構做 insight-learning
+
+**Done**:
+- Phase 1 (T001-T007): monorepo 骨架、4 workspace packages、Docker Compose、pnpm install 驗證通過
+- Phase 2 (T008-T019): protocol types、backend (Hono app + config + path-guard + bridge-proxy + WS endpoint)、extension (bridge-client + pending-requests + entry point)、frontend (App shell + Tab Bar + API client + page shells)
+- 所有 4 packages type-check + build clean
+- Committed: `ef6b646` (docs) + `2f6c67c` (Phase 1+2 code)
+- AUDIT Phase 1: 通過（scaffold 層級），3 個 Docker 相關 finding 留給 T045
+- insight-learning prompt 修改：移除「語法自動跳過」規則，改為 AI 列出所有知識點由用戶選
+- 12 個知識點全部覆蓋（#1-#12），含 5 個動手實驗（path-traversal、Hono middleware、MethodMap、指數退避）
+- 實驗在 worktree: `/Users/rickwen/code/code-viewer-experiments` (branch: `experiments/phase2-learning`)
+
+**Decisions**:
+- `upgradeWebSocket` 不 export 出 app.ts → 避免 TS2742 type portability error，WS route 定義在 app.ts
+- Bridge Proxy 斷線策略：先 reject all pending → 關 WS → 觸發重連（先清舊世界再開新世界）
+- Phase 6 fallback 設計：目前用「事前檢查 isConnected()」而非「事後補救 try-catch」，race condition 下會 error
+
+**State**: Phase 1+2 完成，branch `001-foundation`，worktree 還在（待清理）。Phase 3 (US1 檔案樹) 可開始。
+
+**Next**:
+- [ ] 清理實驗 worktree
+- [ ] Phase 3: US1 — 手機瀏覽專案檔案樹 (T020-T024, T047)
+- [ ] Phase 4: US2 — 語法高亮程式碼檢視器 (T025-T030, T048)
+
+---
+
 ## 2026-02-20 22:37 — SHIP 語意筆記整理
 
 **Goal**: 將 SHIP 知識確認內容整理為 mcpbm 語意筆記，建立可複習的 anchor
