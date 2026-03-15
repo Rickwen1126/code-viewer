@@ -11,7 +11,7 @@ Desktop VS Code 的 Mobile 延伸 — 把電腦上 VS Code 的所有能力搬到
 不重新造輪子，而是利用 Desktop VS Code 已有的全部能力（LSP、Copilot、Git），透過 Extension 將資料送到手機呈現。
 
 ```
-Desktop VS Code (Extension)  ─WS─  Backend (Hono relay)  ─HTTPS─  Mobile PWA (React)
+Desktop VS Code (Extension)  ─WS─  Backend (Hono relay)  ─WS─  Mobile PWA (React)
 ├─ workspace.fs                     ├─ Connection mgmt              ├─ File tree UI
 ├─ LSP providers                    ├─ Session cache                ├─ Syntax highlight
 ├─ Git API                          ├─ Auth                         ├─ Touch navigation
