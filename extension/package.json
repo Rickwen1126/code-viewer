@@ -1,0 +1,50 @@
+{
+  "name": "code-viewer-extension",
+  "displayName": "Code Viewer",
+  "description": "Mobile Code Viewer VS Code Extension",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeViewer.connect",
+        "title": "Code Viewer: Connect to Backend"
+      },
+      {
+        "command": "codeViewer.disconnect",
+        "title": "Code Viewer: Disconnect from Backend"
+      }
+    ],
+    "configuration": {
+      "title": "Code Viewer",
+      "properties": {
+        "codeViewer.backendUrl": {
+          "type": "string",
+          "default": "ws://localhost:3000",
+          "description": "Backend WebSocket URL"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@code-viewer/shared": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/vscode": "^1.100.0",
+    "@types/ws": "^8.18.0"
+  }
+}

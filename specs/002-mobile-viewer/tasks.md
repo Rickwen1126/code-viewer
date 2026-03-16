@@ -15,13 +15,13 @@
 
 **Purpose**: 建立 pnpm monorepo，4 個 package 的基本骨架與開發工具鏈
 
-- [ ] T001 Initialize pnpm monorepo with pnpm-workspace.yaml（packages: packages/shared, backend, frontend, extension）
-- [ ] T002 [P] Create packages/shared package（package.json, tsconfig.json, src/index.ts entry）
-- [ ] T003 [P] Create backend package with Hono dependencies（hono, @hono/node-ws, @hono/node-server）in backend/package.json
-- [ ] T004 [P] Create frontend package with Vite + React 19 + React Router v7 in frontend/package.json
-- [ ] T005 [P] Create extension package with vscode + ws dependencies in extension/package.json
-- [ ] T006 [P] Configure shared ESLint + Prettier across monorepo（root eslint.config.js, .prettierrc）
-- [ ] T007 [P] Configure Vitest in root and each package（vitest.config.ts, vitest.workspace.ts）
+- [x] T001 Initialize pnpm monorepo with pnpm-workspace.yaml（packages: packages/shared, backend, frontend, extension）
+- [x] T002 [P] Create packages/shared package（package.json, tsconfig.json, src/index.ts entry）
+- [x] T003 [P] Create backend package with Hono dependencies（hono, @hono/node-ws, @hono/node-server）in backend/package.json
+- [x] T004 [P] Create frontend package with Vite + React 19 + React Router v7 in frontend/package.json
+- [x] T005 [P] Create extension package with vscode + ws dependencies in extension/package.json
+- [x] T006 [P] Configure shared ESLint + Prettier across monorepo（root eslint.config.js, .prettierrc）
+- [x] T007 [P] Configure Vitest in root and each package（vitest.config.ts, vitest.workspace.ts）
 
 **Checkpoint**: `pnpm install` 成功，各 package 可獨立 `pnpm build` / `pnpm typecheck`
 
@@ -36,33 +36,33 @@
 
 ### 2A: Shared Types
 
-- [ ] T008 [P] Define WsMessage interface, message type string literals, and ErrorPayload in packages/shared/src/ws-types.ts（per contracts/ws-protocol.md）
-- [ ] T009 [P] Define shared data models（FileTreeNode, FileContent, Workspace, GitStatus, ChangedFile, FileDiff, DiffHunk, DiffChange, ChatSession, ChatTurn, PendingEdit, ToolRequest, CodeTour, TourStep）in packages/shared/src/models.ts（per data-model.md）
+- [x] T008 [P] Define WsMessage interface, message type string literals, and ErrorPayload in packages/shared/src/ws-types.ts（per contracts/ws-protocol.md）
+- [x] T009 [P] Define shared data models（FileTreeNode, FileContent, Workspace, GitStatus, ChangedFile, FileDiff, DiffHunk, DiffChange, ChatSession, ChatTurn, PendingEdit, ToolRequest, CodeTour, TourStep）in packages/shared/src/models.ts（per data-model.md）
 
 ### 2B: Backend WS Server
 
-- [ ] T010 Implement Hono app entry point with GET /health route and serve() in backend/src/index.ts
-- [ ] T011 Implement WS connection manager（extensions Map, frontends Map, heartbeat timer, stale detection 40s, stale cleanup 5min）in backend/src/ws/manager.ts
-- [ ] T012 Implement WS upgrade handler for /ws/extension and /ws/frontend endpoints（connection.welcome, workspace.register handling）in backend/src/ws/handler.ts
-- [ ] T013 Implement message relay（Frontend request → Extension forward → response route back; Extension event → Frontend broadcast）in backend/src/ws/relay.ts
-- [ ] T014 Implement session cache（fileTreeCache with 5min TTL）in backend/src/cache/session.ts
+- [x] T010 Implement Hono app entry point with GET /health route and serve() in backend/src/index.ts
+- [x] T011 Implement WS connection manager（extensions Map, frontends Map, heartbeat timer, stale detection 40s, stale cleanup 5min）in backend/src/ws/manager.ts
+- [x] T012 Implement WS upgrade handler for /ws/extension and /ws/frontend endpoints（connection.welcome, workspace.register handling）in backend/src/ws/handler.ts
+- [x] T013 Implement message relay（Frontend request → Extension forward → response route back; Extension event → Frontend broadcast）in backend/src/ws/relay.ts
+- [x] T014 Implement session cache（fileTreeCache with 5min TTL）in backend/src/cache/session.ts
 
 ### 2C: Extension WS Client
 
-- [ ] T015 Implement WS client with auto-reconnect（exponential backoff, workspace.register on connect）in extension/src/ws/client.ts
-- [ ] T016 Implement extension entry point（activation, WS client init, command registration）in extension/src/extension.ts
-- [ ] T017 Implement message routing dispatch（incoming request → provider function → response）in extension/src/ws/client.ts
+- [x] T015 Implement WS client with auto-reconnect（exponential backoff, workspace.register on connect）in extension/src/ws/client.ts
+- [x] T016 Implement extension entry point（activation, WS client init, command registration）in extension/src/extension.ts
+- [x] T017 Implement message routing dispatch（incoming request → provider function → response）in extension/src/ws/client.ts
 
 ### 2D: Frontend WS Client + Navigation Shell
 
-- [ ] T018 Implement WS client service（connect, disconnect, send, subscribe, auto-reconnect）in frontend/src/services/ws-client.ts
-- [ ] T019 Implement useWebSocket hook（connection state, send helper, message subscription）in frontend/src/hooks/use-websocket.ts
-- [ ] T020 Implement IndexedDB cache service（file-tree, file-content, chat-sessions, git-status stores）in frontend/src/services/cache.ts
-- [ ] T021 Implement useCache hook（get, set, invalidate per store）in frontend/src/hooks/use-cache.ts
-- [ ] T022 Setup React Router v7 with tab layout（6 tabs as nested routes, Activity for tab state preservation）in frontend/src/app.tsx
-- [ ] T023 Implement TabBar component（6 tabs: Workspaces, Files, Git, Tours, Chat, Review; 56px height + safe-area; Lucide icons; active indicator; badge support）in frontend/src/components/tab-bar.tsx
-- [ ] T024 Implement ConnectionStatus component（connected/reconnecting/disconnected states; top banner; error states for TIMEOUT/NOT_CONNECTED/EXTENSION_OFFLINE with user-friendly prompts）in frontend/src/components/connection-status.tsx
-- [ ] T025 Configure PWA manifest（name, icons, theme-color, display: standalone）in frontend/public/manifest.json
+- [x] T018 Implement WS client service（connect, disconnect, send, subscribe, auto-reconnect）in frontend/src/services/ws-client.ts
+- [x] T019 Implement useWebSocket hook（connection state, send helper, message subscription）in frontend/src/hooks/use-websocket.ts
+- [x] T020 Implement IndexedDB cache service（file-tree, file-content, chat-sessions, git-status stores）in frontend/src/services/cache.ts
+- [x] T021 Implement useCache hook（get, set, invalidate per store）in frontend/src/hooks/use-cache.ts
+- [x] T022 Setup React Router v7 with tab layout（6 tabs as nested routes, Activity for tab state preservation）in frontend/src/app.tsx
+- [x] T023 Implement TabBar component（6 tabs: Workspaces, Files, Git, Tours, Chat, Review; 56px height + safe-area; Lucide icons; active indicator; badge support）in frontend/src/components/tab-bar.tsx
+- [x] T024 Implement ConnectionStatus component（connected/reconnecting/disconnected states; top banner; error states for TIMEOUT/NOT_CONNECTED/EXTENSION_OFFLINE with user-friendly prompts）in frontend/src/components/connection-status.tsx
+- [x] T025 Configure PWA manifest（name, icons, theme-color, display: standalone）in frontend/public/manifest.json
 
 **Checkpoint**: 三端可連線 — Backend 啟動，Extension 連上 Backend 並 register workspace，
 Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wscat 手動測 relay。
@@ -77,18 +77,18 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Extension
 
-- [ ] T026 [P] [US1] Implement file provider — file.tree（workspace.fs readDirectory recursive）and file.read（workspace.fs readFile + dirty buffer via TextDocument）in extension/src/providers/file-provider.ts
-- [ ] T027 [P] [US1] Implement file.treeChanged（FileSystemWatcher）and file.contentChanged（onDidChangeTextDocument）event emitters in extension/src/providers/file-provider.ts
+- [x] T026 [P] [US1] Implement file provider — file.tree（workspace.fs readDirectory recursive）and file.read（workspace.fs readFile + dirty buffer via TextDocument）in extension/src/providers/file-provider.ts
+- [x] T027 [P] [US1] Implement file.treeChanged（FileSystemWatcher）and file.contentChanged（onDidChangeTextDocument）event emitters in extension/src/providers/file-provider.ts
 
 ### Frontend
 
-- [ ] T028 [US1] Implement workspace selector page（connection.listWorkspaces → card list with rootPath, gitBranch, status indicator; connection.selectWorkspace on tap）in frontend/src/pages/workspaces/
-- [ ] T029 [US1] Implement useWorkspace hook（selected workspace state, selectWorkspace action, extensionConnected/Disconnected event handling）in frontend/src/hooks/use-workspace.ts
-- [ ] T030 [US1] Implement file browser page（file.tree → collapsible directory tree; gitignored files dimmed; dirty indicator dot; tap file → navigate to code viewer; subscribe to file.treeChanged event → 即時更新樹狀結構）in frontend/src/pages/files/
-- [ ] T031 [US1] Implement Shiki code-block component（react-shiki ShikiHighlighter with JS engine + dark-plus theme; line numbers gutter）in frontend/src/components/code-block.tsx
-- [ ] T032 [US1] Implement code viewer page（file.read → code-block; loading skeleton; file name + languageId header; dirty banner; >5MB files show info shell with "請在 Desktop 查看" prompt; subscribe to file.contentChanged event → 即時更新內容與 dirty 標記）in frontend/src/pages/files/
-- [ ] T034 [US1] Implement offline file cache — on file.tree.result update IndexedDB file-tree store; on file.read.result update file-content store with 24h TTL; offline fallback reads from cache in frontend/src/hooks/use-cache.ts
-- [ ] T035 [US1] Implement swipe-back gesture with react-swipeable（left-edge 20px trigger zone, >100px threshold → navigate(-1), translateX animation）in frontend/src/app.tsx
+- [x] T028 [US1] Implement workspace selector page（connection.listWorkspaces → card list with rootPath, gitBranch, status indicator; connection.selectWorkspace on tap）in frontend/src/pages/workspaces/
+- [x] T029 [US1] Implement useWorkspace hook（selected workspace state, selectWorkspace action, extensionConnected/Disconnected event handling）in frontend/src/hooks/use-workspace.ts
+- [x] T030 [US1] Implement file browser page（file.tree → collapsible directory tree; gitignored files dimmed; dirty indicator dot; tap file → navigate to code viewer; subscribe to file.treeChanged event → 即時更新樹狀結構）in frontend/src/pages/files/
+- [x] T031 [US1] Implement Shiki code-block component（react-shiki ShikiHighlighter with JS engine + dark-plus theme; line numbers gutter）in frontend/src/components/code-block.tsx
+- [x] T032 [US1] Implement code viewer page（file.read → code-block; loading skeleton; file name + languageId header; dirty banner; >5MB files show info shell with "請在 Desktop 查看" prompt; subscribe to file.contentChanged event → 即時更新內容與 dirty 標記）in frontend/src/pages/files/
+- [x] T034 [US1] Implement offline file cache — on file.tree.result update IndexedDB file-tree store; on file.read.result update file-content store with 24h TTL; offline fallback reads from cache in frontend/src/hooks/use-cache.ts
+- [x] T035 [US1] Implement swipe-back gesture with react-swipeable（left-edge 20px trigger zone, >100px threshold → navigate(-1), translateX animation）in frontend/src/app.tsx
 
 **Checkpoint**: US1 完整可用 — 手機上選 workspace → 瀏覽檔案樹 → 看程式碼 → 離線可看快取 → swipe 返回
 
@@ -102,16 +102,16 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Extension
 
-- [ ] T036 [P] [US2] Implement LSP provider — lsp.hover（executeHoverProvider）, lsp.definition（executeDefinitionProvider）, lsp.references（executeReferenceProvider）, lsp.documentSymbol（executeDocumentSymbolProvider）in extension/src/providers/lsp-provider.ts
+- [x] T036 [P] [US2] Implement LSP provider — lsp.hover（executeHoverProvider）, lsp.definition（executeDefinitionProvider）, lsp.references（executeReferenceProvider）, lsp.documentSymbol（executeDocumentSymbolProvider）in extension/src/providers/lsp-provider.ts
 
 ### Frontend
 
-- [ ] T037 [US2] Implement tap-to-hover in code viewer — tap token → compute line/character from tap position → lsp.hover → render floating tooltip（Markdown content, dismiss on tap outside）in frontend/src/pages/files/
-- [ ] T038 [US2] Implement action sheet component（bottom sheet with action list; 44px touch targets; slide-up animation）in frontend/src/components/action-sheet.tsx
-- [ ] T039 [US2] Implement long-press on code token → action sheet（Go to Definition, Find References, Document Symbols）→ dispatch corresponding lsp.* request in frontend/src/pages/files/
-- [ ] T040 [US2] Implement Go to Definition navigation — lsp.definition.result → navigate to target file + scroll to line; handle cross-file jump in frontend/src/pages/files/
-- [ ] T041 [US2] Implement references list view — lsp.references.result → list with file path, line preview; tap → navigate to file + line in frontend/src/pages/files/
-- [ ] T042 [US2] Implement document symbol outline — lsp.documentSymbol.result → hierarchical list（kind icon + name）; tap → scroll to range in current file in frontend/src/pages/files/
+- [x] T037 [US2] Implement tap-to-hover in code viewer — tap token → compute line/character from tap position → lsp.hover → render floating tooltip（Markdown content, dismiss on tap outside）in frontend/src/pages/files/
+- [x] T038 [US2] Implement action sheet component（bottom sheet with action list; 44px touch targets; slide-up animation）in frontend/src/components/action-sheet.tsx
+- [x] T039 [US2] Implement long-press on code token → action sheet（Go to Definition, Find References, Document Symbols）→ dispatch corresponding lsp.* request in frontend/src/pages/files/
+- [x] T040 [US2] Implement Go to Definition navigation — lsp.definition.result → navigate to target file + scroll to line; handle cross-file jump in frontend/src/pages/files/
+- [x] T041 [US2] Implement references list view — lsp.references.result → list with file path, line preview; tap → navigate to file + line in frontend/src/pages/files/
+- [x] T042 [US2] Implement document symbol outline — lsp.documentSymbol.result → hierarchical list（kind icon + name）; tap → scroll to range in current file in frontend/src/pages/files/
 
 **Checkpoint**: US2 完整可用 — 所有 LSP 功能均透過 Extension 委託，回應時間 < 3s
 
@@ -125,14 +125,14 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Extension
 
-- [ ] T043 [P] [US3] Implement git provider — git.status（Git API: repository.state + repository.diffWithHEAD）, git.diff（per-file diff with hunk parsing）, git.statusChanged event in extension/src/providers/git-provider.ts
+- [x] T043 [P] [US3] Implement git provider — git.status（Git API: repository.state + repository.diffWithHEAD）, git.diff（per-file diff with hunk parsing）, git.statusChanged event in extension/src/providers/git-provider.ts
 
 ### Frontend
 
-- [ ] T044 [US3] Implement git changes page — git.status → branch name header + ahead/behind badges + changed files list（status icon color: green=added, yellow=modified, red=deleted; subscribe to git.statusChanged event → 即時更新 branch 與修改列表）in frontend/src/pages/git/
-- [ ] T045 [US3] Implement diff-view component — unified view; Shiki highlighted old/new lines; add(green)/delete(red)/normal styling; hunk headers in frontend/src/components/diff-view.tsx
-- [ ] T046 [US3] Implement git diff detail page — tap changed file → git.diff → diff-view component in frontend/src/pages/git/
-- [ ] T047 [US3] Implement offline git-status cache in IndexedDB git-status store in frontend/src/hooks/use-cache.ts
+- [x] T044 [US3] Implement git changes page — git.status → branch name header + ahead/behind badges + changed files list（status icon color: green=added, yellow=modified, red=deleted; subscribe to git.statusChanged event → 即時更新 branch 與修改列表）in frontend/src/pages/git/
+- [x] T045 [US3] Implement diff-view component — unified view; Shiki highlighted old/new lines; add(green)/delete(red)/normal styling; hunk headers in frontend/src/components/diff-view.tsx
+- [x] T046 [US3] Implement git diff detail page — tap changed file → git.diff → diff-view component in frontend/src/pages/git/
+- [x] T047 [US3] Implement offline git-status cache in IndexedDB git-status store in frontend/src/hooks/use-cache.ts
 
 **Checkpoint**: US3 完整可用 — Git tab 顯示 branch + 修改檔 → diff 有語法高亮
 
@@ -146,15 +146,15 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Extension
 
-- [ ] T048 [P] [US4] Implement copilot provider — chat.listSessions, chat.getHistory, chat.send（trigger vscode.lm or workbench.action.chat.open）, chat.stream.chunk event relay, chat.sessionUpdated event in extension/src/providers/copilot-provider.ts
+- [x] T048 [P] [US4] Implement copilot provider — chat.listSessions, chat.getHistory, chat.send（trigger vscode.lm or workbench.action.chat.open）, chat.stream.chunk event relay, chat.sessionUpdated event in extension/src/providers/copilot-provider.ts
 
 ### Frontend
 
-- [ ] T049 [US4] Implement chat session list page — chat.listSessions → session cards（title, mode badge, lastActiveAt, turnCount）; subscribe to chat.sessionUpdated event → 即時更新 turnCount 與排序; tap → navigate to conversation in frontend/src/pages/chat/
-- [ ] T050 [US4] Implement chat conversation page — chat.getHistory → message bubbles（user right, copilot left）; input bar at bottom with send button; chat.send on submit in frontend/src/pages/chat/
-- [ ] T051 [US4] Implement streaming response — subscribe to chat.stream.chunk events; append chunks to current turn response; blinking cursor during streaming; auto-scroll to bottom in frontend/src/pages/chat/
-- [ ] T052 [US4] Implement code block syntax highlighting in chat messages — detect markdown fenced code blocks in response → render with code-block component（reuse from US1）in frontend/src/pages/chat/
-- [ ] T053 [US4] Implement offline chat cache — cache chat-sessions store in IndexedDB; offline → read-only history in frontend/src/hooks/use-cache.ts
+- [x] T049 [US4] Implement chat session list page — chat.listSessions → session cards（title, mode badge, lastActiveAt, turnCount）; subscribe to chat.sessionUpdated event → 即時更新 turnCount 與排序; tap → navigate to conversation in frontend/src/pages/chat/
+- [x] T050 [US4] Implement chat conversation page — chat.getHistory → message bubbles（user right, copilot left）; input bar at bottom with send button; chat.send on submit in frontend/src/pages/chat/
+- [x] T051 [US4] Implement streaming response — subscribe to chat.stream.chunk events; append chunks to current turn response; blinking cursor during streaming; auto-scroll to bottom; on reconnect mid-stream → chat.getHistory to recover full response in frontend/src/pages/chat/
+- [x] T052 [US4] Implement code block syntax highlighting in chat messages — detect markdown fenced code blocks in response → render with code-block component（reuse from US1）in frontend/src/pages/chat/
+- [x] T053 [US4] Implement offline chat cache — cache chat-sessions store in IndexedDB; offline → read-only history in frontend/src/hooks/use-cache.ts
 
 **Checkpoint**: US4 完整可用 — Chat 歷史可瀏覽、追問有 streaming 回答、code block 有語法高亮
 
@@ -168,14 +168,14 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Extension
 
-- [ ] T054 [P] [US5] Implement review provider — review.listPendingEdits, review.getEditDiff, review.approveEdit, review.rejectEdit, review.listToolRequests, review.acceptTool, review.skipTool, review.pendingEditsChanged event in extension/src/providers/copilot-provider.ts
+- [x] T054 [P] [US5] Implement review provider — review.listPendingEdits, review.getEditDiff, review.approveEdit, review.rejectEdit, review.listToolRequests, review.acceptTool, review.skipTool, review.pendingEditsChanged event in extension/src/providers/copilot-provider.ts
 
 ### Frontend
 
-- [ ] T055 [US5] Implement pending edits list page — review.listPendingEdits → file cards（filePath, hunksCount, status badge）in frontend/src/pages/review/
-- [ ] T056 [US5] Implement edit diff review page — review.getEditDiff → reuse diff-view component; approve/reject buttons（44px, green/red）at bottom in frontend/src/pages/review/
-- [ ] T057 [US5] Implement tool approval list — review.listToolRequests → tool cards（toolName, description, parameters summary）; accept/skip buttons in frontend/src/pages/review/
-- [ ] T058 [US5] Implement review tab badge — subscribe to review.pendingEditsChanged event → update TabBar badge count in frontend/src/components/tab-bar.tsx
+- [x] T055 [US5] Implement pending edits list page — review.listPendingEdits → file cards（filePath, hunksCount, status badge）in frontend/src/pages/review/
+- [x] T056 [US5] Implement edit diff review page — review.getEditDiff → reuse diff-view component; approve/reject buttons（44px, green/red）at bottom in frontend/src/pages/review/
+- [x] T057 [US5] Implement tool approval list — review.listToolRequests → tool cards（toolName, description, parameters summary）; accept/skip buttons in frontend/src/pages/review/
+- [x] T058 [US5] Implement review tab badge — subscribe to review.pendingEditsChanged event → update TabBar badge count in frontend/src/components/tab-bar.tsx
 
 **Checkpoint**: US5 完整可用 — Review tab 有 badge → 看 diff → approve/reject → Desktop 即時反映
 
@@ -189,14 +189,14 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 
 ### Extension
 
-- [ ] T059 [P] [US6] Implement tour provider — tour.list（read .tours/*.tour JSON files via workspace.fs）, tour.getSteps（parse steps array）in extension/src/providers/tour-provider.ts
+- [x] T059 [P] [US6] Implement tour provider — tour.list（read .tours/*.tour JSON files via workspace.fs）, tour.getSteps（parse steps array）in extension/src/providers/tour-provider.ts
 
 ### Frontend
 
-- [ ] T060 [US6] Implement tour list page — tour.list → tour cards（title, description, stepCount）in frontend/src/pages/tours/
-- [ ] T061 [US6] Implement tour detail page — tour.getSteps → step navigation（prev/next buttons + swipe）; code snippet with Shiki highlight（file + line range）; description markdown in frontend/src/pages/tours/
-- [ ] T062 [US6] Implement "View in Code Viewer" link — tap → navigate to /files/:path with scroll to line number in frontend/src/pages/tours/
-- [ ] T063 [US6] Implement tour progress tracking — localStorage key tour-progress:{extensionId}:{tourId} → { currentStep } in frontend/src/pages/tours/
+- [x] T060 [US6] Implement tour list page — tour.list → tour cards（title, description, stepCount）in frontend/src/pages/tours/
+- [x] T061 [US6] Implement tour detail page — tour.getSteps → step navigation（prev/next buttons + swipe）; code snippet with Shiki highlight（file + line range）; description markdown in frontend/src/pages/tours/
+- [x] T062 [US6] Implement "View in Code Viewer" link — tap → navigate to /files/:path with scroll to line number in frontend/src/pages/tours/
+- [x] T063 [US6] Implement tour progress tracking — localStorage key tour-progress:{extensionId}:{tourId} → { currentStep } in frontend/src/pages/tours/
 
 **Checkpoint**: US6 完整可用 — Tour 列表 → 逐步瀏覽 → 跳到 Code Viewer
 
@@ -210,7 +210,7 @@ Frontend 連上 Backend 並看到 Tab Bar shell + connection status。可用 wsc
 - [ ] T065 [P] Implement pull-to-refresh（overscroll-behavior: contain + custom touch handler）in frontend/src/app.tsx
 - [ ] T066 [P] Implement pinch-to-zoom for code viewer（font-size scaling with transform）in frontend/src/components/code-block.tsx
 - [ ] T067 [P] Add safe-area handling（env(safe-area-inset-*) for notch + home indicator）across all layout components
-- [ ] T068 Performance audit — Shiki bundle size check（target <135KB gzip）, virtual scrolling validation, WS message size profiling
+- [ ] T068 Performance audit — Shiki bundle size check（target <135KB gzip）, large file render stress test（500/1000/2000 lines on mobile）, WS message size profiling
 - [ ] T069 Validate quickstart.md end-to-end — follow all steps on clean machine, verify all 5 startup steps work
 - [ ] T070 E2E success criteria validation with Playwright — SC-001 app→file tree <5s, SC-002 file→highlighted <2s, SC-003 Go to Definition <3s, SC-004 chat streaming first token <5s, SC-005 touch response <200ms, SC-006 offline cached file <1s, SC-007 complete code review flow without returning to desktop
 
