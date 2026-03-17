@@ -91,7 +91,7 @@ export async function handleGitDiff(msg: WsMessage, sendResponse: (msg: WsMessag
   }
 }
 
-function parseUnifiedDiff(diffText: string): Array<{
+export function parseUnifiedDiff(diffText: string): Array<{
   oldStart: number
   oldLines: number
   newStart: number

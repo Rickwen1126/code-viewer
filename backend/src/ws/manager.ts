@@ -150,4 +150,5 @@ class ConnectionManager {
 }
 
 export const manager = new ConnectionManager()
+export { ConnectionManager }
 export type { ExtensionEntry, FrontendEntry }

@@ -35,3 +35,4 @@ class SessionCache {
 }
 
 export const cache = new SessionCache()
+export { SessionCache }
