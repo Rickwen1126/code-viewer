@@ -21,31 +21,32 @@ export function WorkspacesPage() {
 
   const requestRef = useRef(request)
   requestRef.current = request
+  const networkLoaded = useRef(false)
 
-  // 1. Immediately load cached workspace list on mount
+  // 1. Load cached list — only if network hasn't responded yet
   useEffect(() => {
     cacheService.getWorkspaceList().then(cached => {
-      if (cached && cached.length > 0) {
+      if (cached && cached.length > 0 && !networkLoaded.current) {
         setWorkspaces(cached)
         setInitialLoading(false)
       }
     })
   }, [])
 
-  // 2. Subscribe to live events ALWAYS (not gated on connectionState)
-  //    This fixes the auto-update issue: events fire regardless of when we subscribe
+  // 2. Subscribe to live events
   useEffect(() => {
     const unsub1 = wsClient.subscribe('connection.extensionConnected', (msg) => {
       const p = msg.payload as ExtensionConnectedPayload
       setWorkspaces(prev => {
-        if (prev.some(w => w.extensionId === p.extensionId)) return prev
-        const next = [...prev, {
+        // Dedup by rootPath (not extensionId — PID changes on restart)
+        const next = prev.filter(w => w.rootPath !== p.rootPath)
+        next.push({
           extensionId: p.extensionId,
           displayName: p.displayName,
           rootPath: p.rootPath,
           gitBranch: null,
           status: 'connected' as const,
-        }]
+        })
         cacheService.setWorkspaceList(next)
         return next
       })
@@ -64,13 +65,14 @@ export function WorkspacesPage() {
     return () => { unsub1(); unsub2() }
   }, [])
 
-  // 3. Fetch full list when WS connects (background, no spinner if we have cached data)
+  // 3. Fetch full list when WS connects — this is the source of truth
   useEffect(() => {
     if (connectionState !== 'connected') return
 
     requestRef.current<Record<string, never>, ListWorkspacesResultPayload>(
       'connection.listWorkspaces', {}
     ).then(res => {
+      networkLoaded.current = true
       setWorkspaces(res.payload.workspaces)
       cacheService.setWorkspaceList(res.payload.workspaces)
       setInitialLoading(false)
