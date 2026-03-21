@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router'
 import { useSwipeable } from 'react-swipeable'
-import { useContext, useCallback } from 'react'
+import { useContext, useCallback, Component, type ReactNode } from 'react'
 import { TabBar } from './components/tab-bar'
 import { ConnectionStatus } from './components/connection-status'
 import { WorkspaceProvider } from './hooks/use-workspace'
@@ -109,16 +109,73 @@ function TabLayout() {
   )
 }
 
+// Error Boundary: catches React crashes and shows recovery UI instead of gray screen
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: { componentStack?: string }) {
+    console.error('[ErrorBoundary]', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          padding: 24,
+          paddingTop: 'calc(24px + env(safe-area-inset-top))',
+          background: '#1e1e1e',
+          color: '#d4d4d4',
+          height: '100dvh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+        }}>
+          <div style={{ fontSize: 16, color: '#f48771' }}>Something went wrong</div>
+          <div style={{ fontSize: 12, color: '#888', maxWidth: 300, textAlign: 'center', wordBreak: 'break-word' }}>
+            {this.state.error.message}
+          </div>
+          <button
+            onClick={() => {
+              this.setState({ error: null })
+              window.location.href = '/'
+            }}
+            style={{
+              padding: '10px 24px',
+              background: '#569cd6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            Reload App
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <WorkspaceProvider>
-        <ReviewProvider>
-          <Routes>
-            <Route path="/*" element={<TabLayout />} />
-          </Routes>
-        </ReviewProvider>
-      </WorkspaceProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <WorkspaceProvider>
+          <ReviewProvider>
+            <Routes>
+              <Route path="/*" element={<TabLayout />} />
+            </Routes>
+          </ReviewProvider>
+        </WorkspaceProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
