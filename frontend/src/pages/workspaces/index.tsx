@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { useWorkspace } from '../../hooks/use-workspace'
-import { PullToRefresh } from '../../components/pull-to-refresh'
 import type {
   ListWorkspacesResultPayload,
   SelectWorkspaceResultPayload,
@@ -14,32 +13,40 @@ export function WorkspacesPage() {
   const { selectWorkspace } = useWorkspace()
   const navigate = useNavigate()
   const [workspaces, setWorkspaces] = useState<ListWorkspacesResultPayload['workspaces']>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (connectionState !== 'connected') return
-    loadWorkspaces()
-
-    // Subscribe to extension connect/disconnect events
-    const unsub1 = wsClient.subscribe('connection.extensionConnected', () => loadWorkspaces())
-    const unsub2 = wsClient.subscribe('connection.extensionDisconnected', () => loadWorkspaces())
-    return () => {
-      unsub1()
-      unsub2()
-    }
-  }, [connectionState])
+  // Use ref to avoid stale closure in event subscriptions
+  const requestRef = useRef(request)
+  requestRef.current = request
 
   const loadWorkspaces = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await request<{}, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
+      const res = await requestRef.current<Record<string, never>, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
       setWorkspaces(res.payload.workspaces)
     } catch {
-      // handle error
+      // WS not ready yet — will retry on next event
     } finally {
       setLoading(false)
     }
-  }, [request])
+  }, [])
+
+  // Load workspaces when connected, subscribe to extension events
+  useEffect(() => {
+    if (connectionState !== 'connected') return
+    loadWorkspaces()
+
+    const unsub1 = wsClient.subscribe('connection.extensionConnected', () => loadWorkspaces())
+    const unsub2 = wsClient.subscribe('connection.extensionDisconnected', () => loadWorkspaces())
+    return () => { unsub1(); unsub2() }
+  }, [connectionState, loadWorkspaces])
+
+  // Poll for workspaces while list is empty (catches extension connecting after page load)
+  useEffect(() => {
+    if (connectionState !== 'connected' || workspaces.length > 0) return
+    const interval = setInterval(loadWorkspaces, 3000)
+    return () => clearInterval(interval)
+  }, [connectionState, workspaces.length, loadWorkspaces])
 
   async function handleSelectWorkspace(extensionId: string) {
     try {
@@ -54,12 +61,45 @@ export function WorkspacesPage() {
     }
   }
 
-  if (loading) return <div style={{ padding: 16, color: '#888' }}>Loading workspaces...</div>
-  if (workspaces.length === 0)
-    return <div style={{ padding: 16, color: '#888' }}>No VS Code instances connected</div>
+  // Connecting to backend
+  if (connectionState !== 'connected') {
+    return (
+      <div style={{ padding: 16, paddingTop: 'calc(16px + env(safe-area-inset-top))', textAlign: 'center', paddingBlock: 80 }}>
+        <div style={{ fontSize: 24, marginBottom: 16 }}>
+          <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>&#8635;</span>
+        </div>
+        <div style={{ color: '#888', fontSize: 14 }}>Connecting to backend...</div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
+    )
+  }
+
+  // Connected but no workspaces
+  if (workspaces.length === 0) {
+    return (
+      <div style={{ padding: 16, paddingTop: 'calc(16px + env(safe-area-inset-top))', textAlign: 'center', paddingBlock: 80 }}>
+        {loading ? (
+          <>
+            <div style={{ fontSize: 24, marginBottom: 16 }}>
+              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>&#8635;</span>
+            </div>
+            <div style={{ color: '#888', fontSize: 14 }}>Loading workspaces...</div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+          </>
+        ) : (
+          <>
+            <div style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>No VS Code instances connected</div>
+            <div style={{ color: '#555', fontSize: 12 }}>Waiting for extension to connect...</div>
+            <div style={{ marginTop: 16 }}>
+              <span style={{ display: 'inline-block', animation: 'pulse 2s ease-in-out infinite', color: '#555' }}>&#8635;</span>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <PullToRefresh onRefresh={loadWorkspaces}>
     <div style={{ padding: 16, paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
       <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16, color: '#d4d4d4' }}>
         Workspaces
@@ -113,6 +153,5 @@ export function WorkspacesPage() {
         </button>
       ))}
     </div>
-    </PullToRefresh>
   )
 }
