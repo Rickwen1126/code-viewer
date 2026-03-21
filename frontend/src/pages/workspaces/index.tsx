@@ -82,7 +82,6 @@ export function WorkspacesPage() {
   }, [connectionState])
 
   async function handleSelectWorkspace(extensionId: string) {
-    if (connectionState !== 'connected') return
     setSelectingId(extensionId)
     try {
       const res = await request<{ extensionId: string }, SelectWorkspaceResultPayload>(
