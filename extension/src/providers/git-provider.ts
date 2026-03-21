@@ -24,33 +24,27 @@ export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMess
   const ahead = repo.state.HEAD?.ahead ?? 0
   const behind = repo.state.HEAD?.behind ?? 0
 
-  const changedFiles = repo.state.workingTreeChanges.map((change: any) => ({
-    path: vscode.workspace.asRelativePath(change.uri),
-    status: mapGitStatus(change.status),
-    oldPath: change.renameUri ? vscode.workspace.asRelativePath(change.renameUri) : undefined,
-    insertions: 0, // Not available from Git API directly
-    deletions: 0,
-  }))
-
-  // Also include index (staged) changes
-  const indexChanges = repo.state.indexChanges.map((change: any) => ({
+  const mapChange = (change: any) => ({
     path: vscode.workspace.asRelativePath(change.uri),
     status: mapGitStatus(change.status),
     oldPath: change.renameUri ? vscode.workspace.asRelativePath(change.renameUri) : undefined,
     insertions: 0,
     deletions: 0,
-  }))
+  })
 
-  // Merge and deduplicate
-  const allFiles = [...changedFiles]
-  for (const ic of indexChanges) {
-    if (!allFiles.find((f: any) => f.path === ic.path)) {
-      allFiles.push(ic)
+  const stagedFiles = repo.state.indexChanges.map(mapChange)
+  const unstagedFiles = repo.state.workingTreeChanges.map(mapChange)
+
+  // Combined list for backward compatibility
+  const allFiles = [...stagedFiles]
+  for (const uf of unstagedFiles) {
+    if (!allFiles.find((f: any) => f.path === uf.path)) {
+      allFiles.push(uf)
     }
   }
 
   sendResponse(createMessage('git.status.result', {
-    branch, ahead, behind, changedFiles: allFiles,
+    branch, ahead, behind, changedFiles: allFiles, stagedFiles, unstagedFiles,
   }, msg.id))
 }
 
@@ -61,6 +55,56 @@ function mapGitStatus(status: number): 'added' | 'modified' | 'deleted' | 'renam
     case 2: return 'deleted'
     case 3: return 'renamed'
     default: return 'modified'
+  }
+}
+
+// git.log — get commit history
+export async function handleGitLog(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
+  const { maxCount = 30 } = (msg.payload ?? {}) as { maxCount?: number }
+  const git = getGitApi()
+  if (!git || git.repositories.length === 0) {
+    sendResponse(createMessage('git.log.result', { commits: [] }, msg.id))
+    return
+  }
+
+  const repo = git.repositories[0]
+  try {
+    const log = await repo.log({ maxEntries: maxCount })
+    const commits = log.map((entry: any) => ({
+      hash: entry.hash,
+      hashShort: entry.hash.slice(0, 7),
+      message: entry.message,
+      author: entry.authorName ?? entry.authorEmail ?? 'unknown',
+      date: entry.authorDate ? new Date(entry.authorDate).toISOString() : null,
+      parents: entry.parents ?? [],
+    }))
+    sendResponse(createMessage('git.log.result', { commits }, msg.id))
+  } catch {
+    sendResponse(createMessage('git.log.result', { commits: [] }, msg.id))
+  }
+}
+
+// git.commitFiles — get changed files for a specific commit
+export async function handleGitCommitFiles(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
+  const { hash } = msg.payload as { hash: string }
+  const git = getGitApi()
+  if (!git || git.repositories.length === 0) {
+    sendResponse(createMessage('git.commitFiles.result', { files: [] }, msg.id))
+    return
+  }
+
+  const repo = git.repositories[0]
+  try {
+    // Get diff between this commit and its parent
+    const parentHash = hash + '~1'
+    const changes = await repo.diffBetween(parentHash, hash)
+    const files = changes.map((change: any) => ({
+      path: vscode.workspace.asRelativePath(change.uri),
+      status: mapGitStatus(change.status),
+    }))
+    sendResponse(createMessage('git.commitFiles.result', { hash, files }, msg.id))
+  } catch {
+    sendResponse(createMessage('git.commitFiles.result', { hash, files: [] }, msg.id))
   }
 }
 

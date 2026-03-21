@@ -3,7 +3,7 @@ import type { WsMessage } from '@code-viewer/shared'
 import { WsClient, createMessage } from './ws/client'
 import { handleFileTree, handleFileRead, startFileWatchers } from './providers/file-provider'
 import { handleLspHover, handleLspDefinition, handleLspReferences, handleLspDocumentSymbol } from './providers/lsp-provider'
-import { handleGitStatus, handleGitDiff, startGitWatchers } from './providers/git-provider'
+import { handleGitStatus, handleGitDiff, handleGitLog, handleGitCommitFiles, startGitWatchers } from './providers/git-provider'
 import {
   handleChatListSessions,
   handleChatGetHistory,
@@ -34,6 +34,8 @@ const handlers: Record<string, Handler> = {
   'lsp.documentSymbol': handleLspDocumentSymbol,
   'git.status': handleGitStatus,
   'git.diff': handleGitDiff,
+  'git.log': handleGitLog,
+  'git.commitFiles': handleGitCommitFiles,
   'chat.listSessions': handleChatListSessions,
   'chat.getHistory': handleChatGetHistory,
   'chat.send': handleChatSend,
