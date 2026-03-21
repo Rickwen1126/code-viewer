@@ -127,14 +127,16 @@ export function DiffView({ hunks }: DiffViewProps) {
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      {hunks.map((hunk, i) => (
-        <div key={i}>
-          <HunkHeader hunk={hunk} />
-          {hunk.changes.map((change, j) => (
-            <DiffLine key={j} change={change} />
-          ))}
-        </div>
-      ))}
+      <div style={{ display: 'inline-block', minWidth: '100%' }}>
+        {hunks.map((hunk, i) => (
+          <div key={i}>
+            <HunkHeader hunk={hunk} />
+            {hunk.changes.map((change, j) => (
+              <DiffLine key={j} change={change} />
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
