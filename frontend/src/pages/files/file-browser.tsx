@@ -144,6 +144,7 @@ export function FileBrowserPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showRecent, setShowRecent] = useState(false)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => getExpandedDirs())
+  const [collapsedSnapshot, setCollapsedSnapshot] = useState<Set<string> | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Current file from localStorage (set by code-viewer)
@@ -160,8 +161,16 @@ export function FileBrowserPage() {
   }
 
   function collapseAll() {
+    setCollapsedSnapshot(new Set(expandedDirs))
     setExpandedDirs(new Set())
     saveExpandedDirs(new Set())
+  }
+
+  function recoverState() {
+    if (!collapsedSnapshot) return
+    setExpandedDirs(collapsedSnapshot)
+    saveExpandedDirs(collapsedSnapshot)
+    setCollapsedSnapshot(null)
   }
 
   // Auto-expand to current file on mount
@@ -365,25 +374,40 @@ export function FileBrowserPage() {
         {/* File tree (hidden during search) */}
         {!isSearching && !showRecent && (
           <>
-            {/* Collapse all button */}
-            {expandedDirs.size > 0 && (
-              <button
-                onClick={collapseAll}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '6px 12px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: '1px solid #2a2a2a',
-                  color: '#888',
-                  fontSize: 11,
-                  cursor: 'pointer',
-                  textAlign: 'right',
-                }}
-              >
-                Collapse All
-              </button>
+            {/* Collapse All / Recovery */}
+            {(expandedDirs.size > 0 || collapsedSnapshot) && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', borderBottom: '1px solid #2a2a2a' }}>
+                {collapsedSnapshot && (
+                  <button
+                    onClick={recoverState}
+                    style={{
+                      padding: '6px 12px',
+                      background: 'none',
+                      border: 'none',
+                      color: '#569cd6',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Recovery
+                  </button>
+                )}
+                {expandedDirs.size > 0 && (
+                  <button
+                    onClick={collapseAll}
+                    style={{
+                      padding: '6px 12px',
+                      background: 'none',
+                      border: 'none',
+                      color: '#888',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Collapse All
+                  </button>
+                )}
+              </div>
             )}
             {(nodes ?? []).map((node) => (
               <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} expandedDirs={expandedDirs} onToggle={handleToggle} currentFile={currentFile} />
