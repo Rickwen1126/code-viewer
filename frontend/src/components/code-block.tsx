@@ -6,13 +6,14 @@ interface CodeBlockProps {
   language: string
   showLineNumbers?: boolean
   wordWrap?: boolean
+  highlightLine?: number | null
 }
 
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
 const DEFAULT_FONT_SIZE = 13
 
-export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false }: CodeBlockProps) {
+export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine }: CodeBlockProps) {
   const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
   const lastPinchDistance = useRef(0)
@@ -47,6 +48,12 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
     lastPinchDistance.current = 0
   }, [])
 
+  // CSS class combos
+  const classNames = [
+    wordWrap ? 'code-wrap-mode' : undefined,
+    showLineNumbers ? 'code-line-numbers' : undefined,
+  ].filter(Boolean).join(' ') || undefined
+
   return (
     <div
       onTouchStart={handleTouchStart}
@@ -54,7 +61,8 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
       onTouchEnd={handleTouchEnd}
       style={{ fontSize, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.5, display: 'flex' }}
     >
-      {showLineNumbers && (
+      {/* Separate gutter only in non-wrap mode (stays fixed during horizontal scroll) */}
+      {showLineNumbers && !wordWrap && (
         <div
           aria-hidden
           style={{
@@ -74,12 +82,13 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
         </div>
       )}
       <div
-        className={wordWrap ? 'code-wrap-mode' : undefined}
+        className={classNames}
         style={{
           flex: 1,
           minWidth: 0,
           overflowX: wordWrap ? 'hidden' : 'auto',
           WebkitOverflowScrolling: 'touch',
+          counterReset: showLineNumbers && wordWrap ? 'line' : undefined,
         }}
       >
         <ShikiHighlighter
@@ -93,6 +102,22 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           {safeCode}
         </ShikiHighlighter>
       </div>
+      {/* Highlight overlay for Go to Definition target */}
+      {highlightLine != null && highlightLine >= 0 && (
+        <style>{`
+          .line:nth-child(${highlightLine + 1}) {
+            background: rgba(86, 156, 214, 0.2) !important;
+            outline: 1px solid rgba(86, 156, 214, 0.4);
+            border-radius: 2px;
+            animation: highlight-fade 3s ease-out forwards;
+          }
+          @keyframes highlight-fade {
+            0% { background: rgba(86, 156, 214, 0.3); }
+            70% { background: rgba(86, 156, 214, 0.15); }
+            100% { background: transparent; outline-color: transparent; }
+          }
+        `}</style>
+      )}
     </div>
   )
 }

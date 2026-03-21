@@ -73,6 +73,25 @@ html {
   word-break: break-word !important;
 }
 
+/* Wrap mode line numbers via CSS counter (always aligned with wrapped lines) */
+.code-line-numbers.code-wrap-mode .line {
+  counter-increment: line;
+  padding-left: 3.5em;
+  position: relative;
+}
+
+.code-line-numbers.code-wrap-mode .line::before {
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 2.5em;
+  text-align: right;
+  color: #858585;
+  user-select: none;
+  padding-right: 0.5em;
+  border-right: 1px solid #333;
+}
+
 /* Remove tabindex focus outline that causes select-all on click */
 pre.shiki {
   outline: none;

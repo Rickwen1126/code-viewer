@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useParams, useNavigate, useLocation } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
@@ -26,12 +26,14 @@ export function CodeViewerPage() {
   const { '*': rawPath } = useParams()
   const path = rawPath ? decodeURIComponent(rawPath) : ''
   const navigate = useNavigate()
+  const location = useLocation()
   const { request, connectionState } = useWebSocket()
   const { workspace } = useWorkspace()
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [tooLarge, setTooLarge] = useState(false)
   const [wordWrap, setWordWrap] = useState(false)
+  const [highlightLine, setHighlightLine] = useState<number | null>(null)
 
   // References list state (T041)
   const [referencesOpen, setReferencesOpen] = useState(false)
@@ -53,7 +55,13 @@ export function CodeViewerPage() {
 
   useEffect(() => {
     if (!path || !workspace) return
-    loadFile()
+    loadFile().then(() => {
+      // After file loads, scroll to target line if navigated via Go to Definition
+      const state = location.state as { scrollToLine?: number } | null
+      if (state?.scrollToLine != null) {
+        setTimeout(() => scrollToLine(state.scrollToLine!), 100)
+      }
+    })
     const unsub = wsClient.subscribe('file.contentChanged', (msg) => {
       const payload = msg.payload as { path: string }
       if (payload.path === path) loadFile()
@@ -189,12 +197,14 @@ export function CodeViewerPage() {
     navigate(`/files/${encoded}`, { state: { scrollToLine: line } })
   }
 
-  // Scroll the current file to a given line
+  // Scroll to a line and briefly highlight it
   function scrollToLine(line: number) {
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
     const targetScrollTop = line * LINE_HEIGHT
     scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' })
+    setHighlightLine(line)
+    setTimeout(() => setHighlightLine(null), 3500)
   }
 
   // Go to Definition handler (T040) — uses popover position from tap
@@ -407,7 +417,7 @@ export function CodeViewerPage() {
         onClick={handleCodeClick}
       >
         <div ref={codeContainerRef}>
-          <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} />
+          <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} />
         </div>
       </div>
 
