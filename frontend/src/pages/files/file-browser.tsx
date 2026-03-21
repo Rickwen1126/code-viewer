@@ -83,6 +83,13 @@ export function FileBrowserPage() {
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Redirect to workspace selection if no workspace chosen
+  useEffect(() => {
+    if (!workspace && connectionState === 'connected') {
+      navigate('/workspaces', { replace: true })
+    }
+  }, [workspace, connectionState, navigate])
+
   useEffect(() => {
     if (connectionState !== 'connected' || !workspace) return
     loadTree()

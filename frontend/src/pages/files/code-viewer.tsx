@@ -48,8 +48,15 @@ export function CodeViewerPage() {
   const codeContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
+  // Redirect to workspace selection if no workspace chosen
   useEffect(() => {
-    if (!path) return
+    if (!workspace && connectionState === 'connected') {
+      navigate('/workspaces', { replace: true })
+    }
+  }, [workspace, connectionState, navigate])
+
+  useEffect(() => {
+    if (!path || !workspace) return
     loadFile()
     const unsub = wsClient.subscribe('file.contentChanged', (msg) => {
       const payload = msg.payload as { path: string }
