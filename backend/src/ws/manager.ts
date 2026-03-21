@@ -44,9 +44,16 @@ class ConnectionManager {
           }
         }
 
-        // Ping the underlying WS
+        // Ping the underlying WS and listen for pong
         try {
-          ;(entry.ws as unknown as { raw?: { ping?: () => void } }).raw?.ping?.()
+          const rawWs = (entry.ws as unknown as { raw?: { ping?: (data?: unknown, mask?: boolean, cb?: (err?: Error) => void) => void; once?: (event: string, cb: () => void) => void } }).raw
+          if (rawWs?.ping) {
+            rawWs.ping()
+            // If we can listen for pong, update heartbeat when it arrives
+            rawWs.once?.('pong', () => {
+              this.updateHeartbeat(id)
+            })
+          }
         } catch {
           // ignore ping errors
         }

@@ -3,6 +3,19 @@ import type { WsMessage } from '@code-viewer/shared'
 type MessageListener = (message: WsMessage) => void
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
 
+// crypto.randomUUID() is only available in secure contexts (HTTPS or localhost).
+// Fallback for HTTP on LAN (e.g. http://192.168.x.x)
+export function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 class WsClientService {
   private ws: WebSocket | null = null
   private url: string = ''
@@ -38,7 +51,7 @@ class WsClientService {
   }
 
   send<T>(type: string, payload: T, replyTo?: string): string {
-    const id = crypto.randomUUID()
+    const id = generateId()
     const message: WsMessage<T> = {
       type,
       id,
@@ -58,7 +71,7 @@ class WsClientService {
     timeout = 30000,
   ): Promise<WsMessage<TRes>> {
     return new Promise((resolve, reject) => {
-      const id = crypto.randomUUID()
+      const id = generateId()
       const message: WsMessage<TReq> = {
         type,
         id,

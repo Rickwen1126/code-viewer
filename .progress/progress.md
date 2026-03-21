@@ -1,35 +1,32 @@
-## 2026-03-21 12:05 — AUDIT complete + 4 quick fixes queued
+## 2026-03-21 12:20 — 66/69 tasks done, Phase 9 code polish complete
 
-**Goal**: 實作 Mobile Code Viewer 全部 6 個 User Stories + 測試 + code review + security fixes + AUDIT
+**Goal**: 實作 Mobile Code Viewer 全部 6 個 User Stories + 測試 + code review + security fixes + AUDIT + polish
 
 **Done**:
 - Phase 1-8 實作 + 166 tests + 8 critical fixes（commits: `5605bb1`, `4ab3776`, `1389c76`）
-- AUDIT v1 完成：`.audit/AUDIT-002-mobile-viewer-v1@2026-03-21.md`
-  - 判定：需修正（minor），不阻擋進 BANK
-  - 8 個 Exit Questions 全部走完，learning notes 記錄在 `.audit/learning-notes.md`
-- Sky Eye tour 走完（Rick 手機上逐步 review）
-- Copilot Chat session spike 完成：`.jsonl` 可解析，329 sessions found，格式 event-sourced log
-- AUDIT learning notes 記錄了 5 個可操作的發現（A2-1, A2-3, A2-4, C2, C3, C5）
+- AUDIT v1 完成 + 8 Exit Questions 走完（`.audit/learning-notes.md`）
+- 4 個 AUDIT findings 修完：dispatch table、batch delete、double reply guard、relay timestamp log
+  - Commit `12ade15`: refactor: apply 4 AUDIT findings
+- Phase 9 T064-T067 完成：View Transitions、pull-to-refresh、pinch-to-zoom、safe-area
+  - Commit `ec05849`: feat: Phase 9 polish
+- Copilot Chat session spike：`.jsonl` 可解析（329 sessions, event-sourced log）
 
 **Decisions**:
 - Path traversal 修法選 B：允許 workspace 內 + VS Code 有開的檔案
 - Auth 用 shared secret 最小方案
-- A2-1 Backend relay 長期應升級為 session broker（transport/session 分離）— 超出 MVP
-- A2-3 Copilot Chat session `.jsonl` 讀取技術可行，留到後續 feature
-- Map 遍歷 delete 雖然 JS 安全但應改為防禦性寫法（可讀性原則）
+- A2-1 Backend relay 長期應升級為 session broker — 超出 MVP
+- A2-3 Copilot Chat `.jsonl` 讀取技術可行，留到後續 feature
+- 防禦性寫法原則：語言允許不代表不該防護（Map delete, timeout guard）
 
-**State**: Branch `002-mobile-viewer`, 3 commits. AUDIT + learning notes + spike 結果尚未 commit。
-166 tests passing, 4 packages typecheck clean.
+**State**: Branch `002-mobile-viewer`, 5 commits ahead of speckit session.
+Latest commit: `ec05849 feat: Phase 9 polish`
+166 tests passing, 66/69 tasks complete.
 
 **Next**:
-- [ ] 修 4 個 AUDIT 發現（dispatch table + error 兜底、Map 批次 delete、timeout has() 防護、relay timestamp log）
-- [ ] Phase 9 Polish（T064-T070）
-
-**User Notes**:
-- Path traversal 用 B 方案 — 因為需要看 package dependency 跟外部 lib
-- Map 遍歷 delete「像把人綁在懸崖旁邊說很安全」— 要改為防禦性寫法
-- C2 error 兜底 + C5 timestamp log 值得修，effort 小效果大
-- 先 save 然後修正 4 個 AUDIT findings
+- [ ] T068 Performance audit（需真機 — Shiki bundle size, 大檔案壓測）
+- [ ] T069 Quickstart.md end-to-end 驗證（需跑 Backend+Extension+Frontend）
+- [ ] T070 E2E Playwright（需跑環境 + mobile viewport）
+- [ ] BANK（提煉學習存款）
 
 ---
 

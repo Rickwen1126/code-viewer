@@ -4,7 +4,7 @@ import './index.css'
 import App from './app'
 import { wsClient } from './services/ws-client'
 
-const wsUrl = import.meta.env.VITE_WS_URL ?? 'ws://localhost:3000'
+const wsUrl = import.meta.env.VITE_WS_URL ?? 'ws://localhost:3000/ws/frontend'
 wsClient.connect(wsUrl)
 
 createRoot(document.getElementById('root')!).render(

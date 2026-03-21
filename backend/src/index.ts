@@ -20,8 +20,9 @@ app.get('/ws/extension', createExtensionHandler(upgradeWebSocket))
 app.get('/ws/frontend', createFrontendHandler(upgradeWebSocket))
 
 const port = Number(process.env.PORT) || 3000
-const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`Backend listening on port ${info.port}`)
+const hostname = process.env.HOST || '0.0.0.0'
+const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
+  console.log(`Backend listening on ${hostname}:${info.port}`)
 })
 
 // CRITICAL: injectWebSocket MUST be called AFTER serve()

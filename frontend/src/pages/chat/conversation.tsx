@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
-import { wsClient } from '../../services/ws-client'
+import { wsClient, generateId } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { CodeBlock } from '../../components/code-block'
 import type {
@@ -140,7 +140,7 @@ export function ChatConversationPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const isNewSession = sessionId === 'new'
-  const activeSessionId = useRef<string>(isNewSession ? crypto.randomUUID() : (sessionId ?? crypto.randomUUID()))
+  const activeSessionId = useRef<string>(isNewSession ? generateId() : (sessionId ?? generateId()))
 
   // T053: load history or offline cache on mount
   useEffect(() => {
@@ -243,7 +243,7 @@ export function ChatConversationPage() {
     const text = inputValue.trim()
     if (!text || sendingTurnId) return
 
-    const turnId = crypto.randomUUID()
+    const turnId = generateId()
     const newTurn: Turn = {
       id: turnId,
       request: text,
