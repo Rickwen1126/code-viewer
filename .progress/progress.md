@@ -1,3 +1,38 @@
+## 2026-03-22 01:17 — Production features: search, git history, file tree UX
+
+**Goal**: Production-ready features — file search, git commit history, file tree state management
+
+**Done**:
+- File search: fuzzy match from cached tree, sticky search bar
+- Recent files: localStorage 最近 15 個, search focus 顯示
+- File tree: expand state persist (localStorage), current file highlight, auto-expand, Collapse All + Recovery
+- Git: staged/unstaged split, commit history (30 commits), click commit → file list → click file → view diff
+- Git: workspace root repo detection (not worktree sub-repo)
+- Diff view: whole-block horizontal scroll (not per-line), background color full width
+- Copilot chat: file references, mode switch, history context (暫停等 chatpilot 接入)
+- Chat/Review tabs hidden (等 chatpilot)
+- P0 gray screen fix: Error Boundary + zombie WS detection
+- Workspace dedup by rootPath + race condition fix
+- Workspace button always clickable + stale ID auto-refresh
+- VS Code → Shiki language mapping (15 entries)
+- gitignore: experiments/, .cython-index.json
+
+**Decisions**:
+- Copilot Chat 暫停，等 chatpilot (~/code/chatpilot) 接入替換 vscode.lm
+- Chat/Review UI 保留，只隱藏 tab
+- Git commit diff 用 child_process execSync `git diff commit~1 commit -- path`
+- Workspace dedup by rootPath > extensionId (PID changes on restart)
+
+**State**: main branch, commit `ba82393`. 42 commits today. 166 tests pass.
+
+**Next**:
+- [ ] CodeTour Record + Edit（大 feature，已記 spec）
+- [ ] Git 功能強化（branch info 顯示、已記 spec）
+- [ ] chatpilot 接入（Chat/Review backend 替換）
+- [ ] Application-level heartbeat
+- [ ] PWA standalone safe area
+- [ ] 離線瀏覽已 cache 檔案
+
 ## 2026-03-21 20:51 — Cache-first + PWA + language mapping + UX issues
 
 **Goal**: Post-MVP polish — code review fixes, UX improvements, E2E validation, mobile live testing
