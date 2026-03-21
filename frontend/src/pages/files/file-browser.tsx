@@ -113,9 +113,12 @@ export function FileBrowserPage() {
   const loadTreeBackground = useCallback(async () => {
     try {
       const res = await request<{ path?: string }, FileTreeResultPayload>('file.tree', {})
-      setNodes(res.payload.nodes)
-      if (workspace) {
-        cacheService.setFileTree(workspace.extensionId, res.payload.nodes)
+      const nodes = res.payload?.nodes
+      if (Array.isArray(nodes)) {
+        setNodes(nodes)
+        if (workspace) {
+          cacheService.setFileTree(workspace.extensionId, nodes)
+        }
       }
     } catch {
       // Already showing cached data — ignore
@@ -139,7 +142,7 @@ export function FileBrowserPage() {
   return (
     <PullToRefresh onRefresh={loadTree}>
       <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-        {nodes.map((node) => (
+        {(nodes ?? []).map((node) => (
           <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} />
         ))}
       </div>

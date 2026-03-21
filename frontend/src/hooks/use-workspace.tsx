@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
-import type { Workspace } from '@code-viewer/shared'
+import { wsClient } from '../services/ws-client'
+import { useWebSocket } from './use-websocket'
+import type { Workspace, SelectWorkspaceResultPayload } from '@code-viewer/shared'
 
 const STORAGE_KEY = 'code-viewer:selected-workspace'
 
@@ -16,6 +18,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
 })
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  const { connectionState, request } = useWebSocket()
   const [workspace, setWorkspace] = useState<Workspace | null>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
@@ -38,9 +41,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [workspace])
 
-  // Note: we do NOT clear workspace on extension disconnect.
-  // Cache-first means keep showing last-known state.
-  // User explicitly navigates back to /workspaces to switch.
+  // Auto-rebind workspace on reconnect: tell backend which extension to relay to.
+  // Without this, a page reload has workspace in localStorage but backend's
+  // frontend entry has selectedExtensionId=null → requests go nowhere.
+  useEffect(() => {
+    if (connectionState !== 'connected' || !workspace) return
+    request<{ extensionId: string }, SelectWorkspaceResultPayload>(
+      'connection.selectWorkspace',
+      { extensionId: workspace.extensionId },
+    ).then(res => {
+      // Update workspace in case details changed (e.g. gitBranch)
+      setWorkspace(res.payload.workspace)
+    }).catch(() => {
+      // Extension no longer exists — clear stale workspace
+      setWorkspace(null)
+    })
+  }, [connectionState]) // only on connection change, not workspace change
 
   const selectWorkspace = useCallback((ws: Workspace) => setWorkspace(ws), [])
   const clearWorkspace = useCallback(() => setWorkspace(null), [])
