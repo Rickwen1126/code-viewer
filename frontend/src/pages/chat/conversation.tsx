@@ -268,11 +268,17 @@ export function ChatConversationPage() {
     scrollToBottom()
 
     try {
-      const payload: ChatSendPayload & { references?: string[] } = {
+      // Include conversation history so Copilot has context
+      const history = turns
+        .filter(t => t.responseStatus === 'complete' && t.response)
+        .map(t => ({ request: t.request, response: t.response }))
+
+      const payload: ChatSendPayload & { references?: string[]; history?: { request: string; response: string }[] } = {
         sessionId: isNewSession ? activeSessionId.current : sessionId,
         message: text,
         mode: chatMode,
         references: fileRefs.length > 0 ? fileRefs : undefined,
+        history: history.length > 0 ? history : undefined,
       }
 
       const res = await request<ChatSendPayload, ChatSendResultPayload>('chat.send', payload)

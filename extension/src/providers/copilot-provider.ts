@@ -166,12 +166,13 @@ export async function handleChatSend(
   sendResponse: (msg: WsMessage) => void,
   wsClient?: WsClient,
 ): Promise<void> {
-  const { sessionId, message, mode, references, modelFamily } = msg.payload as {
+  const { sessionId, message, mode, references, modelFamily, history } = msg.payload as {
     sessionId?: string
     message: string
     mode?: 'ask' | 'agent' | 'plan'
-    references?: string[] // file paths to include as context
-    modelFamily?: string // e.g. 'gpt-4o', 'claude-3.5-sonnet'
+    references?: string[]
+    modelFamily?: string
+    history?: { request: string; response: string }[]
   }
   const turnId = crypto.randomUUID()
   const newSessionId = sessionId ?? crypto.randomUUID()
@@ -246,6 +247,16 @@ export async function handleChatSend(
             'Here are the referenced files:\n\n' + refParts.join('\n\n'),
           ),
         )
+      }
+    }
+
+    // Include conversation history for context continuity
+    if (history && history.length > 0) {
+      // Keep last 10 turns to stay within token limits
+      const recentHistory = history.slice(-10)
+      for (const turn of recentHistory) {
+        chatMessages.push(vscode.LanguageModelChatMessage.User(turn.request))
+        chatMessages.push(vscode.LanguageModelChatMessage.Assistant(turn.response))
       }
     }
 
