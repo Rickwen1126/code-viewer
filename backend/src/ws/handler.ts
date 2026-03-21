@@ -6,6 +6,7 @@ import type {
   SelectWorkspaceResultPayload,
   ListWorkspacesResultPayload,
   ConnectionWelcomePayload,
+  ExtensionConnectedPayload,
   ExtensionDisconnectedPayload,
   FileTreeNode,
 } from '@code-viewer/shared'
@@ -15,6 +16,7 @@ import {
   MSG_CONNECTION_LIST_WORKSPACES_RESULT,
   MSG_CONNECTION_SELECT_WORKSPACE,
   MSG_CONNECTION_SELECT_WORKSPACE_RESULT,
+  MSG_CONNECTION_EXTENSION_CONNECTED,
   MSG_CONNECTION_EXTENSION_DISCONNECTED,
   MSG_WORKSPACE_REGISTER,
   MSG_WORKSPACE_REGISTER_RESULT,
@@ -109,6 +111,15 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
 
           sendJson(ws, makeMessage(MSG_WORKSPACE_REGISTER_RESULT, { success: true }, msg.id))
           console.log(`Extension ${extensionId} registered workspace: ${payload.name} at ${payload.rootPath}`)
+
+          // Broadcast extensionConnected to ALL frontends so workspace list updates
+          const connectMsg = makeMessage<ExtensionConnectedPayload>(
+            MSG_CONNECTION_EXTENSION_CONNECTED,
+            { extensionId, displayName: payload.name, rootPath: payload.rootPath },
+          )
+          for (const [, frontend] of manager.frontends) {
+            sendJson(frontend.ws, connectMsg)
+          }
           return
         }
 
