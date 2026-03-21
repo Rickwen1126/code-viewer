@@ -416,7 +416,7 @@ export function CodeViewerPage() {
             unsaved
           </span>
         )}
-        {/* Wrap toggle + Symbols */}
+        {/* Wrap toggle + Actions + Symbols */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           <button
             onClick={() => setWordWrap((v) => !v)}
@@ -431,6 +431,20 @@ export function CodeViewerPage() {
             }}
           >
             Wrap
+          </button>
+          <button
+            onClick={() => setActionSheetOpen(true)}
+            style={{
+              background: 'none',
+              border: '1px solid #444',
+              color: '#888',
+              fontSize: 11,
+              padding: '2px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            Actions
           </button>
           <button
             onClick={handleDocumentSymbols}
@@ -449,18 +463,13 @@ export function CodeViewerPage() {
         </div>
       </div>
 
-      {/* Code with touch handlers */}
+      {/* Code area — no custom touch handlers, let native selection work */}
       <div
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
         onClick={() => setHoverTooltip(null)}
       >
-        <div
-          ref={codeContainerRef}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onTouchMove={handleTouchMove}
-        >
+        <div ref={codeContainerRef}>
           <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} />
         </div>
       </div>

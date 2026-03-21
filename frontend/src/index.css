@@ -78,7 +78,3 @@ pre.shiki {
   outline: none;
   -webkit-tap-highlight-color: transparent;
 }
-
-pre.shiki code .line {
-  display: block;
-}
