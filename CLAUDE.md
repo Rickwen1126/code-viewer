@@ -63,6 +63,15 @@ npx playwright test tests/e2e/
 - Playwright E2E 測試必須用 iPhone viewport (390x844) 執行
 - 這是 mobile-first 產品，所有 UI 行為以手機尺寸為準
 
+## Operational Notes
+
+- **CWD 問題**: 在 `extension/` 下跑 `tsc` build 後，Bash CWD 會留在 `extension/`。後續指令（如 `node tests/e2e/launch-extension.mjs`）必須加 `cd /Users/rickwen/code/code-viewer &&` 確保從 project root 執行。
+- **Extension build**: 改動 extension 後必須 `cd extension && node_modules/.bin/tsc` rebuild，再重啟 VS Code test instance。
+- **Backend restart**: 改動 `backend/src/ws/handler.ts` 等 backend 檔案後，需重啟 backend（`tsx watch` 會自動 reload，但有時需手動 stop/start）。
+- **Frontend HMR**: 改動 frontend 後 Vite HMR 自動更新，但跨 Tailscale 的手機可能收不到 HMR，需手動刷新。
+- **Safari iCloud 私密轉送**: 必須關閉，否則 WebSocket 連線會失敗。詳見 README Known Issues。
+- **舊 port 殘留**: 確認沒有舊的 Vite dev server 跑在 5847/5848（`lsof -i :5847` 檢查，`kill` 清掉）。
+
 ## Code Style
 
 TypeScript 5.x across all 3 packages. Follow existing conventions.
