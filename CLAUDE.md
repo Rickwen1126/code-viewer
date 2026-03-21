@@ -38,9 +38,23 @@ pnpm --filter @code-viewer/frontend dev    # Terminal 2: Frontend Vite
 ## E2E Test
 
 ```bash
-# Requires: backend running on :4800, frontend on :4801, extension connected
-npx playwright test tests/e2e/  # Playwright browser tests against frontend
+# Step 1: Start backend + frontend
+pnpm --filter @code-viewer/backend dev &
+pnpm --filter @code-viewer/frontend dev &
+
+# Step 2: Launch VS Code with extension (pick a mode)
+node tests/e2e/launch-extension.mjs                  # lightweight (fast, no TS/LSP)
+node tests/e2e/launch-extension.mjs --real            # real (user's extensions, TS/LSP works)
+node tests/e2e/launch-extension.mjs --real --copilot  # full (+ Copilot auth, CLOSE your VS Code first!)
+
+# Optional: specify a different workspace
+node tests/e2e/launch-extension.mjs --real /path/to/other/project
+
+# Step 3: Playwright tests against frontend (while VS Code is alive)
+npx playwright test tests/e2e/
 ```
+
+**Note**: `--copilot` 模式會讀取你的 VS Code user-data-dir（含 Copilot 登入 token），必須先關閉你自己的 VS Code 實體避免衝突。
 
 ## Code Style
 
