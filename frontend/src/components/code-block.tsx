@@ -14,11 +14,27 @@ const MAX_FONT_SIZE = 24
 const DEFAULT_FONT_SIZE = 13
 
 // Map VS Code languageId → Shiki language identifier
+// Hard mismatches (Shiki doesn't accept VS Code's ID, not even as alias)
+// Soft mismatches (dockerfile, coffeescript, makefile, jade, properties) are
+// handled by Shiki's alias system and don't need explicit mapping.
 const LANGUAGE_MAP: Record<string, string> = {
+  // Hard mismatches
   typescriptreact: 'tsx',
   javascriptreact: 'jsx',
-  shellscript: 'bash',
-  plaintext: 'text',
+  restructuredtext: 'rst',
+  wat: 'wasm',
+  // VS Code internal IDs → plaintext
+  'cuda-cpp': 'text',
+  dockercompose: 'yaml',
+  juliamarkdown: 'markdown',
+  ignore: 'text',
+  'search-result': 'text',
+  'code-text-binary': 'text',
+  chatagent: 'text',
+  instructions: 'text',
+  prompt: 'text',
+  skill: 'text',
+  snippets: 'json',
 }
 
 function mapLanguage(lang: string): string {
