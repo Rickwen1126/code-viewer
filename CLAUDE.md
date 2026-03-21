@@ -18,6 +18,8 @@ pnpm monorepo: `packages/shared`, `backend`, `extension`, `frontend`
 
 **Important**: User 的 VS Code User Settings 有 `codeViewer.backendUrl`，改 port 時須提醒 user 同步更新。
 
+**Mobile 連線**: Frontend WS URL 自動從 `window.location.hostname` 取得，手機用 LAN IP 開前端即可（如 `http://192.168.x.x:4801`）。Backend port 4800 hardcoded 在 `main.tsx`，frontend 和 backend 必須在同一台機器。
+
 ## Commands
 
 ```bash
