@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext } from 'react'
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
 import { wsClient } from '../services/ws-client'
 import type { Workspace } from '@code-viewer/shared'
 
@@ -16,17 +16,19 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  const workspaceRef = useRef<Workspace | null>(null)
+  workspaceRef.current = workspace
 
   useEffect(() => {
     // Listen for extension disconnect
     const unsub = wsClient.subscribe('connection.extensionDisconnected', (msg) => {
       const payload = msg.payload as { extensionId: string }
-      if (workspace && payload.extensionId === workspace.extensionId) {
+      if (workspaceRef.current?.extensionId === payload.extensionId) {
         setWorkspace(null)
       }
     })
     return unsub
-  }, [workspace])
+  }, [])  // Empty dependency array — subscribe once
 
   const selectWorkspace = useCallback((ws: Workspace) => setWorkspace(ws), [])
   const clearWorkspace = useCallback(() => setWorkspace(null), [])

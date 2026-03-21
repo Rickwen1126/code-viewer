@@ -174,37 +174,38 @@ export async function handleChatSend(
 
     const chatModel = models[0]
     const messages = [vscode.LanguageModelChatMessage.User(message)]
-    const response = await chatModel.sendRequest(
-      messages,
-      {},
-      new vscode.CancellationTokenSource().token,
-    )
+    const cts = new vscode.CancellationTokenSource()
+    try {
+      const response = await chatModel.sendRequest(messages, {}, cts.token)
 
-    let fullResponse = ''
-    for await (const chunk of response.text) {
-      fullResponse += chunk
-      // Send streaming chunk
-      wsClient.send(
-        createMessage('chat.stream.chunk', {
-          replyTo: msg.id,
-          chunk,
-          turnId,
-        }),
+      let fullResponse = ''
+      for await (const chunk of response.text) {
+        fullResponse += chunk
+        // Send streaming chunk
+        wsClient.send(
+          createMessage('chat.stream.chunk', {
+            replyTo: msg.id,
+            chunk,
+            turnId,
+          }),
+        )
+      }
+
+      sendResponse(
+        createMessage(
+          'chat.send.result',
+          {
+            turnId,
+            sessionId: newSessionId,
+            response: fullResponse,
+            model: chatModel.name,
+          },
+          msg.id,
+        ),
       )
+    } finally {
+      cts.dispose()
     }
-
-    sendResponse(
-      createMessage(
-        'chat.send.result',
-        {
-          turnId,
-          sessionId: newSessionId,
-          response: fullResponse,
-          model: chatModel.name,
-        },
-        msg.id,
-      ),
-    )
   } catch (err) {
     sendResponse(
       createMessage(

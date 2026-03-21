@@ -27,6 +27,8 @@ import {
 } from './relay.js'
 import { cache } from '../cache/session.js'
 
+const WS_SECRET = process.env.CODE_VIEWER_SECRET ?? ''
+
 // Accept any UpgradeWebSocket compatible function
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type UpgradeWsFn = UpgradeWebSocket<any, any>
@@ -57,7 +59,16 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
     const name = url.searchParams.get('name') ?? 'Unknown Workspace'
 
     return {
-      onOpen(_evt: Event, ws: { send: (data: string) => void }) {
+      onOpen(_evt: Event, ws: { send: (data: string) => void; close: (code: number, reason: string) => void }) {
+        if (WS_SECRET) {
+          const provided = url.searchParams.get('secret')
+          if (provided !== WS_SECRET) {
+            ws.close(1008, 'Unauthorized')
+            console.log(`Rejected unauthorized extension connection`)
+            return
+          }
+        }
+
         manager.addExtension(extensionId, ws as never, {
           extensionId,
           name,
@@ -150,11 +161,21 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
 }
 
 export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
-  return upgradeWebSocket((_c) => {
+  return upgradeWebSocket((c) => {
     const frontendId = crypto.randomUUID()
+    const frontendUrl = new URL(c.req.url, 'http://localhost')
 
     return {
-      onOpen(_evt: Event, ws: { send: (data: string) => void }) {
+      onOpen(_evt: Event, ws: { send: (data: string) => void; close: (code: number, reason: string) => void }) {
+        if (WS_SECRET) {
+          const provided = frontendUrl.searchParams.get('secret')
+          if (provided !== WS_SECRET) {
+            ws.close(1008, 'Unauthorized')
+            console.log(`Rejected unauthorized frontend connection`)
+            return
+          }
+        }
+
         manager.addFrontend(frontendId, ws as never)
 
         sendJson(ws, makeMessage<ConnectionWelcomePayload>(MSG_CONNECTION_WELCOME, {

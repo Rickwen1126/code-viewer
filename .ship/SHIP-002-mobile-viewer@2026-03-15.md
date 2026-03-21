@@ -58,15 +58,14 @@ tags: [ship, mobile, vscode-extension, websocket, react]
     - file.tree cache（存原封不動的結果，不解析內容，5min TTL）
   - Hono gotchas：upgradeWebSocket 內不能 await、WS route 不套 CORS、injectWebSocket 必須在 serve() 之後
 
-- [ ] **B3 WebSocket 訊息路由**：不懂三端訊息怎麼配對 → 通訊協定會實作錯
-  - 解什麼問題：待填
-  - 用錯會怎樣：待填
-  - 為什麼選這做法：待填
-  - Exit Questions:
-    1. Frontend 同時發 3 個 request 出去，response 回來時怎麼知道哪個 response 對應哪個 request？如果沒有 id/replyTo 機制會怎樣？ [A]
-    2. Chat streaming 為什麼不能用一般的 request/response？中間的 chunk 跟最後的 result 怎麼區分？ [A]
-    3. Heartbeat 的 30s ping / 40s stale / 5min remove 三個數字各自在防什麼問題？如果只用一個 timeout 會怎樣？ [A]
-  - 狀態：未解除
+- [x] **B3 WebSocket 訊息路由** ✅ 已解除
+  - 解什麼問題：WS 雙向通訊沒有天然的 request/response 配對，需要自建
+  - 用錯會怎樣：沒有 id/replyTo → 同時多個 request 時無法辨識 response 屬於誰
+  - 為什麼選這做法：id/replyTo 機制統一處理一對一（file.read）和一對多（chat streaming chunk）
+  - 核心機制：
+    - Frontend 維護 Map<id, Promise>，用 replyTo 配對
+    - Streaming chunk 共用同一個 replyTo，一群 chunk 同屬一個 request
+    - Heartbeat 三層（30s ping / 40s stale / 5min remove）避免 false positive 誤斷
 
 ### [R]isky（大概懂但不確定）
 - **R1 Shiki engine system**：JS vs Oniguruma 差異大概知道，但動態載入語言 grammar 的快取機制不確定
@@ -139,10 +138,10 @@ tags: [ship, mobile, vscode-extension, websocket, react]
 - Lucide icon 的 tree-shaking 機制
 
 ## 6. 開工決策
-- [ ] 所有 [B]lock 已解除
-- [ ] [B]lock ≤ 3 個 ✅
-- [ ] Problem Statement 清晰 ✅
-- [ ] Solution Space 有比較過 ✅
-- [ ] 技術決策都有根據 ✅
+- [x] 所有 [B]lock 已解除 ✅
+- [x] [B]lock ≤ 3 個 ✅
+- [x] Problem Statement 清晰 ✅
+- [x] Solution Space 有比較過 ✅
+- [x] 技術決策都有根據 ✅
 
-**狀態**：待補 — 3 個 Block 未解除
+**狀態**：可開工

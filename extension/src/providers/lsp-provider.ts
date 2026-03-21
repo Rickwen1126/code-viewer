@@ -1,10 +1,22 @@
 import * as vscode from 'vscode'
 import type { WsMessage } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
+import { validatePath } from '../utils/validate-path'
 
 export async function handleLspHover(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { path, line, character } = msg.payload as { path: string; line: number; character: number }
-  const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, path)
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) {
+    sendResponse(createMessage('lsp.hover.result', null, msg.id))
+    return
+  }
+
+  const validation = validatePath(path, workspaceFolder)
+  if (!validation.valid) {
+    sendResponse(createMessage('lsp.hover.error', { code: 'INVALID_REQUEST', message: validation.reason }, msg.id))
+    return
+  }
+  const uri = validation.uri
   const position = new vscode.Position(line, character)
 
   try {
@@ -32,7 +44,18 @@ export async function handleLspHover(msg: WsMessage, sendResponse: (msg: WsMessa
 
 export async function handleLspDefinition(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { path, line, character } = msg.payload as { path: string; line: number; character: number }
-  const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, path)
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) {
+    sendResponse(createMessage('lsp.definition.result', { locations: [] }, msg.id))
+    return
+  }
+
+  const validation = validatePath(path, workspaceFolder)
+  if (!validation.valid) {
+    sendResponse(createMessage('lsp.definition.error', { code: 'INVALID_REQUEST', message: validation.reason }, msg.id))
+    return
+  }
+  const uri = validation.uri
   const position = new vscode.Position(line, character)
 
   try {
@@ -58,7 +81,18 @@ export async function handleLspDefinition(msg: WsMessage, sendResponse: (msg: Ws
 
 export async function handleLspReferences(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { path, line, character } = msg.payload as { path: string; line: number; character: number; includeDeclaration?: boolean }
-  const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, path)
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) {
+    sendResponse(createMessage('lsp.references.result', { locations: [] }, msg.id))
+    return
+  }
+
+  const validation = validatePath(path, workspaceFolder)
+  if (!validation.valid) {
+    sendResponse(createMessage('lsp.references.error', { code: 'INVALID_REQUEST', message: validation.reason }, msg.id))
+    return
+  }
+  const uri = validation.uri
   const position = new vscode.Position(line, character)
 
   try {
@@ -90,7 +124,18 @@ export async function handleLspReferences(msg: WsMessage, sendResponse: (msg: Ws
 
 export async function handleLspDocumentSymbol(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { path } = msg.payload as { path: string }
-  const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, path)
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) {
+    sendResponse(createMessage('lsp.documentSymbol.result', { symbols: [] }, msg.id))
+    return
+  }
+
+  const validation = validatePath(path, workspaceFolder)
+  if (!validation.valid) {
+    sendResponse(createMessage('lsp.documentSymbol.error', { code: 'INVALID_REQUEST', message: validation.reason }, msg.id))
+    return
+  }
+  const uri = validation.uri
 
   try {
     const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(

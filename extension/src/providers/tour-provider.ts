@@ -18,6 +18,10 @@ export async function handleTourList(msg: WsMessage, sendResponse: (msg: WsMessa
     for (const [name, type] of entries) {
       if (type !== vscode.FileType.File || !name.endsWith('.tour')) continue
 
+      // Only process tour files with safe characters in their names
+      const baseName = name.slice(0, -'.tour'.length)
+      if (!/^[\w\-]+$/.test(baseName)) continue
+
       try {
         const fileUri = vscode.Uri.joinPath(toursUri, name)
         const raw = await vscode.workspace.fs.readFile(fileUri)
@@ -43,6 +47,13 @@ export async function handleTourList(msg: WsMessage, sendResponse: (msg: WsMessa
 // tour.getSteps — get steps for a specific tour
 export async function handleTourGetSteps(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { tourId } = msg.payload as { tourId: string }
+
+  if (!/^[\w\-]+$/.test(tourId)) {
+    sendResponse(createMessage('tour.getSteps.error',
+      { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id))
+    return
+  }
+
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
   if (!workspaceFolder) {
     sendResponse(createMessage('tour.getSteps.error', { code: 'NOT_FOUND', message: 'No workspace' }, msg.id))

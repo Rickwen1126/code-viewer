@@ -72,6 +72,12 @@ export function CodeViewerPage() {
     return unsub
   }, [path, connectionState])
 
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current)
+    }
+  }, [])
+
   async function loadFile() {
     if (!path) return
     try {
@@ -178,6 +184,9 @@ export function CodeViewerPage() {
       // Only treat as tap if short duration
       if (duration > TAP_MAX_DURATION) return
 
+      // Guard: don't attempt LSP calls when not connected
+      if (connectionState !== 'connected') return
+
       // Use changedTouches for touchend
       const touch = e.changedTouches[0]
       const dx = touch.clientX - startX
@@ -213,7 +222,7 @@ export function CodeViewerPage() {
         // Ignore hover errors silently
       }
     },
-    [path, request],
+    [path, request, connectionState],
   )
 
   const handleTouchMove = useCallback(() => {

@@ -89,8 +89,25 @@ export function relayExtensionResponseToFrontend(msg: WsMessage): boolean {
 
 /**
  * Broadcast an Extension event to all Frontends watching that Extension.
+ * Chat stream chunks are routed only to the requesting frontend.
  */
 export function broadcastExtensionEvent(extensionId: string, msg: WsMessage): void {
+  // Chat stream chunks should only go to the requesting frontend, not broadcast
+  if (msg.type === 'chat.stream.chunk') {
+    const innerReplyTo = (msg.payload as { replyTo?: string }).replyTo
+    if (innerReplyTo) {
+      const pending = pendingRequests.get(innerReplyTo)
+      if (pending) {
+        const frontend = manager.getFrontend(pending.frontendId)
+        if (frontend) {
+          sendToWs(frontend.ws, msg)
+        }
+        return
+      }
+    }
+  }
+
+  // Normal broadcast for all other events
   const frontends = manager.getFrontendsForExtension(extensionId)
   for (const frontend of frontends) {
     sendToWs(frontend.ws, msg)

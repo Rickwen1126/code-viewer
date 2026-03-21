@@ -30,4 +30,10 @@ injectWebSocket(server)
 // Start heartbeat after server is up
 manager.startHeartbeat()
 
+if (process.env.CODE_VIEWER_SECRET) {
+  console.log('Authentication enabled')
+} else {
+  console.warn('WARNING: No CODE_VIEWER_SECRET set — WS endpoints are unauthenticated')
+}
+
 export { app, upgradeWebSocket }

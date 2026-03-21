@@ -1,0 +1,59 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "01 - Sky Eye: Code Viewer 三層 WS Relay 架構",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## Code Viewer 是什麼\n\n把 Desktop VS Code 的完整能力（檔案瀏覽、LSP、Git、Copilot）搬到手機上的 Mobile PWA。\n\n## 白話導讀\n\n這條 tour 其實是在看：一個手機上的 tap 動作，怎麼穿過三層 WebSocket 最終變成 VS Code API 呼叫，再把結果送回手機畫面。\n\n如果先記不住細節，先抓住每個 step 只是在回答「這三層分別做什麼、資料怎麼流」。\n\n## 錨定已知\n\n如果你用過 VS Code Remote SSH — 本地 VS Code UI 透過 SSH 連到遠端 Extension Host。Code Viewer 做的事很像，只是把 SSH 換成 WebSocket，把本地 UI 換成手機 React PWA，而 Extension Host 就是使用者本機的 Desktop VS Code。\n\n## 這條路徑在解決什麼問題\n\n手機上沒有 VS Code，但使用者想在通勤時 review code、看 Copilot 的回答、查 Git diff。自己做 LSP/Git/AI 太重 — 不如直接把使用者桌機上已經跑著的 VS Code 當成 remote backend，手機只負責呈現。\n\n## 這條路徑展示什麼 mental model\n\n**「智慧在邊緣，中間只是管子」**模式 — Backend 是純 relay（不看內容、不做邏輯），Extension 是真正的智慧來源（LSP、Git、Copilot 全在這），Frontend 是觸控優化的呈現層。走完你會理解為什麼這種架構讓 Backend 幾乎不需要改動，所有新功能只要加 Extension provider + Frontend page。\n\n## 為什麼值得讀\n\n這個「邊緣智慧 + 無狀態 relay」的模式在很多系統都能看到：Cloudflare Workers + Origin Server、gRPC Gateway + Microservice、GraphQL Federation。理解這個 pattern 之後，你能在不同場景辨認出同樣的架構取捨。"
+    },
+    {
+      "file": "packages/shared/src/ws-types.ts",
+      "line": 3,
+      "ref": "5605bb1b686ec2752c6e879e29551806794ead38",
+      "title": "Step 1: 共用訊息信封 — WsMessage",
+      "description": "## Insight\n\n**機制**：所有三端（Extension、Backend、Frontend）的通訊都通過同一個 `WsMessage<T>` 信封。`type` 決定路由、`id` + `replyTo` 配對 request/response、`payload` 攜帶實際資料。這是整個系統的通訊契約。\n\n**故障模式**：如果三端的型別定義不同步（例如 Extension 送 `file.tree` 但 Frontend 期待 `file.list`），訊息會在 relay 中被正確轉發但在接收端被忽略 — 靜默失敗，沒有 runtime error。\n\n**設計取捨**：用 string literal union 而非 enum，犧牲了 TypeScript exhaustive check，換來 JSON 序列化的簡潔（不需要 enum → string 轉換）。\n\n---\n\n### 白話解析\n\n`WsMessage` 就像所有包裹的統一信封格式。不管你寄的是檔案樹、hover 資訊還是 Chat 回答，外面的信封長一樣，Backend relay 只看信封不拆包裹。你在 debug 時看到的 WebSocket frame 全長這個樣子。\n\n---\n\n### Code Detail\n\n**這段在幹嘛**：定義 WsMessage generic interface + 30 多個 message type 常數 + 每個 type 對應的 payload interface。\n\n**為什麼這樣寫**：\n- 好處：三端共用同一份型別源碼（monorepo workspace:*），編譯時期就能抓到型別不匹配\n- 好處：payload interface 明確定義每個欄位，Frontend/Extension 不需要查文件就知道結構\n- 壞處：30+ message types 全攤在同一個檔案裡（~300 行），當 domain 增加時會膨脹\n\n**思考問題**：\n1. 為什麼不用 protobuf 或 MessagePack 而用 JSON？這個決策在什麼規模會需要重新評估？\n2. `replyTo` 是 optional — 哪些訊息不需要它？這對 relay 的路由邏輯有什麼影響？"
+    },
+    {
+      "file": "backend/src/index.ts",
+      "line": 19,
+      "ref": "5605bb1b686ec2752c6e879e29551806794ead38",
+      "title": "Step 2: Backend 入口 — Hono WS Server",
+      "description": "## Insight\n\n**機制**：Backend 只做三件事：(1) 健康檢查 HTTP endpoint、(2) `/ws/extension` 接 VS Code Extension 連線、(3) `/ws/frontend` 接手機 Frontend 連線。沒有 REST API、沒有資料庫、沒有業務邏輯。\n\n**故障模式**：第 28 行 `injectWebSocket(server)` 必須在 `serve()` 之後呼叫（Hono + Node.js WS 的已知 gotcha）。順序反了，WS upgrade 會靜默失敗 — HTTP 正常但 WebSocket 永遠連不上，debug 時看不到任何 error。\n\n**設計取捨**：用 Hono 而非 Express/Fastify，因為只需要 WS relay + 一個 health check。Hono 的 TypeScript-first 設計和 `upgradeWebSocket()` helper 剛好 fit。但 Hono 在 Node.js 上的 WS 支援需要額外的 `@hono/node-ws` adapter，不如 Bun 原生 WS 簡潔。\n\n---\n\n### 白話解析\n\n這是整個 Backend 的全部。兩條 WS 路由就是兩根管子 — Extension 從一邊灌資料進來，Frontend 從另一邊接出去。Backend 的職責到此為止。\n\n---\n\n### Code Detail\n\n**這段在幹嘛**：建立 Hono app，掛上 WS routes，啟動 server + heartbeat。\n\n**為什麼這樣寫**：\n- 好處：整個 Backend 入口只有 33 行，一眼就能看完所有路由\n- 好處：heartbeat 在 server 啟動後立即開始，確保 stale detection 從第一秒就在運作\n- 壞處：`upgradeWebSocket` 的型別 cast（L13）暴露了 Hono WS adapter 的型別不完整問題\n\n**思考問題**：\n1. 如果要加上 HTTPS/WSS 支援，需要改哪裡？Backend 前面放 reverse proxy 是否更合適？\n2. 為什麼 heartbeat 放在 Backend 而不是讓 Extension/Frontend 自己 ping？"
+    },
+    {
+      "file": "backend/src/ws/relay.ts",
+      "line": 32,
+      "ref": "5605bb1b686ec2752c6e879e29551806794ead38",
+      "title": "Step 3: 訊息 Relay — 無狀態轉發核心",
+      "description": "## Insight\n\n**機制**：Relay 用一個 `pendingRequests` Map 記住「這個 message ID 是哪個 Frontend 發的」。Frontend request 進來 → 存 Map → 轉給 Extension。Extension response 回來 → 查 Map 找到原始 Frontend → 轉回去 → 刪 Map entry。Event 類（`treeChanged`、`statusChanged`）則直接 broadcast 給所有盯著該 Extension 的 Frontend。\n\n**故障模式**：如果 Extension 30 秒沒回應，timeout 觸發，Frontend 收到 `TIMEOUT` error，Map entry 被清理。但如果 Extension 在 31 秒回了，response 會找不到 pending entry 而被丟棄 — 使用者已經看到 timeout error，重試就好。\n\n**設計取捨**：用 message ID 做路由而非 session cookie 或 JWT — 因為 Backend 不需要知道「誰是誰」，只需要知道「這個回答要送給誰」。代價是每條 WS 連線斷開後，所有 pending requests 都失效。\n\n---\n\n### 白話解析\n\n`relayFrontendToExtension` 就像郵局的掛號系統。Frontend 寄一封信（request），郵局記下掛號號碼（message ID），轉給 Extension。Extension 回信時帶著掛號號碼（replyTo），郵局查表找到收件人，送達。30 秒沒回信就退件。\n\n---\n\n### Code Detail\n\n**這段在幹嘛**：三個函式 — `relayFrontendToExtension`（帶 timeout 的單向轉發）、`relayExtensionResponseToFrontend`（用 replyTo 路由回去）、`broadcastExtensionEvent`（fan-out 到所有 watching frontends）。\n\n**為什麼這樣寫**：\n- 好處：relay 完全不看 payload 內容，新增 message type 不需要改 relay\n- 好處：timeout 機制確保 pending Map 不會無限膨脹\n- 壞處：streaming（chat.stream.chunk）不走 pendingRequests — 它是 event pattern，用 broadcast。這表示 relay 有兩條不同的資料路徑，容易搞混\n\n**思考問題**：\n1. 如果同時有 100 個 Frontend 連上同一個 Extension，broadcast 的效能瓶頸在哪？\n2. pendingRequests Map 的 key 是 message ID — 如果 Frontend 送了重複 ID 會怎樣？"
+    },
+    {
+      "file": "extension/src/extension.ts",
+      "line": 24,
+      "ref": "5605bb1b686ec2752c6e879e29551806794ead38",
+      "title": "Step 4: Extension 訊息路由 — 分發到 Providers",
+      "description": "## Insight\n\n**機制**：Extension 是整個系統的「智慧端」。所有來自 Frontend 的 request 都經過 `setupMessageRouting` 這個大 switch — 根據 `message.type` 前綴分發到對應的 provider（file → FileProvider、lsp → LspProvider、git → GitProvider 等）。每個 provider 都是純 async 函式，收 WsMessage、做 VS Code API 呼叫、回傳結果。\n\n**故障模式**：如果 provider 拋出未捕獲的 exception，`.catch` 只 log 到 console — Frontend 永遠收不到回應，最終 30 秒 timeout。使用者看到的是「等很久然後 timeout」而非具體 error。\n\n**設計取捨**：用 if-else chain 而非 route table/Map — 直覺但不 scalable。目前 17 個 message type 已經讓這個函式膨脹到 180+ 行。改用 `Map<string, Handler>` 可以把路由邏輯壓到 10 行，但失去了 TypeScript 的流程控制型別收窄。\n\n---\n\n### 白話解析\n\n`setupMessageRouting` 是 Extension 的「總機」。每通來電（message）按號碼（type）轉接到對應部門（provider）。總機本身不做事，只負責轉接。你加新功能時，就是在這裡加一條新的轉接規則。\n\n---\n\n### Code Detail\n\n**這段在幹嘛**：監聽所有進來的 WsMessage，根據 type 字串分發給 5 個 provider 模組（file、lsp、git、copilot、tour），每個呼叫都帶 `.catch` 避免 unhandled rejection。\n\n**為什麼這樣寫**：\n- 好處：每個 provider 完全獨立，可以單獨測試\n- 好處：新增功能只要加 provider + 路由，不動既有 code\n- 壞處：if-else chain 不 scalable，且沒有「未知 type 回 error 給 Frontend」的機制（只 log）\n\n**思考問題**：\n1. 如果要支援 Extension 主動推送（不是回應 request），資料流會怎麼走？\n2. `sendResponse` 是 `client.send` 的 wrapper — 為什麼不直接把 `client` 傳給 provider？（提示：看 handleChatSend 的 signature）"
+    },
+    {
+      "file": "extension/src/providers/file-provider.ts",
+      "line": 7,
+      "ref": "5605bb1b686ec2752c6e879e29551806794ead38",
+      "title": "Step 5: File Provider — VS Code API 委託示範",
+      "description": "## Insight\n\n**機制**：`handleFileTree` 用 `vscode.workspace.fs.readDirectory` 遞迴讀取整個檔案樹，`handleFileRead` 優先讀 `TextDocument`（含未存檔修改的 dirty buffer），fallback 到 `workspace.fs.readFile`。所有檔案系統操作都委託給 VS Code API — Extension 本身不碰 `fs.readFileSync`。\n\n**故障模式**：遞迴 readDirectory 對大型 monorepo（例如 chromium）會很慢且產生巨大 payload。目前只有 `maxDepth = 10` 限制和 `shouldSkipDirectory` 過濾，沒有分頁機制。使用者開一個 10 萬檔案的 repo，手機會等很久。\n\n**設計取捨**：委託 VS Code API 而非直接用 Node.js fs — 確保看到的內容和 VS Code UI 完全一致（包含 gitignore、dirty buffer、encoding）。代價是無法在 VS Code 之外獨立運行，且受限於 Extension sandbox 的 API surface。\n\n---\n\n### 白話解析\n\n這就是 Constitution §IV「Extension API 委託」原則的具體實現。不自己做任何檔案系統邏輯，全部問 VS Code「你看到什麼」然後原封不動搬到手機上。你在手機上看到的 dirty dot（未存檔標記）之所以準確，就是因為這裡讀的是 VS Code 的 TextDocument 而非磁碟檔案。\n\n---\n\n### Code Detail\n\n**這段在幹嘛**：兩個 handler（tree + read）+ 遞迴目錄掃描 + dirty buffer 偵測 + languageId 推斷。\n\n**為什麼這樣寫**：\n- 好處：dirty buffer 透過 `vscode.workspace.textDocuments` 直接拿到未存檔內容，不需要另外的 diff 邏輯\n- 好處：`shouldSkipDirectory` hardcode 過濾 node_modules/.git 等，避免不必要的遞迴\n- 壞處：languageId fallback 用的是 hardcoded extension map（~25 種），VS Code 支援數百種語言\n\n**思考問題**：\n1. 為什麼用 `workspace.fs` 而不用 Node.js 的 `fs` module？（提示：考慮 remote workspace 的場景）\n2. 大型 repo 的效能問題怎麼解？Backend 的 fileTreeCache（5min TTL）夠嗎？"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 6,
+      "ref": "5605bb1b686ec2752c6e879e29551806794ead38",
+      "title": "Step 6: Frontend WS Client — 瀏覽器端通訊層",
+      "description": "## Insight\n\n**機制**：`WsClientService` 是 singleton — 整個 React app 共用一條 WS 連線。它提供三種互動模式：(1) `send` 射後不理、(2) `request` 送出並等 response（用 replyTo 配對，Promise-based）、(3) `subscribe` 監聽特定 type 的 event。React hooks 透過 `useSyncExternalStore` 訂閱 connection state 變化。\n\n**故障模式**：斷線重連時，所有 pending requests 都會 hang 到 timeout。因為新的 WS 連線有新的 session，Backend 不會把舊 pending 的 response 路由到新連線。使用者體驗：斷線 → 重連 → 之前的 loading 要等 30 秒 timeout 才消失。\n\n**設計取捨**：用 singleton 而非 per-component instance — 確保只有一條 WS 連線，避免 React re-render 時重複建立連線。代價是全域狀態，不適合 SSR（但 PWA 不需要）。exponential backoff 上限 30s（vs Extension 端 60s）因為使用者在手機上的容忍度更低。\n\n---\n\n### 白話解析\n\n這是 Frontend 的「電話線」。所有頁面（Files、Git、Chat…）都透過同一條線打電話。`request` 方法就像打電話等回答，`subscribe` 就像開收音機聽廣播。斷線時它會自動重撥，但正在進行的通話會斷掉。\n\n---\n\n### Code Detail\n\n**這段在幹嘛**：WebSocket 連線管理 + message 路由（listeners Map by type）+ Promise-based request/response + 狀態廣播給 React。\n\n**為什麼這樣寫**：\n- 好處：`subscribe` 回傳 unsubscribe 函式，完美搭配 React `useEffect` cleanup\n- 好處：`useSyncExternalStore` 比 useState + useEffect 更高效（不會 miss state update）\n- 壞處：重連後沒有自動重發 pending requests，依賴 timeout 機制清理\n\n**思考問題**：\n1. 為什麼不用 Socket.IO？它自帶重連和 room — 在這個場景的 overhead 是什麼？\n2. 如果要支援多個 workspace 同時瀏覽（多 tab），singleton 模式要怎麼改？"
+    },
+    {
+      "file": "frontend/src/app.tsx",
+      "line": 46,
+      "ref": "5605bb1b686ec2752c6e879e29551806794ead38",
+      "title": "Step 7: Frontend Shell — Tab Bar + Routes + Swipe-Back",
+      "description": "## Insight\n\n**機制**：6 個 tab 對應 6 個 User Story，每個 tab 是 React Router 的 nested route。`TabLayout` 是整個 app 的唯一 layout — 頂部 ConnectionStatus + 中間 Routes + 底部 TabBar。Swipe-back 只在「子頁面」（路徑深度 > 1）觸發，避免在 tab 首頁誤觸。\n\n**故障模式**：`WorkspaceProvider` 和 `ReviewProvider` 包在 Router 外面 — 如果 context state 更新觸發全局 re-render，所有 tab 都會重渲染。目前頁面夠輕不是問題，但加了虛擬滾動或複雜狀態後可能成為效能瓶頸。\n\n**設計取捨**：沒有用 React 19 的 `<Activity>` 做 tab state 保持（research 中建議的方案）— 切 tab 會 unmount 前一個 tab 的元件。簡化了實作但犧牲了使用者在 tab 間切換時的滾動位置和輸入狀態。\n\n---\n\n### 白話解析\n\n這是使用者打開手機看到的「殼」。6 個 tab icon 在底部，中間的內容隨 tab 切換。從左邊緣右滑可以返回上一頁。所有 13 個畫面（workspace selector、file browser、code viewer、git changes、diff、chat list、conversation、tour list、tour detail、review list、edit diff、tool approval + connection status）都在這個殼裡面。\n\n---\n\n### Code Detail\n\n**這段在幹嘛**：BrowserRouter + 13 個 Route + Context Providers + swipe-back gesture + review badge wiring。\n\n**為什麼這樣寫**：\n- 好處：所有路由在一個檔案裡看完，對應 spec 的 6 個 User Story 一目了然\n- 好處：swipe-back 用 `react-swipeable`（~1.5KB）而非自建 touch handler\n- 壞處：沒有 code splitting（React.lazy），所有頁面打包在同一個 bundle\n\n**思考問題**：\n1. 為什麼 `/files/*` 用 wildcard 而其他 tab 用具名參數（如 `:tourId`）？（提示：檔案路徑含 `/`）\n2. Review badge 是透過 Context 傳給 TabBar — 如果有更多 tab 需要 badge，這個 pattern 會怎麼演化？"
+    }
+  ]
+}

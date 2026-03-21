@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import type { WsMessage } from '@code-viewer/shared'
 import type { FileTreeNode } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
+import { validatePath } from '../utils/validate-path'
 
 // Handle file.tree request: recursively read workspace directory
 export async function handleFileTree(
@@ -17,6 +18,15 @@ export async function handleFileTree(
 
   const rootUri = workspaceFolder.uri
   const basePath = payload.path || ''
+
+  // Validate path to prevent traversal attacks
+  if (basePath) {
+    const validation = validatePath(basePath, workspaceFolder)
+    if (!validation.valid) {
+      sendResponse(createMessage('file.tree.error', { code: 'INVALID_REQUEST', message: validation.reason }, msg.id))
+      return
+    }
+  }
 
   try {
     const nodes = await readDirectoryRecursive(rootUri, basePath)
@@ -138,7 +148,12 @@ export async function handleFileRead(
     return
   }
 
-  const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, payload.path)
+  const validation = validatePath(payload.path, workspaceFolder)
+  if (!validation.valid) {
+    sendResponse(createMessage('file.read.error', { code: 'INVALID_REQUEST', message: validation.reason }, msg.id))
+    return
+  }
+  const fileUri = validation.uri
 
   try {
     // Check if file is open (may have dirty buffer)
