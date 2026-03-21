@@ -34,3 +34,12 @@ coverage/
 
 # Vite
 frontend/.vite/
+
+# Git worktrees
+.worktrees/
+
+# VS Code test electron
+.vscode-test/
+
+# E2E screenshots
+e2e-*.png
