@@ -5,7 +5,6 @@ import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { CodeBlock } from '../../components/code-block'
-import { ActionSheet } from '../../components/action-sheet'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
 import type {
@@ -33,9 +32,6 @@ export function CodeViewerPage() {
   const [loading, setLoading] = useState(true)
   const [tooLarge, setTooLarge] = useState(false)
   const [wordWrap, setWordWrap] = useState(false)
-
-  // Action sheet state (T039)
-  const [actionSheetOpen, setActionSheetOpen] = useState(false)
 
   // References list state (T041)
   const [referencesOpen, setReferencesOpen] = useState(false)
@@ -110,16 +106,25 @@ export function CodeViewerPage() {
     }
   }
 
-  // Get line/character from current text selection (works with native mobile selection)
-  function getPositionFromSelection(): TouchPos | null {
-    const sel = window.getSelection()
-    if (!sel || sel.rangeCount === 0) return null
+  // Code popover state: shown on tap, contains hover info + action buttons
+  const [popover, setPopover] = useState<{
+    pos: TouchPos
+    x: number
+    y: number
+    hoverContent: string | null
+    loading: boolean
+  } | null>(null)
 
-    const range = sel.getRangeAt(0)
+  // Get line/character from click coordinates using caretRangeFromPoint
+  function getPositionFromClick(clientX: number, clientY: number): TouchPos | null {
     const container = codeContainerRef.current
-    if (!container || !container.contains(range.startContainer)) return null
+    if (!container) return null
 
-    // Walk up from the selection to find which .line span we're in
+    // Use caretRangeFromPoint to find exact text position
+    const range = document.caretRangeFromPoint(clientX, clientY)
+    if (!range || !container.contains(range.startContainer)) return null
+
+    // Walk up to find .line element
     let node: Node | null = range.startContainer
     let lineEl: HTMLElement | null = null
     while (node && node !== container) {
@@ -129,23 +134,52 @@ export function CodeViewerPage() {
       }
       node = node.parentNode
     }
-
     if (!lineEl) return null
 
-    // Find line index by counting .line siblings
+    // Find line index
     const lines = container.querySelectorAll('.line')
     let lineIndex = 0
     for (let i = 0; i < lines.length; i++) {
       if (lines[i] === lineEl) { lineIndex = i; break }
     }
 
-    // Character offset: use range's offset within the line text
+    // Character offset within line
     const lineRange = document.createRange()
     lineRange.selectNodeContents(lineEl)
     lineRange.setEnd(range.startContainer, range.startOffset)
     const character = lineRange.toString().length
 
     return { line: lineIndex, character }
+  }
+
+  // Handle tap on code: show popover with hover info + actions
+  function handleCodeClick(e: React.MouseEvent) {
+    // Ignore if user is selecting text (has active selection)
+    const sel = window.getSelection()
+    if (sel && sel.toString().length > 0) return
+
+    const pos = getPositionFromClick(e.clientX, e.clientY)
+    if (!pos) return
+
+    // Position popover near tap point
+    const vpWidth = window.innerWidth
+    const x = Math.min(e.clientX, vpWidth - 240)
+    const y = Math.max(0, e.clientY - 60)
+
+    setPopover({ pos, x, y, hoverContent: null, loading: true })
+
+    // Fetch hover info
+    if (connectionState === 'connected') {
+      request<{ path: string; line: number; character: number }, { contents: string } | null>(
+        'lsp.hover', { path, line: pos.line, character: pos.character }
+      ).then(res => {
+        setPopover(prev => prev ? { ...prev, hoverContent: res.payload?.contents ?? null, loading: false } : null)
+      }).catch(() => {
+        setPopover(prev => prev ? { ...prev, loading: false } : null)
+      })
+    } else {
+      setPopover(prev => prev ? { ...prev, loading: false } : null)
+    }
   }
 
   // Navigate to a file at a given line
@@ -163,11 +197,11 @@ export function CodeViewerPage() {
     scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' })
   }
 
-  // Go to Definition handler (T040) — uses current text selection position
+  // Go to Definition handler (T040) — uses popover position from tap
   async function handleGoToDefinition() {
-    const pos = getPositionFromSelection()
-    if (!pos) return
-    setActionSheetOpen(false)
+    if (!popover) return
+    const { pos } = popover
+    setPopover(null)
     try {
       const res = await request<
         { path: string; line: number; character: number },
@@ -188,11 +222,11 @@ export function CodeViewerPage() {
     }
   }
 
-  // Find References handler (T041) — uses current text selection position
+  // Find References handler (T041) — uses popover position from tap
   async function handleFindReferences() {
-    const pos = getPositionFromSelection()
-    if (!pos) return
-    setActionSheetOpen(false)
+    if (!popover) return
+    const { pos } = popover
+    setPopover(null)
     try {
       const res = await request<
         { path: string; line: number; character: number; includeDeclaration: boolean },
@@ -350,20 +384,6 @@ export function CodeViewerPage() {
             Wrap
           </button>
           <button
-            onClick={() => setActionSheetOpen(true)}
-            style={{
-              background: 'none',
-              border: '1px solid #444',
-              color: '#888',
-              fontSize: 11,
-              padding: '2px 8px',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >
-            Actions
-          </button>
-          <button
             onClick={handleDocumentSymbols}
             style={{
               background: 'none',
@@ -380,35 +400,98 @@ export function CodeViewerPage() {
         </div>
       </div>
 
-      {/* Code area — native selection works, no custom touch handlers */}
+      {/* Code area — tap to show popover with hover + actions */}
       <div
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
+        onClick={handleCodeClick}
       >
         <div ref={codeContainerRef}>
           <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} />
         </div>
       </div>
 
-      {/* Action sheet (T039) — triggered by header Actions button */}
-      <ActionSheet
-        isOpen={actionSheetOpen}
-        onClose={() => setActionSheetOpen(false)}
-        actions={[
-          {
-            label: 'Go to Definition',
-            onClick: handleGoToDefinition,
-          },
-          {
-            label: 'Find References',
-            onClick: handleFindReferences,
-          },
-          {
-            label: 'Document Symbols',
-            onClick: handleDocumentSymbols,
-          },
-        ]}
-      />
+      {/* Code popover: hover info + Go to Definition / Find References */}
+      {popover && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: popover.x,
+            top: popover.y,
+            maxWidth: 280,
+            background: '#252526',
+            border: '1px solid #444',
+            borderRadius: 8,
+            padding: 0,
+            fontSize: 12,
+            color: '#d4d4d4',
+            zIndex: 50,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Hover content */}
+          <div style={{
+            padding: '8px 12px',
+            fontFamily: "'JetBrains Mono', monospace",
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            lineHeight: 1.4,
+            maxHeight: 120,
+            overflow: 'auto',
+            borderBottom: '1px solid #333',
+            color: popover.loading ? '#888' : '#d4d4d4',
+          }}>
+            {popover.loading ? '...' : (popover.hoverContent || 'No type info')}
+          </div>
+          {/* Action buttons */}
+          <div style={{ display: 'flex' }}>
+            <button
+              onClick={handleGoToDefinition}
+              style={{
+                flex: 1,
+                padding: '10px 8px',
+                background: 'none',
+                border: 'none',
+                borderRight: '1px solid #333',
+                color: '#569cd6',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              Definition
+            </button>
+            <button
+              onClick={handleFindReferences}
+              style={{
+                flex: 1,
+                padding: '10px 8px',
+                background: 'none',
+                border: 'none',
+                color: '#569cd6',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              References
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Dismiss popover on tap outside */}
+      {popover && (
+        <div
+          onClick={() => setPopover(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 49,
+          }}
+        />
+      )}
+
 
       {/* References list (T041) */}
       <ReferencesList
