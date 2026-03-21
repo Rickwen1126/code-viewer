@@ -82,18 +82,8 @@ export function WorkspacesPage() {
   }, [connectionState])
 
   async function handleSelectWorkspace(extensionId: string) {
+    if (connectionState !== 'connected') return
     setSelectingId(extensionId)
-    // Wait for WS to connect if not ready yet
-    if (connectionState !== 'connected') {
-      const waitForConnect = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('timeout')), 10000)
-        const unsub = wsClient.onStateChange((state) => {
-          if (state === 'connected') { clearTimeout(timeout); unsub(); resolve() }
-        })
-        if (wsClient.getState() === 'connected') { clearTimeout(timeout); unsub(); resolve() }
-      })
-      try { await waitForConnect } catch { setSelectingId(null); return }
-    }
     try {
       const res = await request<{ extensionId: string }, SelectWorkspaceResultPayload>(
         'connection.selectWorkspace',
@@ -102,13 +92,18 @@ export function WorkspacesPage() {
       selectWorkspace(res.payload.workspace)
       navigate('/files')
     } catch {
-      // handle error
+      // Extension might have restarted with new ID — refresh list
+      try {
+        const listRes = await request<Record<string, never>, ListWorkspacesResultPayload>(
+          'connection.listWorkspaces', {}
+        )
+        setWorkspaces(listRes.payload.workspaces)
+        cacheService.setWorkspaceList(listRes.payload.workspaces)
+      } catch { /* ignore */ }
     } finally {
       setSelectingId(null)
     }
   }
-
-  const isConnected = connectionState === 'connected'
 
   return (
     <div style={{ padding: 16, paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
