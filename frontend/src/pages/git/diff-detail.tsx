@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useParams, useNavigate, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { DiffView } from '../../components/diff-view'
 import type { GitDiffResultPayload } from '@code-viewer/shared'
 
 export function GitDiffDetailPage() {
   const { '*': rawPath } = useParams()
+  const [searchParams] = useSearchParams()
   const path = rawPath ? decodeURIComponent(rawPath) : ''
+  const commit = searchParams.get('commit') ?? undefined
   const { request, connectionState } = useWebSocket()
   const navigate = useNavigate()
   const [diff, setDiff] = useState<GitDiffResultPayload | null>(null)
@@ -20,13 +22,13 @@ export function GitDiffDetailPage() {
       return
     }
     loadDiff()
-  }, [path, connectionState])
+  }, [path, connectionState, commit])
 
   async function loadDiff() {
     try {
       setLoading(true)
       setError(false)
-      const res = await request<{ path: string }, GitDiffResultPayload>('git.diff', { path })
+      const res = await request<{ path: string; commit?: string }, GitDiffResultPayload>('git.diff', { path, commit })
       setDiff(res.payload)
     } catch {
       setError(true)
@@ -88,6 +90,11 @@ export function GitDiffDetailPage() {
               }}
             >
               {path}
+            </div>
+          )}
+          {commit && (
+            <div style={{ fontSize: 10, color: '#569cd6', fontFamily: 'monospace' }}>
+              {commit.slice(0, 7)}
             </div>
           )}
         </div>

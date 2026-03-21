@@ -114,7 +114,7 @@ export async function handleGitCommitFiles(msg: WsMessage, sendResponse: (msg: W
 }
 
 export async function handleGitDiff(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
-  const { path } = msg.payload as { path: string }
+  const { path, commit } = msg.payload as { path: string; commit?: string }
   const repo = getWorkspaceRepo()
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
   if (!repo || !workspaceFolder) {
@@ -123,10 +123,21 @@ export async function handleGitDiff(msg: WsMessage, sendResponse: (msg: WsMessag
   }
 
   try {
-    const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, path)
-    const diff = await repo.diffWithHEAD(fileUri.fsPath)
+    let diff: string
+    if (commit) {
+      // Diff for a specific commit: parent..commit
+      const { execSync } = require('child_process') as typeof import('child_process')
+      diff = execSync(`git diff ${commit}~1 ${commit} -- "${path}"`, {
+        cwd: workspaceFolder.uri.fsPath,
+        encoding: 'utf-8',
+        maxBuffer: 5 * 1024 * 1024,
+      })
+    } else {
+      // Diff working tree vs HEAD
+      const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, path)
+      diff = await repo.diffWithHEAD(fileUri.fsPath)
+    }
 
-    // Parse unified diff format into hunks
     const hunks = parseUnifiedDiff(diff)
     sendResponse(createMessage('git.diff.result', { path, hunks }, msg.id))
   } catch {

@@ -230,14 +230,30 @@ export function GitChangesPage() {
                         <div style={{ padding: '8px 14px', color: '#888', fontSize: 12 }}>No files</div>
                       ) : (
                         commitFiles[commit.hash].map(file => (
-                          <div key={file.path} style={{ display: 'flex', gap: 8, padding: '6px 14px 6px 40px', borderBottom: '1px solid #222' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_COLORS[file.status] ?? '#888', width: 14 }}>
+                          <button
+                            key={file.path}
+                            onClick={() => navigate(`/git/diff/${encodeURIComponent(file.path)}?commit=${commit.hash}`)}
+                            style={{
+                              display: 'flex',
+                              gap: 8,
+                              padding: '8px 14px 8px 40px',
+                              borderBottom: '1px solid #222',
+                              background: 'none',
+                              border: 'none',
+                              width: '100%',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              minHeight: 36,
+                            }}
+                          >
+                            <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_COLORS[file.status] ?? '#888', width: 14, flexShrink: 0 }}>
                               {STATUS_LABELS[file.status] ?? '?'}
                             </span>
-                            <span style={{ fontSize: 12, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: 12, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                               {file.path}
                             </span>
-                          </div>
+                            <span style={{ fontSize: 11, color: '#555', flexShrink: 0 }}>›</span>
+                          </button>
                         ))
                       )}
                     </div>
