@@ -43,3 +43,9 @@ frontend/.vite/
 
 # E2E screenshots
 e2e-*.png
+
+# Experiments (spike/lab artifacts)
+experiments/
+
+# Cython index
+.cython-index.json
