@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
@@ -10,7 +10,6 @@ import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
 import type {
   FileReadResultPayload,
-  LspHoverResultPayload,
   LspDefinitionResultPayload,
   LspReferencesResultPayload,
   LspDocumentSymbolResultPayload,
@@ -18,9 +17,6 @@ import type {
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const LINE_HEIGHT = 19.5 // 13px * 1.5
-const CHAR_WIDTH = 7.8 // 13px * 0.6
-const LONG_PRESS_DURATION = 500 // ms
-const TAP_MAX_DURATION = 300 // ms
 
 interface TouchPos {
   line: number
@@ -38,16 +34,8 @@ export function CodeViewerPage() {
   const [tooLarge, setTooLarge] = useState(false)
   const [wordWrap, setWordWrap] = useState(false)
 
-  // Hover tooltip state (T037)
-  const [hoverTooltip, setHoverTooltip] = useState<{
-    contents: string
-    x: number
-    y: number
-  } | null>(null)
-
   // Action sheet state (T039)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
-  const [pendingPos, setPendingPos] = useState<TouchPos | null>(null)
 
   // References list state (T041)
   const [referencesOpen, setReferencesOpen] = useState(false)
@@ -57,9 +45,6 @@ export function CodeViewerPage() {
   const [symbolsOpen, setSymbolsOpen] = useState(false)
   const [symbols, setSymbols] = useState<LspDocumentSymbolResultPayload['symbols']>([])
 
-  // Touch tracking refs
-  const touchStartRef = useRef<{ time: number; x: number; y: number } | null>(null)
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
@@ -72,12 +57,6 @@ export function CodeViewerPage() {
     })
     return unsub
   }, [path, connectionState])
-
-  useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current)
-    }
-  }, [])
 
   async function loadFile() {
     if (!path) return
@@ -124,115 +103,43 @@ export function CodeViewerPage() {
     }
   }
 
-  // Compute line/character from touch coordinates relative to code container
-  function getTouchPosition(clientX: number, clientY: number): TouchPos {
+  // Get line/character from current text selection (works with native mobile selection)
+  function getPositionFromSelection(): TouchPos | null {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return null
+
+    const range = sel.getRangeAt(0)
     const container = codeContainerRef.current
-    const scrollContainer = scrollContainerRef.current
-    if (!container || !scrollContainer) return { line: 0, character: 0 }
+    if (!container || !container.contains(range.startContainer)) return null
 
-    const rect = container.getBoundingClientRect()
-    const scrollTop = scrollContainer.scrollTop
-    const scrollLeft = scrollContainer.scrollLeft
-
-    // Relative to top-left of code content (accounting for scroll)
-    const relX = clientX - rect.left + scrollLeft
-    const relY = clientY - rect.top + scrollTop
-
-    const line = Math.max(0, Math.floor(relY / LINE_HEIGHT))
-    const character = Math.max(0, Math.floor(relX / CHAR_WIDTH))
-
-    return { line, character }
-  }
-
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
-      if (e.touches.length !== 1) return
-      const touch = e.touches[0]
-      const startTime = Date.now()
-
-      touchStartRef.current = { time: startTime, x: touch.clientX, y: touch.clientY }
-
-      // Start long-press timer
-      longPressTimerRef.current = setTimeout(() => {
-        if (!touchStartRef.current) return
-        const pos = getTouchPosition(
-          touchStartRef.current.x,
-          touchStartRef.current.y,
-        )
-        setPendingPos(pos)
-        setActionSheetOpen(true)
-        touchStartRef.current = null
-      }, LONG_PRESS_DURATION)
-    },
-    [],
-  )
-
-  const handleTouchEnd = useCallback(
-    async (e: React.TouchEvent) => {
-      // Cancel long-press timer
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current)
-        longPressTimerRef.current = null
+    // Walk up from the selection to find which .line span we're in
+    let node: Node | null = range.startContainer
+    let lineEl: HTMLElement | null = null
+    while (node && node !== container) {
+      if (node instanceof HTMLElement && node.classList?.contains('line')) {
+        lineEl = node
+        break
       }
-
-      if (!touchStartRef.current) return
-
-      const duration = Date.now() - touchStartRef.current.time
-      const startX = touchStartRef.current.x
-      const startY = touchStartRef.current.y
-      touchStartRef.current = null
-
-      // Only treat as tap if short duration
-      if (duration > TAP_MAX_DURATION) return
-
-      // Guard: don't attempt LSP calls when not connected
-      if (connectionState !== 'connected') return
-
-      // Use changedTouches for touchend
-      const touch = e.changedTouches[0]
-      const dx = touch.clientX - startX
-      const dy = touch.clientY - startY
-
-      // Ignore if finger moved significantly (scroll)
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return
-
-      // Tap: send hover request (T037)
-      const pos = getTouchPosition(touch.clientX, touch.clientY)
-
-      try {
-        const res = await request<
-          { path: string; line: number; character: number },
-          LspHoverResultPayload
-        >('lsp.hover', { path, line: pos.line, character: pos.character })
-
-        if (res.payload && res.payload.contents) {
-          // Position tooltip near tap point but keep within viewport
-          const vpWidth = window.innerWidth
-          const tooltipX = Math.min(touch.clientX, vpWidth - 220)
-          const tooltipY = Math.max(0, touch.clientY - 80)
-
-          setHoverTooltip({
-            contents: res.payload.contents,
-            x: tooltipX,
-            y: tooltipY,
-          })
-          // Auto-dismiss after 4 seconds
-          setTimeout(() => setHoverTooltip(null), 4000)
-        }
-      } catch {
-        // Ignore hover errors silently
-      }
-    },
-    [path, request, connectionState],
-  )
-
-  const handleTouchMove = useCallback(() => {
-    // Cancel long-press if finger moves
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
+      node = node.parentNode
     }
-  }, [])
+
+    if (!lineEl) return null
+
+    // Find line index by counting .line siblings
+    const lines = container.querySelectorAll('.line')
+    let lineIndex = 0
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i] === lineEl) { lineIndex = i; break }
+    }
+
+    // Character offset: use range's offset within the line text
+    const lineRange = document.createRange()
+    lineRange.selectNodeContents(lineEl)
+    lineRange.setEnd(range.startContainer, range.startOffset)
+    const character = lineRange.toString().length
+
+    return { line: lineIndex, character }
+  }
 
   // Navigate to a file at a given line
   function navigateToFile(targetPath: string, line: number) {
@@ -249,21 +156,22 @@ export function CodeViewerPage() {
     scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' })
   }
 
-  // Go to Definition handler (T040)
+  // Go to Definition handler (T040) — uses current text selection position
   async function handleGoToDefinition() {
-    if (!pendingPos) return
+    const pos = getPositionFromSelection()
+    if (!pos) return
+    setActionSheetOpen(false)
     try {
       const res = await request<
         { path: string; line: number; character: number },
         LspDefinitionResultPayload
-      >('lsp.definition', { path, line: pendingPos.line, character: pendingPos.character })
+      >('lsp.definition', { path, line: pos.line, character: pos.character })
 
       const locations = res.payload?.locations ?? []
       if (locations.length === 0) return
 
       const loc = locations[0]
       if (loc.path === path) {
-        // Same file — just scroll
         scrollToLine(loc.range.start.line)
       } else {
         navigateToFile(loc.path, loc.range.start.line)
@@ -273,17 +181,19 @@ export function CodeViewerPage() {
     }
   }
 
-  // Find References handler (T041)
+  // Find References handler (T041) — uses current text selection position
   async function handleFindReferences() {
-    if (!pendingPos) return
+    const pos = getPositionFromSelection()
+    if (!pos) return
+    setActionSheetOpen(false)
     try {
       const res = await request<
         { path: string; line: number; character: number; includeDeclaration: boolean },
         LspReferencesResultPayload
       >('lsp.references', {
         path,
-        line: pendingPos.line,
-        character: pendingPos.character,
+        line: pos.line,
+        character: pos.character,
         includeDeclaration: true,
       })
 
@@ -463,45 +373,17 @@ export function CodeViewerPage() {
         </div>
       </div>
 
-      {/* Code area — no custom touch handlers, let native selection work */}
+      {/* Code area — native selection works, no custom touch handlers */}
       <div
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
-        onClick={() => setHoverTooltip(null)}
       >
         <div ref={codeContainerRef}>
           <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} />
         </div>
       </div>
 
-      {/* Hover tooltip (T037) */}
-      {hoverTooltip && (
-        <div
-          onClick={() => setHoverTooltip(null)}
-          style={{
-            position: 'fixed',
-            left: hoverTooltip.x,
-            top: hoverTooltip.y,
-            maxWidth: 280,
-            background: '#1e1e1e',
-            border: '1px solid #444',
-            borderRadius: 6,
-            padding: '8px 10px',
-            fontSize: 12,
-            color: '#d4d4d4',
-            fontFamily: "'JetBrains Mono', monospace",
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            zIndex: 50,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-            lineHeight: 1.5,
-          }}
-        >
-          {hoverTooltip.contents}
-        </div>
-      )}
-
-      {/* Action sheet (T039) */}
+      {/* Action sheet (T039) — triggered by header Actions button */}
       <ActionSheet
         isOpen={actionSheetOpen}
         onClose={() => setActionSheetOpen(false)}
