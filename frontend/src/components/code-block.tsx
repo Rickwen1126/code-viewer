@@ -12,10 +12,11 @@ const MAX_FONT_SIZE = 24
 const DEFAULT_FONT_SIZE = 13
 
 export function CodeBlock({ code, language, showLineNumbers = false }: CodeBlockProps) {
+  const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
   const lastPinchDistance = useRef(0)
 
-  const lineCount = useMemo(() => code.split('\n').length, [code])
+  const lineCount = useMemo(() => safeCode.split('\n').length, [safeCode])
   const gutterWidth = useMemo(() => Math.max(2, String(lineCount).length) * 0.6 + 1, [lineCount])
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -73,7 +74,7 @@ export function CodeBlock({ code, language, showLineNumbers = false }: CodeBlock
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <ShikiHighlighter language={language} theme="dark-plus" showLanguage={false}>
-          {code}
+          {safeCode}
         </ShikiHighlighter>
       </div>
     </div>
