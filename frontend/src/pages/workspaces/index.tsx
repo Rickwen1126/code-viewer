@@ -3,14 +3,13 @@ import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { cacheService, type WorkspaceEntry } from '../../services/cache'
 import type {
   ListWorkspacesResultPayload,
   SelectWorkspaceResultPayload,
   ExtensionConnectedPayload,
   ExtensionDisconnectedPayload,
 } from '@code-viewer/shared'
-
-type WorkspaceEntry = ListWorkspacesResultPayload['workspaces'][number]
 
 export function WorkspacesPage() {
   const { connectionState, request } = useWebSocket()
@@ -23,49 +22,65 @@ export function WorkspacesPage() {
   const requestRef = useRef(request)
   requestRef.current = request
 
-  // Fetch full workspace list on connect
+  // 1. Immediately load cached workspace list on mount
   useEffect(() => {
-    if (connectionState !== 'connected') {
-      setInitialLoading(true)
-      return
-    }
-
-    requestRef.current<Record<string, never>, ListWorkspacesResultPayload>(
-      'connection.listWorkspaces', {}
-    ).then(res => {
-      setWorkspaces(res.payload.workspaces)
-      setInitialLoading(false)
-    }).catch(() => {
-      setInitialLoading(false)
+    cacheService.getWorkspaceList().then(cached => {
+      if (cached && cached.length > 0) {
+        setWorkspaces(cached)
+        setInitialLoading(false)
+      }
     })
+  }, [])
 
-    // Live updates: extension connects → add to list immediately
+  // 2. Subscribe to live events ALWAYS (not gated on connectionState)
+  //    This fixes the auto-update issue: events fire regardless of when we subscribe
+  useEffect(() => {
     const unsub1 = wsClient.subscribe('connection.extensionConnected', (msg) => {
       const p = msg.payload as ExtensionConnectedPayload
       setWorkspaces(prev => {
-        // Avoid duplicates
         if (prev.some(w => w.extensionId === p.extensionId)) return prev
-        return [...prev, {
+        const next = [...prev, {
           extensionId: p.extensionId,
           displayName: p.displayName,
           rootPath: p.rootPath,
           gitBranch: null,
           status: 'connected' as const,
         }]
+        cacheService.setWorkspaceList(next)
+        return next
       })
       setInitialLoading(false)
     })
 
-    // Live updates: extension disconnects → remove from list
     const unsub2 = wsClient.subscribe('connection.extensionDisconnected', (msg) => {
       const p = msg.payload as ExtensionDisconnectedPayload
-      setWorkspaces(prev => prev.filter(w => w.extensionId !== p.extensionId))
+      setWorkspaces(prev => {
+        const next = prev.filter(w => w.extensionId !== p.extensionId)
+        cacheService.setWorkspaceList(next)
+        return next
+      })
     })
 
     return () => { unsub1(); unsub2() }
+  }, [])
+
+  // 3. Fetch full list when WS connects (background, no spinner if we have cached data)
+  useEffect(() => {
+    if (connectionState !== 'connected') return
+
+    requestRef.current<Record<string, never>, ListWorkspacesResultPayload>(
+      'connection.listWorkspaces', {}
+    ).then(res => {
+      setWorkspaces(res.payload.workspaces)
+      cacheService.setWorkspaceList(res.payload.workspaces)
+      setInitialLoading(false)
+    }).catch(() => {
+      setInitialLoading(false)
+    })
   }, [connectionState])
 
   async function handleSelectWorkspace(extensionId: string) {
+    if (connectionState !== 'connected') return
     setSelectingId(extensionId)
     try {
       const res = await request<{ extensionId: string }, SelectWorkspaceResultPayload>(
@@ -81,15 +96,7 @@ export function WorkspacesPage() {
     }
   }
 
-  // Connecting to backend
-  if (connectionState !== 'connected') {
-    return (
-      <div style={{ padding: 16, paddingTop: 'calc(16px + env(safe-area-inset-top))', textAlign: 'center', paddingBlock: 80 }}>
-        <Spinner />
-        <div style={{ color: '#888', fontSize: 14, marginTop: 12 }}>Connecting to backend...</div>
-      </div>
-    )
-  }
+  const isConnected = connectionState === 'connected'
 
   return (
     <div style={{ padding: 16, paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
@@ -97,12 +104,12 @@ export function WorkspacesPage() {
         Workspaces
       </h1>
 
-      {/* Workspace list — each row independently clickable */}
+      {/* Workspace list — show cached or live, each row independently clickable */}
       {workspaces.map((ws) => (
         <button
           key={ws.extensionId}
           onClick={() => handleSelectWorkspace(ws.extensionId)}
-          disabled={selectingId === ws.extensionId}
+          disabled={!isConnected || selectingId === ws.extensionId}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -115,9 +122,9 @@ export function WorkspacesPage() {
             borderRadius: 8,
             color: '#d4d4d4',
             textAlign: 'left',
-            cursor: selectingId === ws.extensionId ? 'wait' : 'pointer',
+            cursor: !isConnected ? 'default' : selectingId === ws.extensionId ? 'wait' : 'pointer',
             minHeight: 44,
-            opacity: selectingId && selectingId !== ws.extensionId ? 0.5 : 1,
+            opacity: !isConnected ? 0.6 : selectingId && selectingId !== ws.extensionId ? 0.5 : 1,
           }}
         >
           {selectingId === ws.extensionId ? (
@@ -128,7 +135,7 @@ export function WorkspacesPage() {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: ws.status === 'connected' ? '#4ec9b0' : '#888',
+                background: isConnected && ws.status === 'connected' ? '#4ec9b0' : '#888',
                 flexShrink: 0,
               }}
             />
@@ -156,18 +163,10 @@ export function WorkspacesPage() {
       {/* Empty state */}
       {workspaces.length === 0 && (
         <div style={{ textAlign: 'center', paddingTop: 40 }}>
-          {initialLoading ? (
-            <>
-              <Spinner />
-              <div style={{ color: '#888', fontSize: 14, marginTop: 12 }}>Loading workspaces...</div>
-            </>
-          ) : (
-            <>
-              <div style={{ color: '#888', fontSize: 14 }}>No VS Code instances connected</div>
-              <div style={{ color: '#555', fontSize: 12, marginTop: 4 }}>Waiting for extension...</div>
-              <div style={{ marginTop: 12 }}><Spinner color="#555" /></div>
-            </>
-          )}
+          <Spinner />
+          <div style={{ color: '#888', fontSize: 14, marginTop: 12 }}>
+            {initialLoading ? 'Loading workspaces...' : 'Waiting for VS Code extension...'}
+          </div>
         </div>
       )}
     </div>

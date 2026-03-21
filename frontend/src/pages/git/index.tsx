@@ -28,75 +28,50 @@ export function GitChangesPage() {
   const [gitStatus, setGitStatus] = useState<GitStatusResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Cache-first: immediately show cached git status
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace) {
-      // Try loading from cache even when offline
-      if (workspace) {
-        cacheService.getGitStatus(workspace.extensionId).then((cached) => {
-          if (cached) {
-            setGitStatus({
-              branch: cached.branch,
-              ahead: cached.ahead,
-              behind: cached.behind,
-              changedFiles: cached.changedFiles,
-            })
-          }
-          setLoading(false)
-        }).catch(() => setLoading(false))
-      } else {
+    if (!workspace) return
+    cacheService.getGitStatus(workspace.extensionId).then(cached => {
+      if (cached) {
+        setGitStatus(cached)
         setLoading(false)
       }
-      return
-    }
-
-    loadStatus()
-
-    // Subscribe to real-time git status changes
-    const unsub = wsClient.subscribe('git.statusChanged', (_msg) => {
-      const _payload = _msg.payload as GitStatusChangedPayload
-      loadStatus()
     })
+  }, [workspace])
 
+  // Background fetch on connect
+  useEffect(() => {
+    if (connectionState !== 'connected' || !workspace) return
+    loadStatusBackground()
+    const unsub = wsClient.subscribe('git.statusChanged', () => loadStatusBackground())
     return unsub
   }, [connectionState, workspace])
 
-  const loadStatus = useCallback(async () => {
+  const loadStatusBackground = useCallback(async () => {
     try {
-      setLoading(true)
       const res = await request<Record<string, never>, GitStatusResultPayload>('git.status', {})
       setGitStatus(res.payload)
-      // Cache it
       if (workspace) {
-        cacheService.setGitStatus(workspace.extensionId, {
-          branch: res.payload.branch,
-          ahead: res.payload.ahead,
-          behind: res.payload.behind,
-          changedFiles: res.payload.changedFiles,
-        })
+        cacheService.setGitStatus(workspace.extensionId, res.payload)
       }
     } catch {
-      // Fall back to cache
-      if (workspace) {
-        const cached = await cacheService.getGitStatus(workspace.extensionId)
-        if (cached) {
-          setGitStatus({
-            branch: cached.branch,
-            ahead: cached.ahead,
-            behind: cached.behind,
-            changedFiles: cached.changedFiles,
-          })
-        }
-      }
+      // Already showing cached data — ignore
     } finally {
       setLoading(false)
     }
   }, [request, workspace])
 
+  // Full load with spinner (for PullToRefresh)
+  const loadStatus = useCallback(async () => {
+    if (!gitStatus) setLoading(true)
+    await loadStatusBackground()
+  }, [loadStatusBackground, gitStatus])
+
   function handleFileClick(path: string) {
     navigate(`/git/diff/${encodeURIComponent(path)}`)
   }
 
-  if (loading) {
+  if (loading && !gitStatus) {
     return <div style={{ padding: 16, color: '#888' }}>Loading git status...</div>
   }
 

@@ -83,45 +83,58 @@ export function FileBrowserPage() {
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Redirect to workspace selection if no workspace chosen
+  // Redirect to workspace selection if no workspace ever selected
   useEffect(() => {
     if (!workspace && connectionState === 'connected') {
       navigate('/workspaces', { replace: true })
     }
   }, [workspace, connectionState, navigate])
 
+  // Cache-first: immediately show cached file tree
+  useEffect(() => {
+    if (!workspace) return
+    cacheService.getFileTree(workspace.extensionId).then(cached => {
+      if (cached && cached.length > 0) {
+        setNodes(cached)
+        setLoading(false)
+      }
+    })
+  }, [workspace])
+
+  // Background fetch on connect (no spinner if we have cached data)
   useEffect(() => {
     if (connectionState !== 'connected' || !workspace) return
-    loadTree()
-    const unsub = wsClient.subscribe('file.treeChanged', () => loadTree())
+    loadTreeBackground()
+    const unsub = wsClient.subscribe('file.treeChanged', () => loadTreeBackground())
     return unsub
   }, [connectionState, workspace])
 
-  const loadTree = useCallback(async () => {
+  // Background load: silently update, no spinner
+  const loadTreeBackground = useCallback(async () => {
     try {
-      setLoading(true)
       const res = await request<{ path?: string }, FileTreeResultPayload>('file.tree', {})
       setNodes(res.payload.nodes)
-      // Update cache
       if (workspace) {
         cacheService.setFileTree(workspace.extensionId, res.payload.nodes)
       }
     } catch {
-      // Try cache
-      if (workspace) {
-        const cached = await cacheService.getFileTree(workspace.extensionId)
-        if (cached) setNodes(cached)
-      }
+      // Already showing cached data — ignore
     } finally {
       setLoading(false)
     }
   }, [request, workspace])
 
+  // Full load with spinner (for PullToRefresh only)
+  const loadTree = useCallback(async () => {
+    setLoading(true)
+    await loadTreeBackground()
+  }, [loadTreeBackground])
+
   function handleFileClick(path: string) {
     navigate(`/files/${encodeURIComponent(path)}`)
   }
 
-  if (loading) return <div style={{ padding: 16, color: '#888' }}>Loading file tree...</div>
+  if (loading && nodes.length === 0) return <div style={{ padding: 16, color: '#888' }}>Loading file tree...</div>
 
   return (
     <PullToRefresh onRefresh={loadTree}>

@@ -46,17 +46,33 @@ export function CodeViewerPage() {
   const codeContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  // Redirect to workspace selection if no workspace chosen
+  // Redirect to workspace selection if no workspace ever selected
   useEffect(() => {
     if (!workspace && connectionState === 'connected') {
       navigate('/workspaces', { replace: true })
     }
   }, [workspace, connectionState, navigate])
 
+  // Cache-first: immediately show cached file content
   useEffect(() => {
     if (!path || !workspace) return
-    loadFile().then(() => {
-      // After file loads, scroll to target line if navigated via Go to Definition
+    cacheService.getFileContent(workspace.extensionId, path).then(cached => {
+      if (cached) {
+        setFile(cached)
+        setLoading(false)
+        // Scroll to target line from cache too
+        const state = location.state as { scrollToLine?: number } | null
+        if (state?.scrollToLine != null) {
+          setTimeout(() => scrollToLine(state.scrollToLine!), 100)
+        }
+      }
+    })
+  }, [path, workspace])
+
+  // Background fetch on connect (no spinner if we have cached data)
+  useEffect(() => {
+    if (!path || !workspace || connectionState !== 'connected') return
+    loadFileBackground().then(() => {
       const state = location.state as { scrollToLine?: number } | null
       if (state?.scrollToLine != null) {
         setTimeout(() => scrollToLine(state.scrollToLine!), 100)
@@ -64,25 +80,21 @@ export function CodeViewerPage() {
     })
     const unsub = wsClient.subscribe('file.contentChanged', (msg) => {
       const payload = msg.payload as { path: string }
-      if (payload.path === path) loadFile()
+      if (payload.path === path) loadFileBackground()
     })
     return unsub
   }, [path, connectionState])
 
-  async function loadFile() {
+  // Background load: silently update, no spinner
+  async function loadFileBackground() {
     if (!path) return
     try {
-      setLoading(true)
-      setTooLarge(false)
       const res = await request<{ path: string }, FileReadResultPayload>('file.read', { path })
-
-      // Check if content is too large
       if (res.payload.content && res.payload.content.length > MAX_FILE_SIZE) {
         setTooLarge(true)
         setFile(null)
       } else {
         setFile(res.payload)
-        // Cache the file
         if (workspace) {
           cacheService.setFileContent(workspace.extensionId, path, {
             path: res.payload.path,
@@ -95,19 +107,10 @@ export function CodeViewerPage() {
         }
       }
     } catch {
-      // Try cache
-      if (workspace) {
+      // If no data at all, try cache
+      if (!file && workspace) {
         const cached = await cacheService.getFileContent(workspace.extensionId, path)
-        if (cached) {
-          setFile({
-            path: cached.path,
-            content: cached.content,
-            languageId: cached.languageId,
-            isDirty: cached.isDirty,
-            encoding: cached.encoding,
-            lineCount: cached.lineCount,
-          })
-        }
+        if (cached) setFile(cached)
       }
     } finally {
       setLoading(false)
@@ -273,7 +276,7 @@ export function CodeViewerPage() {
 
   const fileName = path.split('/').pop() ?? path
 
-  if (loading) {
+  if (loading && !file) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <div

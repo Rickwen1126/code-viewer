@@ -5,31 +5,19 @@ export function ConnectionStatus() {
 
   if (connectionState === 'connected') return null
 
-  if (connectionState === 'reconnecting') {
-    return (
-      <div
-        style={{
-          height: 3,
-          background: 'linear-gradient(90deg, transparent, #569cd6, transparent)',
-          animation: 'pulse 1.5s ease-in-out infinite',
-        }}
-      />
-    )
-  }
-
-  // connecting or disconnected
+  // All non-connected states: thin 3px bar (not alarming red banner)
+  // With cache-first loading, user already sees content — just a subtle signal
   return (
     <div
       style={{
-        padding: '8px 16px',
-        paddingTop: 'calc(8px + env(safe-area-inset-top))',
-        background: '#5a1d1d',
-        color: '#f48771',
-        fontSize: 13,
-        textAlign: 'center',
+        height: 3,
+        background: connectionState === 'disconnected'
+          ? '#888'
+          : 'linear-gradient(90deg, transparent, #569cd6, transparent)',
+        animation: connectionState === 'disconnected'
+          ? 'none'
+          : 'pulse 1.5s ease-in-out infinite',
       }}
-    >
-      Disconnected — cached content available
-    </div>
+    />
   )
 }

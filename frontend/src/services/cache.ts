@@ -3,7 +3,19 @@ import type { FileTreeNode, FileContent, ChatSession, ChatTurn, GitStatus } from
 
 const TTL_24H = 24 * 60 * 60 * 1000
 
+export interface WorkspaceEntry {
+  extensionId: string
+  displayName: string
+  rootPath: string
+  gitBranch: string | null
+  status: 'connected' | 'stale'
+}
+
 interface CacheDB {
+  'workspaces': {
+    key: string
+    value: { workspaces: WorkspaceEntry[]; updatedAt: number }
+  }
   'file-tree': {
     key: string
     value: { extensionId: string; nodes: FileTreeNode[]; updatedAt: number }
@@ -26,12 +38,13 @@ let dbPromise: Promise<IDBPDatabase<CacheDB>> | null = null
 
 function getDB(): Promise<IDBPDatabase<CacheDB>> {
   if (!dbPromise) {
-    dbPromise = openDB<CacheDB>('code-viewer', 1, {
+    dbPromise = openDB<CacheDB>('code-viewer', 2, {
       upgrade(db) {
-        db.createObjectStore('file-tree')
-        db.createObjectStore('file-content')
-        db.createObjectStore('chat-sessions')
-        db.createObjectStore('git-status')
+        if (!db.objectStoreNames.contains('file-tree')) db.createObjectStore('file-tree')
+        if (!db.objectStoreNames.contains('file-content')) db.createObjectStore('file-content')
+        if (!db.objectStoreNames.contains('chat-sessions')) db.createObjectStore('chat-sessions')
+        if (!db.objectStoreNames.contains('git-status')) db.createObjectStore('git-status')
+        if (!db.objectStoreNames.contains('workspaces')) db.createObjectStore('workspaces')
       },
     })
   }
@@ -39,6 +52,18 @@ function getDB(): Promise<IDBPDatabase<CacheDB>> {
 }
 
 export const cacheService = {
+  async getWorkspaceList(): Promise<WorkspaceEntry[] | null> {
+    const db = await getDB()
+    const entry = await db.get('workspaces', 'list')
+    if (!entry) return null
+    return entry.workspaces
+  },
+
+  async setWorkspaceList(workspaces: WorkspaceEntry[]): Promise<void> {
+    const db = await getDB()
+    await db.put('workspaces', { workspaces, updatedAt: Date.now() }, 'list')
+  },
+
   async getFileTree(extensionId: string): Promise<FileTreeNode[] | null> {
     const db = await getDB()
     const entry = await db.get('file-tree', extensionId)

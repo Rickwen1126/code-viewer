@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
-import { wsClient } from '../services/ws-client'
+import { useState, useEffect, useCallback, createContext, useContext } from 'react'
 import type { Workspace } from '@code-viewer/shared'
+
+const STORAGE_KEY = 'code-viewer:selected-workspace'
 
 interface WorkspaceContextValue {
   workspace: Workspace | null
@@ -15,20 +16,31 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
 })
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const [workspace, setWorkspace] = useState<Workspace | null>(null)
-  const workspaceRef = useRef<Workspace | null>(null)
-  workspaceRef.current = workspace
+  const [workspace, setWorkspace] = useState<Workspace | null>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      return raw ? (JSON.parse(raw) as Workspace) : null
+    } catch {
+      return null
+    }
+  })
 
+  // Persist to localStorage on change
   useEffect(() => {
-    // Listen for extension disconnect
-    const unsub = wsClient.subscribe('connection.extensionDisconnected', (msg) => {
-      const payload = msg.payload as { extensionId: string }
-      if (workspaceRef.current?.extensionId === payload.extensionId) {
-        setWorkspace(null)
+    try {
+      if (workspace) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
+      } else {
+        localStorage.removeItem(STORAGE_KEY)
       }
-    })
-    return unsub
-  }, [])  // Empty dependency array — subscribe once
+    } catch {
+      // Safari private mode or quota exceeded
+    }
+  }, [workspace])
+
+  // Note: we do NOT clear workspace on extension disconnect.
+  // Cache-first means keep showing last-known state.
+  // User explicitly navigates back to /workspaces to switch.
 
   const selectWorkspace = useCallback((ws: Workspace) => setWorkspace(ws), [])
   const clearWorkspace = useCallback(() => setWorkspace(null), [])
