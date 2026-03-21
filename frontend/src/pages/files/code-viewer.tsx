@@ -97,6 +97,7 @@ export function CodeViewerPage() {
       } else {
         setFile(res.payload)
         addRecentFile(path)
+        localStorage.setItem('code-viewer:current-file', path)
         if (workspace) {
           cacheService.setFileContent(workspace.extensionId, path, {
             path: res.payload.path,

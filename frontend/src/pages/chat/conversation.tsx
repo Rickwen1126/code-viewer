@@ -136,11 +136,21 @@ export function ChatConversationPage() {
   const [inputValue, setInputValue] = useState('')
   const [sendingTurnId, setSendingTurnId] = useState<string | null>(null)
   const [isOffline, setIsOffline] = useState(false)
+  const [chatMode, setChatMode] = useState<'ask' | 'plan'>('ask')
+  const [fileRefs, setFileRefs] = useState<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const isNewSession = sessionId === 'new'
   const activeSessionId = useRef<string>(isNewSession ? generateId() : (sessionId ?? generateId()))
+
+  // Auto-attach current file if navigated from code viewer
+  useEffect(() => {
+    const lastFile = localStorage.getItem('code-viewer:current-file')
+    if (lastFile && isNewSession && fileRefs.length === 0) {
+      setFileRefs([lastFile])
+    }
+  }, [])
 
   // T053: load history or offline cache on mount
   useEffect(() => {
@@ -258,10 +268,11 @@ export function ChatConversationPage() {
     scrollToBottom()
 
     try {
-      const payload: ChatSendPayload = {
+      const payload: ChatSendPayload & { references?: string[] } = {
         sessionId: isNewSession ? activeSessionId.current : sessionId,
         message: text,
-        mode: 'ask',
+        mode: chatMode,
+        references: fileRefs.length > 0 ? fileRefs : undefined,
       }
 
       const res = await request<ChatSendPayload, ChatSendResultPayload>('chat.send', payload)
@@ -400,13 +411,54 @@ export function ChatConversationPage() {
           style={{
             flexShrink: 0,
             borderTop: '1px solid #333',
-            padding: '10px 12px',
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: 8,
             background: '#1a1a1a',
           }}
         >
+          {/* Context bar: file refs + mode */}
+          <div style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {/* Mode toggle */}
+            <button
+              onClick={() => setChatMode(m => m === 'ask' ? 'plan' : 'ask')}
+              style={{
+                background: chatMode === 'plan' ? '#333' : 'none',
+                border: '1px solid #444',
+                color: chatMode === 'plan' ? '#569cd6' : '#888',
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              {chatMode === 'ask' ? 'Ask' : 'Plan'}
+            </button>
+            {/* File ref chips */}
+            {fileRefs.map((ref) => (
+              <span
+                key={ref}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: '#252526',
+                  border: '1px solid #444',
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                  fontSize: 11,
+                  color: '#569cd6',
+                }}
+              >
+                #{ref.split('/').pop()}
+                <button
+                  onClick={() => setFileRefs(prev => prev.filter(r => r !== ref))}
+                  style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0, fontSize: 11 }}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+          {/* Text input row */}
+          <div style={{ padding: '0 12px 10px', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
           <textarea
             ref={inputRef}
             value={inputValue}
@@ -464,6 +516,7 @@ export function ChatConversationPage() {
           >
             ↑
           </button>
+          </div>
         </div>
       )}
     </div>

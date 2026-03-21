@@ -132,26 +132,57 @@ export async function handleChatGetHistory(
   )
 }
 
+// chat.listModels — list available language models
+export async function handleChatListModels(
+  msg: WsMessage,
+  sendResponse: (msg: WsMessage) => void,
+): Promise<void> {
+  try {
+    const models = await vscode.lm.selectChatModels()
+    sendResponse(
+      createMessage(
+        'chat.listModels.result',
+        {
+          models: models.map((m) => ({
+            id: m.id,
+            name: m.name,
+            family: m.family,
+            vendor: m.vendor,
+            maxInputTokens: m.maxInputTokens,
+          })),
+        },
+        msg.id,
+      ),
+    )
+  } catch {
+    sendResponse(createMessage('chat.listModels.result', { models: [] }, msg.id))
+  }
+}
+
 // chat.send — send a message to Copilot
-// MVP approach: use vscode.lm API to send a chat message
+// Supports: file references (include file content as context), model selection, mode
 export async function handleChatSend(
   msg: WsMessage,
   sendResponse: (msg: WsMessage) => void,
   wsClient?: WsClient,
 ): Promise<void> {
-  const { sessionId, message, mode: _mode } = msg.payload as {
+  const { sessionId, message, mode, references, modelFamily } = msg.payload as {
     sessionId?: string
     message: string
-    mode?: string
+    mode?: 'ask' | 'agent' | 'plan'
+    references?: string[] // file paths to include as context
+    modelFamily?: string // e.g. 'gpt-4o', 'claude-3.5-sonnet'
   }
   const turnId = crypto.randomUUID()
   const newSessionId = sessionId ?? crypto.randomUUID()
 
   try {
-    // Use vscode.lm API to send chat request
-    const models = await vscode.lm.selectChatModels({ family: 'gpt-4o' })
+    // Select model: use specified family or fallback
+    let models = modelFamily
+      ? await vscode.lm.selectChatModels({ family: modelFamily })
+      : await vscode.lm.selectChatModels({ family: 'gpt-4o' })
+
     if (models.length === 0) {
-      // Fallback: try any available model
       const allModels = await vscode.lm.selectChatModels()
       if (allModels.length === 0) {
         sendResponse(
@@ -160,8 +191,7 @@ export async function handleChatSend(
             {
               turnId,
               sessionId: newSessionId,
-              response:
-                'No language models available. Please ensure GitHub Copilot is installed and active.',
+              response: 'No language models available. Please ensure GitHub Copilot is installed and active.',
               model: 'none',
             },
             msg.id,
@@ -169,19 +199,65 @@ export async function handleChatSend(
         )
         return
       }
-      models.push(allModels[0])
+      models = [allModels[0]]
     }
 
     const chatModel = models[0]
-    const messages = [vscode.LanguageModelChatMessage.User(message)]
+
+    // Build messages with optional file references as context
+    const chatMessages: vscode.LanguageModelChatMessage[] = []
+
+    // System-like instruction based on mode
+    if (mode === 'plan') {
+      chatMessages.push(
+        vscode.LanguageModelChatMessage.User(
+          'You are a software architect. Analyze the request and provide a structured implementation plan with steps, trade-offs, and considerations. Do not write code unless explicitly asked.',
+        ),
+      )
+    }
+
+    // Include file references as context
+    if (references && references.length > 0) {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+      if (workspaceFolder) {
+        const refParts: string[] = []
+        for (const refPath of references) {
+          try {
+            const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, refPath)
+            const doc = vscode.workspace.textDocuments.find(
+              (d) => d.uri.fsPath === fileUri.fsPath,
+            )
+            const content = doc
+              ? doc.getText()
+              : new TextDecoder('utf-8').decode(
+                  await vscode.workspace.fs.readFile(fileUri),
+                )
+            // Truncate if too long (keep first 8000 chars)
+            const truncated = content.length > 8000
+              ? content.slice(0, 8000) + '\n... (truncated)'
+              : content
+            refParts.push(`File: ${refPath}\n\`\`\`\n${truncated}\n\`\`\``)
+          } catch {
+            refParts.push(`File: ${refPath} (could not read)`)
+          }
+        }
+        chatMessages.push(
+          vscode.LanguageModelChatMessage.User(
+            'Here are the referenced files:\n\n' + refParts.join('\n\n'),
+          ),
+        )
+      }
+    }
+
+    chatMessages.push(vscode.LanguageModelChatMessage.User(message))
+
     const cts = new vscode.CancellationTokenSource()
     try {
-      const response = await chatModel.sendRequest(messages, {}, cts.token)
+      const response = await chatModel.sendRequest(chatMessages, {}, cts.token)
 
       let fullResponse = ''
       for await (const chunk of response.text) {
         fullResponse += chunk
-        // Send streaming chunk
         wsClient?.send(
           createMessage('chat.stream.chunk', {
             replyTo: msg.id,
