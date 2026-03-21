@@ -73,7 +73,7 @@ html {
   word-break: break-word !important;
 }
 
-/* Wrap mode line numbers via CSS counter (always aligned with wrapped lines) */
+/* Wrap mode line numbers via data-line attribute (set by Shiki transformer) */
 .code-line-numbers.code-wrap-mode code {
   display: flex;
   flex-direction: column;
@@ -81,14 +81,13 @@ html {
 
 .code-line-numbers.code-wrap-mode .line {
   display: block;
-  counter-increment: line;
   padding-left: 4em;
   position: relative;
   min-height: 1.5em;
 }
 
 .code-line-numbers.code-wrap-mode .line::before {
-  content: counter(line);
+  content: attr(data-line);
   position: absolute;
   left: 0;
   width: 3em;

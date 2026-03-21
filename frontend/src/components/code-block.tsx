@@ -13,6 +13,14 @@ const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
 const DEFAULT_FONT_SIZE = 13
 
+// Shiki transformer: inject data-line attribute on each .line span
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const lineNumberTransformer: any = {
+  line(node: { properties: Record<string, unknown> }, line: number) {
+    node.properties['data-line'] = line
+  },
+}
+
 export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine }: CodeBlockProps) {
   const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
@@ -20,6 +28,11 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
 
   const lineCount = useMemo(() => safeCode.split('\n').length, [safeCode])
   const gutterWidth = useMemo(() => Math.max(2, String(lineCount).length) * 0.6 + 1, [lineCount])
+
+  const transformers = useMemo(
+    () => showLineNumbers ? [lineNumberTransformer] : undefined,
+    [showLineNumbers],
+  )
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
@@ -48,7 +61,6 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
     lastPinchDistance.current = 0
   }, [])
 
-  // CSS class combos
   const classNames = [
     wordWrap ? 'code-wrap-mode' : undefined,
     showLineNumbers ? 'code-line-numbers' : undefined,
@@ -88,7 +100,6 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           minWidth: 0,
           overflowX: wordWrap ? 'hidden' : 'auto',
           WebkitOverflowScrolling: 'touch',
-          counterReset: showLineNumbers && wordWrap ? 'line' : undefined,
         }}
       >
         <ShikiHighlighter
@@ -98,6 +109,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           addDefaultStyles={false}
           as="div"
           style={{ padding: '0.5em' }}
+          transformers={transformers}
         >
           {safeCode}
         </ShikiHighlighter>
