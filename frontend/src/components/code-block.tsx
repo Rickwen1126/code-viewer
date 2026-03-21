@@ -13,6 +13,18 @@ const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
 const DEFAULT_FONT_SIZE = 13
 
+// Map VS Code languageId → Shiki language identifier
+const LANGUAGE_MAP: Record<string, string> = {
+  typescriptreact: 'tsx',
+  javascriptreact: 'jsx',
+  shellscript: 'bash',
+  plaintext: 'text',
+}
+
+function mapLanguage(lang: string): string {
+  return LANGUAGE_MAP[lang] ?? lang
+}
+
 // Shiki transformer: inject data-line attribute on each .line span
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lineNumberTransformer: any = {
@@ -103,7 +115,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
         }}
       >
         <ShikiHighlighter
-          language={language}
+          language={mapLanguage(language)}
           theme="dark-plus"
           showLanguage={false}
           addDefaultStyles={false}
