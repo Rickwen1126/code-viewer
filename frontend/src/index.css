@@ -82,15 +82,16 @@ html {
 .code-line-numbers.code-wrap-mode .line {
   display: block;
   counter-increment: line;
-  padding-left: 3.5em;
+  padding-left: 4em;
   position: relative;
+  min-height: 1.5em;
 }
 
 .code-line-numbers.code-wrap-mode .line::before {
   content: counter(line);
   position: absolute;
   left: 0;
-  width: 2.5em;
+  width: 3em;
   text-align: right;
   color: #858585;
   user-select: none;
