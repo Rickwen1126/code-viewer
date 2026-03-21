@@ -6,8 +6,9 @@ const tabs = [
   { path: '/files', label: 'Files', icon: Files },
   { path: '/git', label: 'Git', icon: GitBranch },
   { path: '/tours', label: 'Tours', icon: Map },
-  { path: '/chat', label: 'Chat', icon: MessageSquare },
-  { path: '/review', label: 'Review', icon: FileCheck },
+  // Chat + Review hidden — waiting for chatpilot integration
+  // { path: '/chat', label: 'Chat', icon: MessageSquare },
+  // { path: '/review', label: 'Review', icon: FileCheck },
 ]
 
 export function TabBar({
