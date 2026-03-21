@@ -137,7 +137,7 @@ export async function handleChatGetHistory(
 export async function handleChatSend(
   msg: WsMessage,
   sendResponse: (msg: WsMessage) => void,
-  wsClient: WsClient,
+  wsClient?: WsClient,
 ): Promise<void> {
   const { sessionId, message, mode: _mode } = msg.payload as {
     sessionId?: string
@@ -182,7 +182,7 @@ export async function handleChatSend(
       for await (const chunk of response.text) {
         fullResponse += chunk
         // Send streaming chunk
-        wsClient.send(
+        wsClient?.send(
           createMessage('chat.stream.chunk', {
             replyTo: msg.id,
             chunk,

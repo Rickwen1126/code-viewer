@@ -25,11 +25,12 @@ class ConnectionManager {
 
     this.heartbeatInterval = setInterval(() => {
       const now = Date.now()
+      const toRemove: string[] = []
+
       for (const [id, entry] of this.extensions) {
         const elapsed = now - entry.lastHeartbeat
 
         if (elapsed > 40000 && entry.status === 'connected') {
-          // Mark stale
           entry.status = 'stale'
           entry.staleAt = now
           console.log(`Extension ${id} marked stale`)
@@ -39,7 +40,7 @@ class ConnectionManager {
           const staleElapsed = now - entry.staleAt
           if (staleElapsed > 5 * 60 * 1000) {
             console.log(`Extension ${id} removed after 5min stale`)
-            this.extensions.delete(id)
+            toRemove.push(id)
           }
         }
 
@@ -49,6 +50,10 @@ class ConnectionManager {
         } catch {
           // ignore ping errors
         }
+      }
+
+      for (const id of toRemove) {
+        this.extensions.delete(id)
       }
     }, 30000)
   }

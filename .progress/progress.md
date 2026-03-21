@@ -1,33 +1,35 @@
-## 2026-03-21 09:28 — Phase 1-8 implemented + tests + code review done
+## 2026-03-21 12:05 — AUDIT complete + 4 quick fixes queued
 
-**Goal**: 實作 Mobile Code Viewer 全部 6 個 User Stories + 測試 + code review
+**Goal**: 實作 Mobile Code Viewer 全部 6 個 User Stories + 測試 + code review + security fixes + AUDIT
 
 **Done**:
-- `/speckit.analyze` 第二次：2 MEDIUM findings 修正（T068 stale ref, T051 reconnect mid-stream）
-- Phase 1-8 全部實作完成：62/69 tasks, 58 files, ~6500 行 TypeScript
-  - Commit `5605bb1`: feat: implement Phase 1-8 full-stack Mobile Code Viewer
-- 145 unit tests across 4 packages, all passing (630ms)
-  - Commit `4ab3776`: test: add 145 unit tests across all 4 packages
-- Sky Eye CodeTour 產出：`.tours/01-architecture-skyeye-code-viewer.tour`
-- Code Review Tour 產出：`.tours/review-phase1-8-20260317.tour`
-  - 9 critical, 15 suggestions, 7 good practices
+- Phase 1-8 實作 + 166 tests + 8 critical fixes（commits: `5605bb1`, `4ab3776`, `1389c76`）
+- AUDIT v1 完成：`.audit/AUDIT-002-mobile-viewer-v1@2026-03-21.md`
+  - 判定：需修正（minor），不阻擋進 BANK
+  - 8 個 Exit Questions 全部走完，learning notes 記錄在 `.audit/learning-notes.md`
+- Sky Eye tour 走完（Rick 手機上逐步 review）
+- Copilot Chat session spike 完成：`.jsonl` 可解析，329 sessions found，格式 event-sourced log
+- AUDIT learning notes 記錄了 5 個可操作的發現（A2-1, A2-3, A2-4, C2, C3, C5）
 
 **Decisions**:
-- 測試優先於 security fixes — 先補 145 tests 再修 critical issues
-- Code review 用 CodeTour 格式輸出，方便手機上逐步 review
-- Agent dispatch 策略：Phase 2 三端平行、Phase 4-8 五個 story 平行
+- Path traversal 修法選 B：允許 workspace 內 + VS Code 有開的檔案
+- Auth 用 shared secret 最小方案
+- A2-1 Backend relay 長期應升級為 session broker（transport/session 分離）— 超出 MVP
+- A2-3 Copilot Chat session `.jsonl` 讀取技術可行，留到後續 feature
+- Map 遍歷 delete 雖然 JS 安全但應改為防禦性寫法（可讀性原則）
 
-**State**: Branch `002-mobile-viewer`, 2 commits ahead of previous session.
-Latest commit: `4ab3776 test: add 145 unit tests across all 4 packages`
-Tours 和 review tour 尚未 commit。
+**State**: Branch `002-mobile-viewer`, 3 commits. AUDIT + learning notes + spike 結果尚未 commit。
+166 tests passing, 4 packages typecheck clean.
 
 **Next**:
-- [ ] 修 8 個 critical issues（path traversal, WS auth, chat broadcast, CTS leak, hardcoded URL, useWorkspace race, timer cleanup, tourId traversal）
-- [ ] Phase 9 Polish（T064-T070：View Transitions, pull-to-refresh, pinch-to-zoom, safe-area, perf audit, E2E）
-- [ ] Commit tours + review tour
+- [ ] 修 4 個 AUDIT 發現（dispatch table + error 兜底、Map 批次 delete、timeout has() 防護、relay timestamp log）
+- [ ] Phase 9 Polish（T064-T070）
 
 **User Notes**:
-- 看 critical issues
+- Path traversal 用 B 方案 — 因為需要看 package dependency 跟外部 lib
+- Map 遍歷 delete「像把人綁在懸崖旁邊說很安全」— 要改為防禦性寫法
+- C2 error 兜底 + C5 timestamp log 值得修，effort 小效果大
+- 先 save 然後修正 4 個 AUDIT findings
 
 ---
 

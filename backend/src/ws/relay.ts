@@ -53,6 +53,7 @@ export function relayFrontendToExtension(frontendId: string, msg: WsMessage): vo
 
   // Register the pending request with a 30s timeout
   const timeoutHandle = setTimeout(() => {
+    if (!pendingRequests.has(msg.id)) return // already handled by response
     pendingRequests.delete(msg.id)
     const fe = manager.getFrontend(frontendId)
     if (fe) {
@@ -62,6 +63,7 @@ export function relayFrontendToExtension(frontendId: string, msg: WsMessage): vo
 
   pendingRequests.set(msg.id, { frontendId, timeoutHandle })
 
+  console.log(`[relay] ${msg.type} ${msg.id} → extension (age: ${Date.now() - msg.timestamp}ms)`)
   sendToWs(extension.ws, msg)
 }
 
@@ -78,6 +80,8 @@ export function relayExtensionResponseToFrontend(msg: WsMessage): boolean {
 
   clearTimeout(pending.timeoutHandle)
   pendingRequests.delete(replyTo)
+
+  console.log(`[relay] ${msg.type} ${msg.id} ← extension (round-trip: ${Date.now() - msg.timestamp}ms)`)
 
   const frontend = manager.getFrontend(pending.frontendId)
   if (frontend) {

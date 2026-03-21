@@ -20,170 +20,65 @@ import { handleTourList, handleTourGetSteps } from './providers/tour-provider'
 
 let wsClient: WsClient | undefined
 
+// Handler type: takes message + sendResponse, optionally the WsClient for streaming
+type Handler = (msg: WsMessage, send: (m: WsMessage) => void, client?: WsClient) => Promise<void>
+
+// Dispatch table: message type → handler function
+const handlers: Record<string, Handler> = {
+  'file.tree': handleFileTree,
+  'file.read': handleFileRead,
+  'lsp.hover': handleLspHover,
+  'lsp.definition': handleLspDefinition,
+  'lsp.references': handleLspReferences,
+  'lsp.documentSymbol': handleLspDocumentSymbol,
+  'git.status': handleGitStatus,
+  'git.diff': handleGitDiff,
+  'chat.listSessions': handleChatListSessions,
+  'chat.getHistory': handleChatGetHistory,
+  'chat.send': handleChatSend,
+  'review.listPendingEdits': handleReviewListPendingEdits,
+  'review.getEditDiff': handleReviewGetEditDiff,
+  'review.approveEdit': handleReviewApproveEdit,
+  'review.rejectEdit': handleReviewRejectEdit,
+  'review.listToolRequests': handleReviewListToolRequests,
+  'review.acceptTool': handleReviewAcceptTool,
+  'review.skipTool': handleReviewSkipTool,
+  'tour.list': handleTourList,
+  'tour.getSteps': handleTourGetSteps,
+}
+
 // T017: Message routing — dispatches incoming messages to providers
 export function setupMessageRouting(client: WsClient): void {
+  const sendResponse = (msg: WsMessage) => client.send(msg)
+
   client.onMessage((message) => {
     // Handle connection.welcome → send workspace.register
     if (message.type === 'connection.welcome') {
       const workspace = {
         name: vscode.workspace.workspaceFolders?.[0]?.name ?? 'Unknown',
         rootPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
-        gitBranch: null as string | null, // will be filled by git provider later
+        gitBranch: null as string | null,
         vscodeVersion: vscode.version,
       }
       client.send(createMessage('workspace.register', workspace))
       return
     }
 
-    // Route by message type prefix to providers
-    const sendResponse = (msg: WsMessage) => client.send(msg)
-
-    if (message.type === 'file.tree') {
-      handleFileTree(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleFileTree error:', err),
-      )
-      return
+    // Dispatch to handler with unified error fallback
+    const handler = handlers[message.type]
+    if (handler) {
+      handler(message, sendResponse, client).catch((err) => {
+        console.error(`[CodeViewer] ${message.type} error:`, err)
+        sendResponse(
+          createMessage(message.type + '.error', {
+            code: 'INVALID_REQUEST',
+            message: String(err),
+          }, message.id),
+        )
+      })
+    } else {
+      console.log(`[CodeViewer] Unhandled message type: ${message.type}`)
     }
-
-    if (message.type === 'file.read') {
-      handleFileRead(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleFileRead error:', err),
-      )
-      return
-    }
-
-    // lsp.*  → lspProvider (T036)
-    if (message.type === 'lsp.hover') {
-      handleLspHover(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleLspHover error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'lsp.definition') {
-      handleLspDefinition(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleLspDefinition error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'lsp.references') {
-      handleLspReferences(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleLspReferences error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'lsp.documentSymbol') {
-      handleLspDocumentSymbol(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleLspDocumentSymbol error:', err),
-      )
-      return
-    }
-
-    // git.*  → gitProvider (T043)
-    if (message.type === 'git.status') {
-      handleGitStatus(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleGitStatus error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'git.diff') {
-      handleGitDiff(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleGitDiff error:', err),
-      )
-      return
-    }
-
-    // chat.* → copilotProvider (T048)
-    if (message.type === 'chat.listSessions') {
-      handleChatListSessions(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleChatListSessions error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'chat.getHistory') {
-      handleChatGetHistory(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleChatGetHistory error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'chat.send') {
-      handleChatSend(message, sendResponse, client).catch((err) =>
-        console.error('[CodeViewer] handleChatSend error:', err),
-      )
-      return
-    }
-
-    // review.* → copilotProvider (T054)
-    if (message.type === 'review.listPendingEdits') {
-      handleReviewListPendingEdits(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleReviewListPendingEdits error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'review.getEditDiff') {
-      handleReviewGetEditDiff(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleReviewGetEditDiff error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'review.approveEdit') {
-      handleReviewApproveEdit(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleReviewApproveEdit error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'review.rejectEdit') {
-      handleReviewRejectEdit(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleReviewRejectEdit error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'review.listToolRequests') {
-      handleReviewListToolRequests(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleReviewListToolRequests error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'review.acceptTool') {
-      handleReviewAcceptTool(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleReviewAcceptTool error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'review.skipTool') {
-      handleReviewSkipTool(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleReviewSkipTool error:', err),
-      )
-      return
-    }
-
-    // tour.* → tourProvider (T059)
-    if (message.type === 'tour.list') {
-      handleTourList(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleTourList error:', err),
-      )
-      return
-    }
-
-    if (message.type === 'tour.getSteps') {
-      handleTourGetSteps(message, sendResponse).catch((err) =>
-        console.error('[CodeViewer] handleTourGetSteps error:', err),
-      )
-      return
-    }
-
-    console.log(`[CodeViewer] Unhandled message type: ${message.type}`)
   })
 }
 
