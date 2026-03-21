@@ -10,16 +10,25 @@ function getGitApi() {
   return api
 }
 
-export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
+// Get the repo matching the workspace root (not a worktree sub-repo)
+function getWorkspaceRepo() {
   const git = getGitApi()
-  if (!git || git.repositories.length === 0) {
+  if (!git || git.repositories.length === 0) return null
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+  if (!workspaceRoot) return git.repositories[0]
+  // Find repo whose root matches workspace root
+  const match = git.repositories.find((r: any) => r.rootUri.fsPath === workspaceRoot)
+  return match ?? git.repositories[0]
+}
+
+export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
+  const repo = getWorkspaceRepo()
+  if (!repo) {
     sendResponse(createMessage('git.status.result', {
       branch: '', ahead: 0, behind: 0, changedFiles: [],
     }, msg.id))
     return
   }
-
-  const repo = git.repositories[0]
   const branch = repo.state.HEAD?.name ?? ''
   const ahead = repo.state.HEAD?.ahead ?? 0
   const behind = repo.state.HEAD?.behind ?? 0
@@ -61,13 +70,11 @@ function mapGitStatus(status: number): 'added' | 'modified' | 'deleted' | 'renam
 // git.log — get commit history
 export async function handleGitLog(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { maxCount = 30 } = (msg.payload ?? {}) as { maxCount?: number }
-  const git = getGitApi()
-  if (!git || git.repositories.length === 0) {
+  const repo = getWorkspaceRepo()
+  if (!repo) {
     sendResponse(createMessage('git.log.result', { commits: [] }, msg.id))
     return
   }
-
-  const repo = git.repositories[0]
   try {
     const log = await repo.log({ maxEntries: maxCount })
     const commits = log.map((entry: any) => ({
@@ -87,13 +94,11 @@ export async function handleGitLog(msg: WsMessage, sendResponse: (msg: WsMessage
 // git.commitFiles — get changed files for a specific commit
 export async function handleGitCommitFiles(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { hash } = msg.payload as { hash: string }
-  const git = getGitApi()
-  if (!git || git.repositories.length === 0) {
+  const repo = getWorkspaceRepo()
+  if (!repo) {
     sendResponse(createMessage('git.commitFiles.result', { files: [] }, msg.id))
     return
   }
-
-  const repo = git.repositories[0]
   try {
     // Get diff between this commit and its parent
     const parentHash = hash + '~1'
@@ -110,15 +115,9 @@ export async function handleGitCommitFiles(msg: WsMessage, sendResponse: (msg: W
 
 export async function handleGitDiff(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { path } = msg.payload as { path: string }
-  const git = getGitApi()
-  if (!git || git.repositories.length === 0) {
-    sendResponse(createMessage('git.diff.result', { path, hunks: [] }, msg.id))
-    return
-  }
-
-  const repo = git.repositories[0]
+  const repo = getWorkspaceRepo()
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
-  if (!workspaceFolder) {
+  if (!repo || !workspaceFolder) {
     sendResponse(createMessage('git.diff.result', { path, hunks: [] }, msg.id))
     return
   }
@@ -199,10 +198,8 @@ export function parseUnifiedDiff(diffText: string): Array<{
 
 // Watch for git status changes
 export function startGitWatchers(sendEvent: (msg: WsMessage) => void): vscode.Disposable[] {
-  const git = getGitApi()
-  if (!git || git.repositories.length === 0) return []
-
-  const repo = git.repositories[0]
+  const repo = getWorkspaceRepo()
+  if (!repo) return []
   const disposable = repo.state.onDidChange(() => {
     const branch = repo.state.HEAD?.name ?? ''
     const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length
