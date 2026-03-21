@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { PullToRefresh } from '../../components/pull-to-refresh'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
 
 // Recursive tree node component
@@ -89,7 +90,7 @@ export function FileBrowserPage() {
     return unsub
   }, [connectionState, workspace])
 
-  async function loadTree() {
+  const loadTree = useCallback(async () => {
     try {
       setLoading(true)
       const res = await request<{ path?: string }, FileTreeResultPayload>('file.tree', {})
@@ -107,7 +108,7 @@ export function FileBrowserPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [request, workspace])
 
   function handleFileClick(path: string) {
     navigate(`/files/${encodeURIComponent(path)}`)
@@ -116,10 +117,12 @@ export function FileBrowserPage() {
   if (loading) return <div style={{ padding: 16, color: '#888' }}>Loading file tree...</div>
 
   return (
-    <div style={{ overflowY: 'auto', height: '100%' }}>
-      {nodes.map((node) => (
-        <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} />
-      ))}
-    </div>
+    <PullToRefresh onRefresh={loadTree}>
+      <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        {nodes.map((node) => (
+          <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} />
+        ))}
+      </div>
+    </PullToRefresh>
   )
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { PullToRefresh } from '../../components/pull-to-refresh'
 import type {
   ReviewListPendingEditsResultPayload,
   ReviewListToolRequestsResultPayload,
@@ -219,10 +220,12 @@ export function PendingEditsListPage() {
   const isEmpty = edits.length === 0 && toolRequests.length === 0
 
   return (
-    <div style={{ overflowY: 'auto', height: '100%' }}>
+    <PullToRefresh onRefresh={load}>
+    <div>
       <div
         style={{
           padding: '12px 16px',
+          paddingTop: 'calc(12px + env(safe-area-inset-top))',
           background: '#1e1e1e',
           borderBottom: '1px solid #333',
           display: 'flex',
@@ -305,5 +308,6 @@ export function PendingEditsListPage() {
         </>
       )}
     </div>
+    </PullToRefresh>
   )
 }

@@ -22,6 +22,7 @@ export function ConnectionStatus() {
     <div
       style={{
         padding: '8px 16px',
+        paddingTop: 'calc(8px + env(safe-area-inset-top))',
         background: '#5a1d1d',
         color: '#f48771',
         fontSize: 13,

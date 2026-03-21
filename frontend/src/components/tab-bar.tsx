@@ -10,7 +10,13 @@ const tabs = [
   { path: '/review', label: 'Review', icon: FileCheck },
 ]
 
-export function TabBar({ badges }: { badges?: Record<string, number> }) {
+export function TabBar({
+  badges,
+  onNavigate,
+}: {
+  badges?: Record<string, number>
+  onNavigate?: (path: string) => void
+}) {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -31,7 +37,7 @@ export function TabBar({ badges }: { badges?: Record<string, number> }) {
         return (
           <button
             key={tab.path}
-            onClick={() => navigate(tab.path)}
+            onClick={() => (onNavigate ?? navigate)(tab.path)}
             style={{
               flex: 1,
               display: 'flex',

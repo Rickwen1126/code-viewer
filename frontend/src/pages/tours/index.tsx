@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { PullToRefresh } from '../../components/pull-to-refresh'
 import type { TourListResultPayload } from '@code-viewer/shared'
 
 type TourSummary = TourListResultPayload['tours'][number]
@@ -19,7 +20,7 @@ export function TourListPage() {
     loadTours()
   }, [connectionState, workspace])
 
-  async function loadTours() {
+  const loadTours = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -31,7 +32,7 @@ export function TourListPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [request])
 
   if (!workspace) {
     return <div style={{ padding: 16, color: '#888' }}>No workspace selected</div>
@@ -55,8 +56,9 @@ export function TourListPage() {
   }
 
   return (
-    <div style={{ overflowY: 'auto', height: '100%' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid #333' }}>
+    <PullToRefresh onRefresh={loadTours}>
+      <div>
+      <div style={{ padding: '12px 16px', paddingTop: 'calc(12px + env(safe-area-inset-top))', borderBottom: '1px solid #333' }}>
         <span style={{ fontSize: 16, fontWeight: 600, color: '#d4d4d4' }}>Code Tours</span>
       </div>
       {tours.map((tour) => (
@@ -84,6 +86,7 @@ export function TourListPage() {
           </div>
         </button>
       ))}
-    </div>
+      </div>
+    </PullToRefresh>
   )
 }

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { PullToRefresh } from '../../components/pull-to-refresh'
 import type {
   ListWorkspacesResultPayload,
   SelectWorkspaceResultPayload,
@@ -28,7 +29,7 @@ export function WorkspacesPage() {
     }
   }, [connectionState])
 
-  async function loadWorkspaces() {
+  const loadWorkspaces = useCallback(async () => {
     try {
       setLoading(true)
       const res = await request<{}, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
@@ -38,7 +39,7 @@ export function WorkspacesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [request])
 
   async function handleSelectWorkspace(extensionId: string) {
     try {
@@ -58,7 +59,8 @@ export function WorkspacesPage() {
     return <div style={{ padding: 16, color: '#888' }}>No VS Code instances connected</div>
 
   return (
-    <div style={{ padding: 16 }}>
+    <PullToRefresh onRefresh={loadWorkspaces}>
+    <div style={{ padding: 16, paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
       <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16, color: '#d4d4d4' }}>
         Workspaces
       </h1>
@@ -111,5 +113,6 @@ export function WorkspacesPage() {
         </button>
       ))}
     </div>
+    </PullToRefresh>
   )
 }

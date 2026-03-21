@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { PullToRefresh } from '../../components/pull-to-refresh'
 import type { GitStatusResultPayload, GitStatusChangedPayload } from '@code-viewer/shared'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -59,7 +60,7 @@ export function GitChangesPage() {
     return unsub
   }, [connectionState, workspace])
 
-  async function loadStatus() {
+  const loadStatus = useCallback(async () => {
     try {
       setLoading(true)
       const res = await request<Record<string, never>, GitStatusResultPayload>('git.status', {})
@@ -89,7 +90,7 @@ export function GitChangesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [request, workspace])
 
   function handleFileClick(path: string) {
     navigate(`/git/diff/${encodeURIComponent(path)}`)
@@ -113,6 +114,7 @@ export function GitChangesPage() {
       <div
         style={{
           padding: '10px 14px',
+          paddingTop: 'calc(10px + env(safe-area-inset-top))',
           borderBottom: '1px solid #333',
           display: 'flex',
           alignItems: 'center',
@@ -155,7 +157,8 @@ export function GitChangesPage() {
       </div>
 
       {/* Changed files list */}
-      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <PullToRefresh onRefresh={loadStatus}>
         {gitStatus.changedFiles.length === 0 ? (
           <div style={{ padding: 16, color: '#888', fontSize: 13 }}>
             No changes — working tree is clean.
@@ -211,6 +214,7 @@ export function GitChangesPage() {
             </button>
           ))
         )}
+      </PullToRefresh>
       </div>
     </div>
   )

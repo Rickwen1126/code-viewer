@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
+import { PullToRefresh } from '../../components/pull-to-refresh'
 import type { ChatListSessionsResultPayload, ChatSessionUpdatedPayload } from '@code-viewer/shared'
 
 interface SessionEntry {
@@ -70,7 +71,7 @@ export function ChatSessionListPage() {
     return unsub
   }, [connectionState])
 
-  async function loadSessions() {
+  const loadSessions = useCallback(async () => {
     try {
       setLoading(true)
       const res = await request<Record<string, never>, ChatListSessionsResultPayload>(
@@ -83,7 +84,7 @@ export function ChatSessionListPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [request])
 
   function handleNewChat() {
     navigate('/chat/new')
@@ -102,6 +103,7 @@ export function ChatSessionListPage() {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '12px 16px',
+          paddingTop: 'calc(12px + env(safe-area-inset-top))',
           borderBottom: '1px solid #333',
         }}
       >
@@ -124,7 +126,8 @@ export function ChatSessionListPage() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <PullToRefresh onRefresh={loadSessions}>
         {loading ? (
           <div style={{ padding: 24, color: '#888', textAlign: 'center' }}>Loading sessions...</div>
         ) : sessions.length === 0 ? (
@@ -191,6 +194,7 @@ export function ChatSessionListPage() {
             </button>
           ))
         )}
+      </PullToRefresh>
       </div>
     </div>
   )

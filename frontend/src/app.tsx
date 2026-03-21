@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router'
 import { useSwipeable } from 'react-swipeable'
-import { useContext } from 'react'
+import { useContext, useCallback } from 'react'
 import { TabBar } from './components/tab-bar'
 import { ConnectionStatus } from './components/connection-status'
 import { WorkspaceProvider } from './hooks/use-workspace'
@@ -18,19 +18,61 @@ import { PendingEditsListPage } from './pages/review'
 import { EditDiffReviewPage } from './pages/review/edit-diff'
 import { ToolApprovalPage } from './pages/review/tool-approval'
 
+/** Root paths that are considered tab roots (depth 1). */
+const TAB_ROOTS = new Set([
+  '/workspaces',
+  '/files',
+  '/git',
+  '/tours',
+  '/chat',
+  '/review',
+])
+
+function isTabRoot(pathname: string): boolean {
+  // Matches exactly '/segment' — no further path parts
+  const parts = pathname.split('/').filter(Boolean)
+  return parts.length <= 1 && TAB_ROOTS.has('/' + (parts[0] ?? ''))
+}
+
 function TabLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { totalBadgeCount } = useContext(ReviewContext)
+
+  /** Navigate to a tab root using a crossfade view transition. */
+  const navigateToTab = useCallback(
+    (path: string) => {
+      if ('startViewTransition' in document) {
+        // Mark the transition as a tab switch so CSS can apply crossfade
+        document.documentElement.classList.add('tab-transition')
+        ;(document as Document & { startViewTransition: (cb: () => void) => { finished: Promise<void> } })
+          .startViewTransition(() => {
+            navigate(path)
+          })
+          .finished.finally(() => {
+            document.documentElement.classList.remove('tab-transition')
+          })
+      } else {
+        navigate(path)
+      }
+    },
+    [navigate],
+  )
 
   const swipeHandlers = useSwipeable({
     onSwipedRight: (e) => {
       // Only trigger from left edge (first 20px)
       if (e.initial[0] > 20) return
       // Only if we're in a sub-page (not a tab root)
-      const isSubPage = location.pathname.split('/').filter(Boolean).length > 1
-      if (isSubPage) {
-        navigate(-1)
+      if (!isTabRoot(location.pathname)) {
+        if ('startViewTransition' in document) {
+          ;(document as Document & { startViewTransition: (cb: () => void) => void })
+            .startViewTransition(() => {
+              navigate(-1)
+            })
+        } else {
+          navigate(-1)
+        }
       }
     },
     trackMouse: false,
@@ -62,7 +104,7 @@ function TabLayout() {
           <Route path="review/tool/:requestId" element={<ToolApprovalPage />} />
         </Routes>
       </main>
-      <TabBar badges={badges} />
+      <TabBar badges={badges} onNavigate={navigateToTab} />
     </div>
   )
 }

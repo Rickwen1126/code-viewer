@@ -4,7 +4,7 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html, body {
   height: 100%;
   overflow: hidden;
   background: #1e1e1e;
@@ -14,6 +14,11 @@ html, body, #root {
   touch-action: manipulation;
 }
 
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 html {
   overscroll-behavior-y: contain;
 }
@@ -21,4 +26,43 @@ html {
 @keyframes pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
+}
+
+/* T064: View Transitions API — page navigation animations */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Default: stack push — slide in from right */
+::view-transition-old(root) {
+  animation: 220ms ease-out slide-out-right;
+}
+
+::view-transition-new(root) {
+  animation: 220ms ease-out slide-in-right;
+}
+
+/* Tab switches use a quick crossfade via the .tab-transition class on <main> */
+.tab-transition::view-transition-old(root) {
+  animation: 150ms ease-out fade-out;
+}
+
+.tab-transition::view-transition-new(root) {
+  animation: 150ms ease-out fade-in;
 }
