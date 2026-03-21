@@ -313,9 +313,62 @@ export function CodeViewerPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: 16 }}>
-        <div style={{ fontSize: 14, color: '#888', marginBottom: 8 }}>{fileName}</div>
-        <div style={{ color: '#888' }}>Loading...</div>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div
+          style={{
+            padding: '8px 12px',
+            borderBottom: '1px solid #333',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 13, color: '#d4d4d4' }}>{fileName}</span>
+        </div>
+        <div style={{ flex: 1, padding: '12px 16px', display: 'flex', gap: 12 }}>
+          {/* Line number gutter skeleton */}
+          <div style={{ width: 28, flexShrink: 0 }}>
+            {Array.from({ length: 20 }, (_, i) => (
+              <div
+                key={i}
+                style={{
+                  height: 12,
+                  marginBottom: 7.5,
+                  borderRadius: 2,
+                  background: '#2a2a2a',
+                  width: i < 9 ? 8 : 16,
+                  marginLeft: 'auto',
+                }}
+              />
+            ))}
+          </div>
+          {/* Code lines skeleton */}
+          <div style={{ flex: 1 }}>
+            {[65, 40, 80, 55, 30, 70, 45, 90, 35, 60, 25, 75, 50, 85, 20, 70, 40, 55, 30, 65].map(
+              (w, i) => (
+                <div
+                  key={i}
+                  style={{
+                    height: 12,
+                    marginBottom: 7.5,
+                    borderRadius: 2,
+                    background: '#2a2a2a',
+                    width: `${w}%`,
+                    animation: 'skeleton-pulse 1.5s ease-in-out infinite',
+                    animationDelay: `${i * 50}ms`,
+                  }}
+                />
+              ),
+            )}
+          </div>
+        </div>
+        <style>{`
+          @keyframes skeleton-pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.8; }
+          }
+        `}</style>
       </div>
     )
   }

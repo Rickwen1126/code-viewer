@@ -37,4 +37,20 @@ if (process.env.CODE_VIEWER_SECRET) {
   console.warn('WARNING: No CODE_VIEWER_SECRET set — WS endpoints are unauthenticated')
 }
 
+// Graceful shutdown: clean up heartbeat + WS connections
+function shutdown() {
+  console.log('[Backend] Shutting down...')
+  manager.stopHeartbeat()
+  for (const [, entry] of manager.extensions) {
+    try { entry.ws.close() } catch { /* ignore */ }
+  }
+  for (const [, entry] of manager.frontends) {
+    try { entry.ws.close() } catch { /* ignore */ }
+  }
+  server.close()
+}
+
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)
+
 export { app, upgradeWebSocket }

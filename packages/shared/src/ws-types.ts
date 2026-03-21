@@ -1,3 +1,5 @@
+import type { FileContent, GitStatus, ChatSession } from './models.js'
+
 // ── WsMessage envelope ──────────────────────────────────────────────
 
 export interface WsMessage<T = unknown> {
@@ -159,14 +161,7 @@ export interface FileReadPayload {
   path: string
 }
 
-export interface FileReadResultPayload {
-  path: string
-  content: string
-  languageId: string
-  isDirty: boolean
-  encoding: string
-  lineCount: number
-}
+export type FileReadResultPayload = FileContent
 
 export interface FileTreeChangedPayload {
   changes: Array<{
@@ -230,18 +225,7 @@ export interface LspSymbol {
 }
 
 // Git
-export interface GitStatusResultPayload {
-  branch: string
-  ahead: number
-  behind: number
-  changedFiles: Array<{
-    path: string
-    status: 'added' | 'modified' | 'deleted' | 'renamed'
-    oldPath?: string
-    insertions: number
-    deletions: number
-  }>
-}
+export type GitStatusResultPayload = GitStatus
 
 export interface GitDiffPayload {
   path: string
@@ -302,14 +286,7 @@ export interface ChatSessionUpdatedPayload {
 }
 
 export interface ChatListSessionsResultPayload {
-  sessions: Array<{
-    id: string
-    title: string
-    createdAt: number
-    lastActiveAt: number
-    turnCount: number
-    mode: 'ask' | 'agent' | 'plan'
-  }>
+  sessions: ChatSession[]
 }
 
 // Review

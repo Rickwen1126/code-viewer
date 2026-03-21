@@ -35,6 +35,8 @@ class WsClientService {
   >()
 
   connect(url: string): void {
+    // Idempotent guard: skip if already connecting/connected/reconnecting
+    if (this.state === 'connecting' || this.state === 'connected' || this.state === 'reconnecting') return
     this.url = url
     this.shouldReconnect = true
     this.reconnectDelay = 1000
@@ -47,6 +49,7 @@ class WsClientService {
       this.ws.close()
       this.ws = null
     }
+    this.drainPendingRequests('Disconnected')
     this.setState('disconnected')
   }
 
@@ -145,6 +148,7 @@ class WsClientService {
 
     this.ws.onclose = () => {
       this.ws = null
+      this.drainPendingRequests('WebSocket connection closed')
       if (this.shouldReconnect) {
         this.reconnect()
       } else {
@@ -198,6 +202,14 @@ class WsClientService {
     if (set) {
       set.forEach((listener) => listener(message))
     }
+  }
+
+  private drainPendingRequests(reason: string): void {
+    for (const [, pending] of this.pendingRequests) {
+      clearTimeout(pending.timer)
+      pending.reject(new Error(reason))
+    }
+    this.pendingRequests.clear()
   }
 
   private setState(state: ConnectionState): void {

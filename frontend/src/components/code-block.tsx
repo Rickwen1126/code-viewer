@@ -1,5 +1,5 @@
 import ShikiHighlighter from 'react-shiki'
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 
 interface CodeBlockProps {
   code: string
@@ -11,9 +11,12 @@ const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
 const DEFAULT_FONT_SIZE = 13
 
-export function CodeBlock({ code, language }: CodeBlockProps) {
+export function CodeBlock({ code, language, showLineNumbers = false }: CodeBlockProps) {
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
   const lastPinchDistance = useRef(0)
+
+  const lineCount = useMemo(() => code.split('\n').length, [code])
+  const gutterWidth = useMemo(() => Math.max(2, String(lineCount).length) * 0.6 + 1, [lineCount])
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
@@ -47,11 +50,32 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      style={{ fontSize, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.5 }}
+      style={{ fontSize, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.5, display: 'flex' }}
     >
-      <ShikiHighlighter language={language} theme="dark-plus">
-        {code}
-      </ShikiHighlighter>
+      {showLineNumbers && (
+        <div
+          aria-hidden
+          style={{
+            width: `${gutterWidth}em`,
+            flexShrink: 0,
+            textAlign: 'right',
+            paddingRight: '0.5em',
+            color: '#858585',
+            userSelect: 'none',
+            borderRight: '1px solid #333',
+            paddingTop: '0.5em',
+          }}
+        >
+          {Array.from({ length: lineCount }, (_, i) => (
+            <div key={i}>{i + 1}</div>
+          ))}
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <ShikiHighlighter language={language} theme="dark-plus" showLanguage={false}>
+          {code}
+        </ShikiHighlighter>
+      </div>
     </div>
   )
 }

@@ -196,6 +196,11 @@ export async function handleFileRead(
   }
 }
 
+// Skip events from noisy directories
+function shouldSkipEvent(rel: string): boolean {
+  return rel.startsWith('node_modules/') || rel.startsWith('.git/')
+}
+
 // Watch for file tree changes (create/delete/rename)
 export function startFileWatchers(
   sendEvent: (msg: WsMessage) => void,
@@ -204,6 +209,7 @@ export function startFileWatchers(
 
   const onCreated = watcher.onDidCreate((uri) => {
     const rel = vscode.workspace.asRelativePath(uri)
+    if (shouldSkipEvent(rel)) return
     sendEvent(createMessage('file.treeChanged', {
       changes: [{ type: 'created', path: rel }],
     }))
@@ -211,6 +217,7 @@ export function startFileWatchers(
 
   const onDeleted = watcher.onDidDelete((uri) => {
     const rel = vscode.workspace.asRelativePath(uri)
+    if (shouldSkipEvent(rel)) return
     sendEvent(createMessage('file.treeChanged', {
       changes: [{ type: 'deleted', path: rel }],
     }))
@@ -218,18 +225,23 @@ export function startFileWatchers(
 
   const onChanged = watcher.onDidChange((uri) => {
     const rel = vscode.workspace.asRelativePath(uri)
+    if (shouldSkipEvent(rel)) return
     sendEvent(createMessage('file.treeChanged', {
       changes: [{ type: 'changed', path: rel }],
     }))
   })
 
-  // Watch for dirty buffer changes
+  // Watch for dirty buffer changes (debounced to avoid per-keystroke floods)
+  let contentChangeTimer: ReturnType<typeof setTimeout> | undefined
   const onDocChanged = vscode.workspace.onDidChangeTextDocument((e) => {
-    const rel = vscode.workspace.asRelativePath(e.document.uri)
-    sendEvent(createMessage('file.contentChanged', {
-      path: rel,
-      isDirty: e.document.isDirty,
-    }))
+    clearTimeout(contentChangeTimer)
+    contentChangeTimer = setTimeout(() => {
+      const rel = vscode.workspace.asRelativePath(e.document.uri)
+      sendEvent(createMessage('file.contentChanged', {
+        path: rel,
+        isDirty: e.document.isDirty,
+      }))
+    }, 300)
   })
 
   return [watcher, onCreated, onDeleted, onChanged, onDocChanged]
