@@ -47,23 +47,40 @@ function fuzzyMatch(query: string, target: string): boolean {
   return qi === q.length
 }
 
+const EXPANDED_KEY = 'code-viewer:expanded-dirs'
+
+function getExpandedDirs(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? '[]'))
+  } catch { return new Set() }
+}
+
+function saveExpandedDirs(dirs: Set<string>): void {
+  try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...dirs])) } catch {}
+}
+
 // Recursive tree node component
 function TreeNode({
   node,
   depth,
   onFileClick,
+  expandedDirs,
+  onToggle,
+  currentFile,
 }: {
   node: FileTreeNode
   depth: number
   onFileClick: (path: string) => void
+  expandedDirs: Set<string>
+  onToggle: (path: string) => void
+  currentFile: string | null
 }) {
-  const [expanded, setExpanded] = useState(depth === 0)
-
   if (node.type === 'directory') {
+    const expanded = expandedDirs.has(node.path)
     return (
       <div>
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => onToggle(node.path)}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -85,12 +102,13 @@ function TreeNode({
         </button>
         {expanded &&
           node.children?.map((child) => (
-            <TreeNode key={child.path} node={child} depth={depth + 1} onFileClick={onFileClick} />
+            <TreeNode key={child.path} node={child} depth={depth + 1} onFileClick={onFileClick} expandedDirs={expandedDirs} onToggle={onToggle} currentFile={currentFile} />
           ))}
       </div>
     )
   }
 
+  const isCurrentFile = currentFile === node.path
   return (
     <button
       onClick={() => onFileClick(node.path)}
@@ -101,8 +119,9 @@ function TreeNode({
         width: '100%',
         padding: '8px 12px',
         paddingLeft: 28 + depth * 16,
-        background: 'none',
+        background: isCurrentFile ? '#2a2d2e' : 'none',
         border: 'none',
+        borderLeft: isCurrentFile ? '2px solid #569cd6' : '2px solid transparent',
         color: node.isGitIgnored ? '#666' : '#d4d4d4',
         fontSize: 14,
         cursor: 'pointer',
@@ -124,7 +143,47 @@ export function FileBrowserPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [showRecent, setShowRecent] = useState(false)
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => getExpandedDirs())
   const searchRef = useRef<HTMLInputElement>(null)
+
+  // Current file from localStorage (set by code-viewer)
+  const currentFile = localStorage.getItem('code-viewer:current-file')
+
+  function handleToggle(path: string) {
+    setExpandedDirs(prev => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      saveExpandedDirs(next)
+      return next
+    })
+  }
+
+  function collapseAll() {
+    setExpandedDirs(new Set())
+    saveExpandedDirs(new Set())
+  }
+
+  // Auto-expand to current file on mount
+  useEffect(() => {
+    if (!currentFile || nodes.length === 0) return
+    const parts = currentFile.split('/')
+    const dirs: string[] = []
+    for (let i = 0; i < parts.length - 1; i++) {
+      dirs.push(parts.slice(0, i + 1).join('/'))
+    }
+    if (dirs.length > 0) {
+      setExpandedDirs(prev => {
+        const next = new Set(prev)
+        let changed = false
+        for (const d of dirs) {
+          if (!next.has(d)) { next.add(d); changed = true }
+        }
+        if (changed) saveExpandedDirs(next)
+        return changed ? next : prev
+      })
+    }
+  }, [currentFile, nodes])
 
   // Flatten tree for search
   const allFiles = useMemo(() => flattenFiles(nodes), [nodes])
@@ -305,9 +364,31 @@ export function FileBrowserPage() {
 
         {/* File tree (hidden during search) */}
         {!isSearching && !showRecent && (
-          (nodes ?? []).map((node) => (
-            <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} />
-          ))
+          <>
+            {/* Collapse all button */}
+            {expandedDirs.size > 0 && (
+              <button
+                onClick={collapseAll}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '6px 12px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '1px solid #2a2a2a',
+                  color: '#888',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  textAlign: 'right',
+                }}
+              >
+                Collapse All
+              </button>
+            )}
+            {(nodes ?? []).map((node) => (
+              <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} expandedDirs={expandedDirs} onToggle={handleToggle} currentFile={currentFile} />
+            ))}
+          </>
         )}
       </div>
     </PullToRefresh>
