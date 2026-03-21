@@ -36,6 +36,7 @@ export function CodeViewerPage() {
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [tooLarge, setTooLarge] = useState(false)
+  const [wordWrap, setWordWrap] = useState(false)
 
   // Hover tooltip state (T037)
   const [hoverTooltip, setHoverTooltip] = useState<{
@@ -415,22 +416,37 @@ export function CodeViewerPage() {
             unsaved
           </span>
         )}
-        {/* Symbols button */}
-        <button
-          onClick={handleDocumentSymbols}
-          style={{
-            marginLeft: 'auto',
-            background: 'none',
-            border: '1px solid #444',
-            color: '#888',
-            fontSize: 11,
-            padding: '2px 8px',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >
-          Symbols
-        </button>
+        {/* Wrap toggle + Symbols */}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => setWordWrap((v) => !v)}
+            style={{
+              background: wordWrap ? '#333' : 'none',
+              border: '1px solid #444',
+              color: wordWrap ? '#d4d4d4' : '#888',
+              fontSize: 11,
+              padding: '2px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            Wrap
+          </button>
+          <button
+            onClick={handleDocumentSymbols}
+            style={{
+              background: 'none',
+              border: '1px solid #444',
+              color: '#888',
+              fontSize: 11,
+              padding: '2px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            Symbols
+          </button>
+        </div>
       </div>
 
       {/* Code with touch handlers */}
@@ -445,7 +461,7 @@ export function CodeViewerPage() {
           onTouchEnd={handleTouchEnd}
           onTouchMove={handleTouchMove}
         >
-          <CodeBlock code={file.content} language={file.languageId} showLineNumbers />
+          <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} />
         </div>
       </div>
 

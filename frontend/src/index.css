@@ -66,3 +66,19 @@ html {
 .tab-transition::view-transition-new(root) {
   animation: 150ms ease-out fade-in;
 }
+
+/* Code viewer — fix Shiki's inner <pre> behaviors */
+.code-wrap-mode pre {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+/* Remove tabindex focus outline that causes select-all on click */
+pre.shiki {
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+pre.shiki code .line {
+  display: block;
+}

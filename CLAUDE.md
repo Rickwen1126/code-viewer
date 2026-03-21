@@ -56,6 +56,11 @@ npx playwright test tests/e2e/
 
 **Note**: `--copilot` 模式會讀取你的 VS Code user-data-dir（含 Copilot 登入 token），必須先關閉你自己的 VS Code 實體避免衝突。
 
+## Testing
+
+- Playwright E2E 測試必須用 iPhone viewport (390x844) 執行
+- 這是 mobile-first 產品，所有 UI 行為以手機尺寸為準
+
 ## Code Style
 
 TypeScript 5.x across all 3 packages. Follow existing conventions.

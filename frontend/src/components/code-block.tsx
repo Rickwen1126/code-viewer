@@ -5,13 +5,14 @@ interface CodeBlockProps {
   code: string
   language: string
   showLineNumbers?: boolean
+  wordWrap?: boolean
 }
 
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 24
 const DEFAULT_FONT_SIZE = 13
 
-export function CodeBlock({ code, language, showLineNumbers = false }: CodeBlockProps) {
+export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false }: CodeBlockProps) {
   const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
   const lastPinchDistance = useRef(0)
@@ -72,8 +73,23 @@ export function CodeBlock({ code, language, showLineNumbers = false }: CodeBlock
           ))}
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <ShikiHighlighter language={language} theme="dark-plus" showLanguage={false}>
+      <div
+        className={wordWrap ? 'code-wrap-mode' : undefined}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflowX: wordWrap ? 'hidden' : 'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        <ShikiHighlighter
+          language={language}
+          theme="dark-plus"
+          showLanguage={false}
+          addDefaultStyles={false}
+          as="div"
+          style={{ padding: '0.5em' }}
+        >
           {safeCode}
         </ShikiHighlighter>
       </div>
