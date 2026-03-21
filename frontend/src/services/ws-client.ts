@@ -41,6 +41,22 @@ class WsClientService {
     this.shouldReconnect = true
     this.reconnectDelay = 1000
     this.openSocket()
+
+    // Instant reconnect when page comes back to foreground (Safari kills WS in background)
+    this.setupVisibilityReconnect()
+  }
+
+  private visibilityHandler: (() => void) | null = null
+
+  private setupVisibilityReconnect(): void {
+    if (this.visibilityHandler) return
+    this.visibilityHandler = () => {
+      if (document.visibilityState === 'visible' && this.shouldReconnect && this.state !== 'connected' && this.state !== 'connecting') {
+        this.reconnectDelay = 1000
+        this.openSocket()
+      }
+    }
+    document.addEventListener('visibilitychange', this.visibilityHandler)
   }
 
   disconnect(): void {
