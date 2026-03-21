@@ -48,6 +48,24 @@ Desktop VS Code (Extension)  ─WS─  Backend (Hono relay)  ─WS─  Mobile PW
 | `contracts/ws-protocol.md` | WebSocket message format + routing spec |
 | `PRD-v2.md` | Product Requirements Document |
 
+## Known Issues
+
+### iOS Safari: iCloud 私密轉送 (Private Relay)
+
+**如果 iPhone Safari 連不上 WebSocket（卡在 loading workspace），請關閉 iCloud 私密轉送：**
+
+設定 → Apple ID → iCloud → 私密轉送 → **關閉**
+
+Private Relay 會將 WebSocket 連線走 Apple relay server，導致 WS upgrade 失敗或極度延遲。即使設定頁顯示「關閉」，可能需要重啟 Safari 才生效。Chrome iOS 不受此影響。
+
+### iOS Safari: 背景 WS 斷線
+
+iOS Safari 會在 app 切到背景後 30-60 秒內 suspend WebSocket 連線，且不觸發 `onclose` event（WebKit Bug #247943）。本專案已實作：
+
+- `visibilitychange` listener — 回前景時立刻重連
+- Cache-first loading — 重連期間顯示本地快取資料，背景靜默更新
+- Workspace 持久化 — localStorage 記住上次選擇的 workspace
+
 ## Tech Stack
 
 - **Extension**: TypeScript, VS Code Extension API

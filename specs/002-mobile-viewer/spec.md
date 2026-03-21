@@ -256,6 +256,8 @@ design.pen 中已有完整畫面設計（Tour List + Tour Detail）。
 | **Swipe up/down** | 垂直捲動 | 垂直捲動 |
 | **Pinch** | 程式碼字體縮放 | — |
 | **Double tap** | 選取整個 token/word | — |
+| **Single tap（程式碼區）** | Sourcegraph-style popover：hover type info + Definition/References 按鈕 | — |
+| **Long press（程式碼區）** | 原生文字選取（不攔截，不開 action sheet） | — |
 
 ### 狀態視覺語言
 
@@ -264,9 +266,10 @@ design.pen 中已有完整畫面設計（Tour List + Tour Detail）。
 | 狀態 | 視覺呈現 |
 |------|---------|
 | **已連線** | 工作區卡片顯示綠色連線指示點，無額外干擾 |
-| **重連中** | 頂部顯示細長的脈動進度條，不遮擋內容 |
-| **已斷線** | 頂部常駐 banner 提示離線，可操作已快取內容 |
-| **Loading（檔案/LSP）** | 內容區域 skeleton loading，保持 layout 穩定 |
+| **重連中** | 頂部顯示 3px 藍色脈動進度條，不遮擋內容 |
+| **連線中** | 同重連中，3px 藍色脈動條（不使用紅色 banner，避免誤解為錯誤） |
+| **已斷線** | 頂部 3px 灰色靜態條，cache-first 顯示上次快取內容 |
+| **Loading（檔案/LSP）** | 內容區域 skeleton loading，保持 layout 穩定；有快取時直接顯示，背景更新 |
 | **Streaming（Chat）** | 文字逐字浮現，游標閃爍表示仍在生成 |
 | **Pending review** | Review tab 顯示 badge 數字，表示有待處理項目 |
 | **未存檔修改** | 檔案名稱旁顯示圓點標記 |
@@ -328,6 +331,9 @@ design.pen 中已有完整畫面設計（Tour List + Tour Detail）。
 - **FR-013**: 系統 MUST 根據檔案的 languageId 動態載入對應的 Shiki 語法高亮（code splitting 按需載入，不預載所有語言）
 - **FR-014**: 系統 MUST 支援觸控滑動瀏覽程式碼，回應流暢無卡頓
 - **FR-015**: 系統 MUST 在離線時仍可瀏覽已快取的檔案內容
+- **FR-015a**: 系統 MUST 採用 cache-first 策略 — 頁面載入時立刻顯示 IndexedDB 快取資料，背景連線後靜默更新差異
+- **FR-015b**: 系統 MUST 將已選擇的 workspace 持久化於 localStorage，page reload 後自動恢復並重新綁定 backend relay
+- **FR-015c**: 系統 MUST 在 iOS Safari 背景回前景時透過 visibilitychange 立刻重連 WebSocket（不等 exponential backoff）
 
 **Code Intelligence**
 
