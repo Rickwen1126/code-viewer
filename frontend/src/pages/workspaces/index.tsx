@@ -82,8 +82,18 @@ export function WorkspacesPage() {
   }, [connectionState])
 
   async function handleSelectWorkspace(extensionId: string) {
-    if (connectionState !== 'connected') return
     setSelectingId(extensionId)
+    // Wait for WS to connect if not ready yet
+    if (connectionState !== 'connected') {
+      const waitForConnect = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('timeout')), 10000)
+        const unsub = wsClient.onStateChange((state) => {
+          if (state === 'connected') { clearTimeout(timeout); unsub(); resolve() }
+        })
+        if (wsClient.getState() === 'connected') { clearTimeout(timeout); unsub(); resolve() }
+      })
+      try { await waitForConnect } catch { setSelectingId(null); return }
+    }
     try {
       const res = await request<{ extensionId: string }, SelectWorkspaceResultPayload>(
         'connection.selectWorkspace',
@@ -111,7 +121,7 @@ export function WorkspacesPage() {
         <button
           key={ws.extensionId}
           onClick={() => handleSelectWorkspace(ws.extensionId)}
-          disabled={!isConnected || selectingId === ws.extensionId}
+          disabled={!!selectingId}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -124,9 +134,9 @@ export function WorkspacesPage() {
             borderRadius: 8,
             color: '#d4d4d4',
             textAlign: 'left',
-            cursor: !isConnected ? 'default' : selectingId === ws.extensionId ? 'wait' : 'pointer',
+            cursor: selectingId === ws.extensionId ? 'wait' : 'pointer',
             minHeight: 44,
-            opacity: !isConnected ? 0.6 : selectingId && selectingId !== ws.extensionId ? 0.5 : 1,
+            opacity: selectingId && selectingId !== ws.extensionId ? 0.5 : 1,
           }}
         >
           {selectingId === ws.extensionId ? (
@@ -137,7 +147,7 @@ export function WorkspacesPage() {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: isConnected && ws.status === 'connected' ? '#4ec9b0' : '#888',
+                background: ws.status === 'connected' ? '#4ec9b0' : '#888',
                 flexShrink: 0,
               }}
             />
