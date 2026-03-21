@@ -92,7 +92,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register commands
   const connectCmd = vscode.commands.registerCommand('codeViewer.connect', () => {
-    const backendUrl = vscode.workspace.getConfiguration('codeViewer').get<string>('backendUrl', 'ws://localhost:3000')
+    const backendUrl = vscode.workspace.getConfiguration('codeViewer').get<string>('backendUrl', 'ws://localhost:4800')
     wsClient!.connect(backendUrl, extensionId, displayName)
     vscode.window.showInformationMessage('Code Viewer: Connecting to backend...')
   })
@@ -117,7 +117,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(...gitWatcherDisposables)
 
   // Auto-connect on activation
-  const backendUrl = vscode.workspace.getConfiguration('codeViewer').get<string>('backendUrl', 'ws://localhost:3000')
+  const backendUrl = vscode.workspace.getConfiguration('codeViewer').get<string>('backendUrl', 'ws://localhost:4800')
   wsClient.connect(backendUrl, extensionId, displayName)
 }
 

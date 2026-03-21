@@ -19,7 +19,7 @@ app.get('/health', (c) => c.json({ status: 'ok', version: '0.0.1' }))
 app.get('/ws/extension', createExtensionHandler(upgradeWebSocket))
 app.get('/ws/frontend', createFrontendHandler(upgradeWebSocket))
 
-const port = Number(process.env.PORT) || 3000
+const port = Number(process.env.PORT) || 4800
 const hostname = process.env.HOST || '0.0.0.0'
 const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
   console.log(`Backend listening on ${hostname}:${info.port}`)

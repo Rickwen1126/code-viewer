@@ -97,18 +97,18 @@ describe('WsClientService', () => {
 
   describe('connect', () => {
     it('should create WebSocket with the correct URL', () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       expect(MockWebSocket.instances).toHaveLength(1)
-      expect(MockWebSocket.instances[0].url).toBe('ws://localhost:3000')
+      expect(MockWebSocket.instances[0].url).toBe('ws://localhost:4800')
     })
 
     it('state should be "connecting" immediately after connect()', () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       expect(wsClient.getState()).toBe('connecting')
     })
 
     it('state should become "connected" once the socket opens', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       // Flush the setTimeout(0) that fires onopen
       await vi.runAllTimersAsync()
       expect(wsClient.getState()).toBe('connected')
@@ -119,7 +119,7 @@ describe('WsClientService', () => {
 
   describe('disconnect', () => {
     it('should close the WebSocket and state becomes "disconnected"', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync() // become connected
 
       wsClient.disconnect()
@@ -127,7 +127,7 @@ describe('WsClientService', () => {
     })
 
     it('should not reconnect after explicit disconnect', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       wsClient.disconnect()
@@ -143,7 +143,7 @@ describe('WsClientService', () => {
 
   describe('send', () => {
     it('should JSON-stringify a WsMessage with type, id, payload, and timestamp', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const socket = MockWebSocket.instances[0]
@@ -158,7 +158,7 @@ describe('WsClientService', () => {
     })
 
     it('should return the message id', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const id = wsClient.send('ping', {})
@@ -167,7 +167,7 @@ describe('WsClientService', () => {
     })
 
     it('should include replyTo when provided', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const socket = MockWebSocket.instances[0]
@@ -178,7 +178,7 @@ describe('WsClientService', () => {
     })
 
     it('should not throw when socket is not yet open', () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       // readyState is still CONNECTING — send should be a no-op
       expect(() => wsClient.send('ping', {})).not.toThrow()
     })
@@ -188,7 +188,7 @@ describe('WsClientService', () => {
 
   describe('request', () => {
     it('should send a message and resolve when a reply arrives', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const socket = MockWebSocket.instances[0]
@@ -225,7 +225,7 @@ describe('WsClientService', () => {
 
   describe('request timeout', () => {
     it('should reject after the timeout period elapses', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       // Wrap the assertion so the promise is always awaited (prevents
@@ -245,7 +245,7 @@ describe('WsClientService', () => {
 
   describe('subscribe', () => {
     it('should call the listener when a message of the matching type arrives', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const socket = MockWebSocket.instances[0]
@@ -264,7 +264,7 @@ describe('WsClientService', () => {
     })
 
     it('should NOT call the listener for a different message type', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const socket = MockWebSocket.instances[0]
@@ -286,7 +286,7 @@ describe('WsClientService', () => {
 
   describe('unsubscribe', () => {
     it('returned function should remove the listener', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const socket = MockWebSocket.instances[0]
@@ -310,7 +310,7 @@ describe('WsClientService', () => {
 
   describe('reconnect', () => {
     it('should create a new WebSocket after the server closes the connection', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync() // become connected
 
       const firstSocket = MockWebSocket.instances[0]
@@ -321,11 +321,11 @@ describe('WsClientService', () => {
 
       // A second socket should have been created
       expect(MockWebSocket.instances).toHaveLength(2)
-      expect(MockWebSocket.instances[1].url).toBe('ws://localhost:3000')
+      expect(MockWebSocket.instances[1].url).toBe('ws://localhost:4800')
     })
 
     it('state should become "reconnecting" after the socket is closed unexpectedly', async () => {
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       const socket = MockWebSocket.instances[0]
@@ -376,7 +376,7 @@ describe('WsClientService', () => {
 
       try {
         // connect() → openSocket() → new NeverOpenSocket → reconnectDelay stays 1000
-        wsClient.connect('ws://localhost:3000')
+        wsClient.connect('ws://localhost:4800')
         expect(MockWebSocket.instances).toHaveLength(1)
 
         // First close: reconnect() uses delay=1000, then sets it to 2000
@@ -408,7 +408,7 @@ describe('WsClientService', () => {
       // Manually pre-set the delay near the cap
       client.reconnectDelay = 16000
 
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       // Reset reconnectDelay after connect() resets it to 1000
@@ -427,7 +427,7 @@ describe('WsClientService', () => {
       const stateHistory: string[] = []
       wsClient.onStateChange((s) => stateHistory.push(s))
 
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       // 'connecting' fired synchronously inside connect()
       expect(stateHistory).toContain('connecting')
 
@@ -444,7 +444,7 @@ describe('WsClientService', () => {
       const unsub = wsClient.onStateChange(listener)
       unsub()
 
-      wsClient.connect('ws://localhost:3000')
+      wsClient.connect('ws://localhost:4800')
       await vi.runAllTimersAsync()
 
       expect(listener).not.toHaveBeenCalled()
