@@ -74,7 +74,13 @@ html {
 }
 
 /* Wrap mode line numbers via CSS counter (always aligned with wrapped lines) */
+.code-line-numbers.code-wrap-mode code {
+  display: flex;
+  flex-direction: column;
+}
+
 .code-line-numbers.code-wrap-mode .line {
+  display: block;
   counter-increment: line;
   padding-left: 3.5em;
   position: relative;
