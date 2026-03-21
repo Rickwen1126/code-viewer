@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
@@ -6,6 +6,46 @@ import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { PullToRefresh } from '../../components/pull-to-refresh'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
+
+const RECENT_FILES_KEY = 'code-viewer:recent-files'
+const MAX_RECENT = 15
+
+function getRecentFiles(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_FILES_KEY) ?? '[]')
+  } catch { return [] }
+}
+
+export function addRecentFile(path: string): void {
+  const recent = getRecentFiles().filter(p => p !== path)
+  recent.unshift(path)
+  if (recent.length > MAX_RECENT) recent.length = MAX_RECENT
+  try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(recent)) } catch {}
+}
+
+// Flatten tree into file paths for search
+function flattenFiles(nodes: FileTreeNode[], prefix = ''): { path: string; name: string }[] {
+  const result: { path: string; name: string }[] = []
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      result.push({ path: node.path, name: node.name })
+    } else if (node.children) {
+      result.push(...flattenFiles(node.children, node.path + '/'))
+    }
+  }
+  return result
+}
+
+// Simple fuzzy match: all query chars appear in order in target
+function fuzzyMatch(query: string, target: string): boolean {
+  const q = query.toLowerCase()
+  const t = target.toLowerCase()
+  let qi = 0
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++
+  }
+  return qi === q.length
+}
 
 // Recursive tree node component
 function TreeNode({
@@ -82,6 +122,18 @@ export function FileBrowserPage() {
   const navigate = useNavigate()
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showRecent, setShowRecent] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // Flatten tree for search
+  const allFiles = useMemo(() => flattenFiles(nodes), [nodes])
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    return allFiles.filter(f => fuzzyMatch(searchQuery, f.path)).slice(0, 20)
+  }, [searchQuery, allFiles])
+
+  const recentFiles = useMemo(() => getRecentFiles(), [nodes]) // re-read when tree changes
 
   // Redirect to workspace selection if no workspace ever selected
   useEffect(() => {
@@ -134,17 +186,129 @@ export function FileBrowserPage() {
   }, [loadTreeBackground])
 
   function handleFileClick(path: string) {
+    addRecentFile(path)
+    setSearchQuery('')
+    setShowRecent(false)
     navigate(`/files/${encodeURIComponent(path)}`)
   }
 
   if (loading && nodes.length === 0) return <div style={{ padding: 16, color: '#888' }}>Loading file tree...</div>
 
+  const isSearching = searchQuery.trim().length > 0
+
   return (
     <PullToRefresh onRefresh={loadTree}>
       <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-        {(nodes ?? []).map((node) => (
-          <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} />
-        ))}
+        {/* Search bar */}
+        <div style={{
+          padding: '8px 12px',
+          borderBottom: '1px solid #333',
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
+          position: 'sticky',
+          top: 0,
+          background: '#1e1e1e',
+          zIndex: 10,
+        }}>
+          <input
+            ref={searchRef}
+            type="text"
+            placeholder="Search files..."
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setShowRecent(false) }}
+            onFocus={() => { if (!searchQuery) setShowRecent(true) }}
+            onBlur={() => setTimeout(() => setShowRecent(false), 200)}
+            style={{
+              flex: 1,
+              background: '#2a2a2a',
+              border: '1px solid #444',
+              borderRadius: 6,
+              padding: '8px 12px',
+              color: '#d4d4d4',
+              fontSize: 14,
+              outline: 'none',
+            }}
+          />
+          {(isSearching || showRecent) && (
+            <button
+              onClick={() => { setSearchQuery(''); setShowRecent(false); searchRef.current?.blur() }}
+              style={{ background: 'none', border: 'none', color: '#888', fontSize: 14, cursor: 'pointer', padding: '4px 8px' }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+
+        {/* Recent files (shown on focus when no query) */}
+        {showRecent && !isSearching && recentFiles.length > 0 && (
+          <div style={{ borderBottom: '1px solid #333' }}>
+            <div style={{ padding: '6px 12px', fontSize: 11, color: '#888', textTransform: 'uppercase' }}>Recent</div>
+            {recentFiles.map((path) => (
+              <button
+                key={path}
+                onClick={() => handleFileClick(path)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '1px solid #2a2a2a',
+                  color: '#d4d4d4',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ color: '#569cd6' }}>{path.split('/').pop()}</span>
+                <span style={{ color: '#666', marginLeft: 8, fontSize: 11 }}>
+                  {path.split('/').slice(0, -1).join('/')}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Search results */}
+        {isSearching && (
+          <div>
+            {searchResults.length === 0 ? (
+              <div style={{ padding: 16, color: '#888', fontSize: 13 }}>No files found</div>
+            ) : (
+              searchResults.map((f) => (
+                <button
+                  key={f.path}
+                  onClick={() => handleFileClick(f.path)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '10px 12px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: '1px solid #2a2a2a',
+                    color: '#d4d4d4',
+                    fontSize: 13,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ color: '#569cd6' }}>{f.name}</span>
+                  <span style={{ color: '#666', marginLeft: 8, fontSize: 11 }}>
+                    {f.path.split('/').slice(0, -1).join('/')}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* File tree (hidden during search) */}
+        {!isSearching && !showRecent && (
+          (nodes ?? []).map((node) => (
+            <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} />
+          ))
+        )}
       </div>
     </PullToRefresh>
   )

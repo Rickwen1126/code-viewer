@@ -5,6 +5,7 @@ import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { CodeBlock } from '../../components/code-block'
+import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
 import type {
@@ -95,6 +96,7 @@ export function CodeViewerPage() {
         setFile(null)
       } else {
         setFile(res.payload)
+        addRecentFile(path)
         if (workspace) {
           cacheService.setFileContent(workspace.extensionId, path, {
             path: res.payload.path,
