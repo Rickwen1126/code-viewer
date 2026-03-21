@@ -57,50 +57,57 @@ Backend :4800 + Frontend :4801 running. Extension via @vscode/test-electron --re
 - README: iCloud Private Relay warning + Safari background WS known issues
 - Spec updated: cache-first FRs, tap popover gesture, connection status bar
 
-**State**: main branch, commit `ff80ce1`. 166 tests pass. Production build on :4802.
+**Done** (production features):
+- P0 gray screen fix: Error Boundary + zombie WS detection on visibilitychange
+- File search: fuzzy match from cached tree, sticky search bar, 20 results max
+- Recent files: localStorage 最近 15 個, search bar focus 時顯示
+- Copilot #file reference: auto-attach current file, removable chips UI
+- Chat mode switch: Ask/Plan toggle in context bar
+- Chat conversation history: sends last 10 turns for context continuity
+- chat.listModels: extension handler returns available LM models
+- VS Code → Shiki language mapping: comprehensive 15-entry table
+
+**State**: main branch, commit `38fd2cf`. 166 tests pass, typecheck clean.
 
 **Next**:
-- [ ] File tree UX (P0):
-  - 點擊檔案後 tree 不見，要靠 back/icon 回來
-  - 返回 tree 時重 load，不保留展開狀態
-  - 換檔案不 focus 在該檔案的 tree 位置
-  - 展開/收合沒有記憶
-  - 沒有一鍵收合功能
-- [ ] 搜尋檔案功能（類似 VS Code Cmd+P）:
-  - 輸入檔名即時 fuzzy match
-  - 從 cached file tree 搜尋，不需要 WS
-  - 點擊結果直接開檔案
-- [ ] Chat Copilot 對話 session 延續:
-  - 手機上看到 Desktop 的既有 chat sessions
-  - 接續對話，不只是開新的
-- [ ] CodeTour view 修正:
-  - Markdown 沒有 render，純文字擠在一起
-  - 可以跳轉到 file 但無法一鍵回到 tour 對應步驟
-  - 返回 tour 從 list 頭開始，不保留瀏覽狀態
-- [ ] **P0 嚴重 BUG**: 手機換 app 再回來 → 畫面全灰，UI 完全消失
-  - 重新整理也沒用
-  - 要手動刪 URL path 回首頁才恢復
-  - 影響所有頁面（files/git/tour/chat/review）
-  - 可能是 Safari background suspend + React state 丟失
-- [ ] 最近瀏覽檔案 list:
-  - Files icon 長按 → popup 顯示 recent files
-  - 從 cache 讀取已瀏覽過的檔案清單
-- [ ] Tab bar 整合: Chat + Review 合併為 "Copilot"
-  - 點擊 → Chat（對話）
-  - 長按 → popup 選 Chat / Edit Review
-  - 減少 tab 數量，關聯功能不拆開
-- [ ] Application-level heartbeat（Safari onclose bug workaround）
-- [ ] PWA standalone 問題（加分，不急）:
-  - 頂部 UI 被 status bar 蓋住
-  - 底部 tab bar 離底太遠
-  - 獨立 storage context，每次 cold start
+- [ ] 接入 chatpilot（~/code/chatpilot）替換 vscode.lm：
+  - chatpilot 是 channel-agnostic AI agent gateway（FastAPI + Copilot SDK）
+  - 有完整 session management、tool registry、routing
+  - 整合方式：Backend 加 chatpilot adapter，或直接 HTTP 呼叫
+  - Chat UI/UX 保留，只換 backend 實作
+- [ ] Model selector UI（前端 dropdown，等 chatpilot）
+- [ ] **CodeTour Record + Edit（新 feature）**:
+  - Code view 加 "+" 按鈕 → 填 tour name → 進入 record 模式（auto commit tracking）
+  - Record 模式：行號可點擊 → popup 輸入視窗
+  - 固定 markdown 格式：## 標題 + 內文，可無限加多組
+  - Action "Tour Record Done" 跳離 record（confirm dialog）
+  - 斷線也維持 record 狀態（browser local state）
+  - Record 中可在 Tour tab preview
+  - 編輯模式：每個 tour item 可 "append" 新項目（同 record 格式）
+  - 不提供編輯已存資料、不提供 re-order nodes
+  - Tour 觀看：如果 commit 不對應 → 提示切 commit（stash → checkout）
+  - 看完最後一個 → 恢復原 commit + stash pop
+- [ ] **Git 功能強化**:
+  - Staged vs unstaged 分開顯示
+  - Branch 資訊顯示（目前沒有顯示在哪個 branch）
+  - Commit history / log
+  - Branch 切換
+  - Stash 管理
+  - （Tour 完工後再討論細節）
+- [ ] File tree UX:
+  - 展開狀態記憶、focus 到當前檔案、一鍵收合
+- [ ] Tab bar 整合: Chat + Review → "Copilot"
+- [ ] CodeTour markdown render + 狀態保留
+- [ ] Application-level heartbeat
+- [ ] PWA standalone 問題（加分不急）
 - [ ] File tree lazy load
 - [ ] 離線瀏覽已 cache 的檔案（local path）
 
 **User Notes**:
-- iCloud 私密轉送是 Safari WS 連不上的 root cause（已寫入 README）
+- iCloud 私密轉送是 Safari WS 連不上的 root cause
 - PWA 是加分不急，瀏覽器版先做好
 - File tree 狀態管理是下個重點
+- User 問：chat session 是否要讓 extension 存自己的 local file session？目前 session 只存在 frontend IndexedDB cache，extension 端無持久化。如果要做 Desktop Copilot Chat session 延續（讀 .jsonl），是另一個 feature。
 
 ## 2026-03-21 14:37 — MVP v1 merged to main, SHIP/AUDIT/BANK complete
 
