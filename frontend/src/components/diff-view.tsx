@@ -83,7 +83,6 @@ function DiffLine({ change }: { change: DiffChange }) {
           fontFamily: "'JetBrains Mono', monospace",
           lineHeight: '20px',
           whiteSpace: 'pre',
-          overflowX: 'auto',
         }}
       >
         {change.content}
