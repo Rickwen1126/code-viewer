@@ -121,13 +121,27 @@ export function activate(context: vscode.ExtensionContext) {
   const gitWatcherDisposables = startGitWatchers(sendEvent)
   context.subscriptions.push(...gitWatcherDisposables)
 
-  // Only auto-connect when launched via CLI (CODE_VIEWER_AUTOCONNECT=1)
-  // Otherwise stay silent — user can manually connect via Command Palette
-  if (process.env.CODE_VIEWER_AUTOCONNECT === '1') {
-    const backendUrl = process.env.CODE_VIEWER_BACKEND_URL
-      ?? vscode.workspace.getConfiguration('codeViewer').get<string>('backendUrl', 'ws://localhost:4800')
-    wsClient.connect(backendUrl, extensionId, displayName)
-  }
+  // Auto-connect: probe backend health endpoint first.
+  // If backend is running → connect. If not → stay silent (zero interference).
+  const backendUrl = process.env.CODE_VIEWER_BACKEND_URL
+    ?? vscode.workspace.getConfiguration('codeViewer').get<string>('backendUrl', 'ws://localhost:4800')
+  // Parse WS URL to get host/port for health probe
+  const urlMatch = backendUrl.match(/^wss?:\/\/([^:/]+)(?::(\d+))?/)
+  const probeHost = urlMatch?.[1] ?? 'localhost'
+  const probePort = parseInt(urlMatch?.[2] ?? '4800')
+
+  // Non-blocking probe using http (fetch may not exist in all Extension Hosts)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const http = require('http') as typeof import('http')
+  const req = http.get({ host: probeHost, port: probePort, path: '/health', timeout: 3000 }, (res) => {
+    if (res.statusCode === 200) {
+      console.log('[CodeViewer] Backend detected — auto-connecting')
+      wsClient!.connect(backendUrl, extensionId, displayName)
+    }
+    res.resume() // consume response
+  })
+  req.on('error', () => { /* Backend not running — stay silent */ })
+  req.on('timeout', () => { req.destroy() })
 }
 
 export function deactivate() {
