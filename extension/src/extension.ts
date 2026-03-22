@@ -58,13 +58,28 @@ export function setupMessageRouting(client: WsClient): void {
   client.onMessage((message) => {
     // Handle connection.welcome → send workspace.register
     if (message.type === 'connection.welcome') {
-      const workspace = {
-        name: vscode.workspace.workspaceFolders?.[0]?.name ?? 'Unknown',
-        rootPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
-        gitBranch: null as string | null,
-        vscodeVersion: vscode.version,
+      const sendRegister = () => {
+        const ws = {
+          name: vscode.workspace.workspaceFolders?.[0]?.name ?? 'Unknown',
+          rootPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
+          gitBranch: null as string | null,
+          vscodeVersion: vscode.version,
+        }
+        client.send(createMessage('workspace.register', ws))
       }
-      client.send(createMessage('workspace.register', workspace))
+
+      // workspaceFolders may not be ready yet — wait if empty
+      if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+        sendRegister()
+      } else {
+        // Wait for workspace folder to become available, then register
+        const disposable = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+          disposable.dispose()
+          sendRegister()
+        })
+        // Fallback: register with Unknown after 3s if no folder appears
+        setTimeout(() => { disposable.dispose(); sendRegister() }, 3000)
+      }
       return
     }
 

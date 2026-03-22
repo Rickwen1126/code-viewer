@@ -1,3 +1,45 @@
+## 2026-03-22 08:01 — Deployment strategy discussion
+
+**Done**: Push 62 commits to main.
+
+**Decisions**:
+- MVP deployment: Option 2 — Docker (backend+frontend) + test-electron --real CLI
+  - 一鍵指令：`npx code-viewer start /path/to/repo`
+  - 不需要 Copilot（用 chatpilot 替代）
+  - test-electron --real 用使用者的 VS Code + extensions
+- Option 3 (全 Docker) 不適合 MVP — VS Code Electron 需要 X11/xvfb，太脆弱
+- Option 1 (extension marketplace) 是長期正途，MVP 先不做
+- Multi-workspace（multi-root）改動中等，MVP 先不做，每 repo 一個 VS Code 夠用
+
+**Done** (deployment segment):
+- Dockerfile (multi-stage: backend+frontend in one image)
+- docker-compose.yml (ports 4800+4801)
+- CLI package (@code-viewer/cli): start/stop/status
+- Extension: setting-driven connection (`codeViewer.enabled` in workspace settings)
+  - default false → 零干擾；true → 自動連線
+  - onDidChangeConfiguration 即時生效，不需 reload
+- esbuild bundle for VSIX (ws dependency bundled, 158KB)
+- VSIX install + setting-driven connection 驗證通過
+- 踩坑記錄寫入 CLAUDE.md (code CLI env vars, extensionDevelopmentPath, esbuild, Mac 權限)
+
+**Decisions** (deployment):
+- MVP 走 Option 2: Docker (backend+frontend) + VSIX extension + `code` CLI
+- Extension 不用 health probe / env var / periodic polling → 用 workspace setting 控制
+- esbuild bundle 取代 tsc-only（pnpm monorepo 跟 vsce 不相容）
+- `code --extensionDevelopmentPath` 棄用 → VSIX 安裝（避免 folder 丟失 + 單實例限制）
+
+**State**: main branch, commit `67af769`. VSIX 安裝驗證通過。Workspace name 顯示 "Unknown" 待修。
+
+**Next**:
+- [ ] 修 workspace name "Unknown"（esbuild bundle 後 workspaceFolders getter 問題）
+- [ ] 多 repo 測試（chatpilot + notebooklm-controller + code-viewer 同時連線）
+- [ ] Docker build 測試
+- [ ] CodeTour Record + Edit
+- [ ] chatpilot 接入
+
+**User Notes**:
+- 後修 Unknown workspace name 問題
+
 ## 2026-03-22 01:17 — Production features: search, git history, file tree UX
 
 **Goal**: Production-ready features — file search, git commit history, file tree state management
@@ -23,7 +65,13 @@
 - Git commit diff 用 child_process execSync `git diff commit~1 commit -- path`
 - Workspace dedup by rootPath > extensionId (PID changes on restart)
 
-**State**: main branch, commit `ba82393`. 42 commits today. 166 tests pass.
+**Done** (final segment):
+- README rewritten: features, quick start, architecture
+- Diff view: whole-block scroll + full-width background colors
+- Workspace click: removed silent guard, catch refreshes list on stale ID
+- gitignore: experiments/, .cython-index.json
+
+**State**: main branch, commit `6ac9a44`. 62 unpushed commits. 166 tests pass. Ready to push.
 
 **Next**:
 - [ ] CodeTour Record + Edit（大 feature，已記 spec）
@@ -144,32 +192,4 @@ Backend :4800 + Frontend :4801 running. Extension via @vscode/test-electron --re
 - File tree 狀態管理是下個重點
 - User 問：chat session 是否要讓 extension 存自己的 local file session？目前 session 只存在 frontend IndexedDB cache，extension 端無持久化。如果要做 Desktop Copilot Chat session 延續（讀 .jsonl），是另一個 feature。
 
-## 2026-03-21 14:37 — MVP v1 merged to main, SHIP/AUDIT/BANK complete
-
-**Goal**: Mobile Code Viewer MVP — 全部 User Stories 實作 + 測試 + review + 修正 + merge
-
-**Done**:
-- Phase 1-8 全部實作（66/69 tasks）+ Phase 9 T064-T067 polish
-- 166 unit tests, 8 critical security fixes, 4 AUDIT findings fixed, 3 runtime bugs fixed
-- AUDIT v1 + 8 Exit Questions 走完
-- BANK v1 + 4 心智模型 + 3 runtime findings
-- Spec/plan 比對完成，baseline 存為 `specs/spec-mvp.md` + `specs/plan-mvp.md`
-- Branch `002-mobile-viewer` merged to main: `a07caf5`
-- BANK prompt 改版：存 `.bank/` 進 git，加心智模型 + runtime findings
-
-**Decisions**:
-- Path traversal 用 B 方案（允許 workspace 內 + VS Code open docs）
-- Backend relay 長期應升級為 session broker — 超出 MVP
-- Copilot Chat `.jsonl` 讀取技術可行（spike 驗證），留到後續 feature
-- `@vscode/test-electron` 做 Extension E2E
-
-**State**: main branch, commit `a07caf5`. 166 tests, typecheck clean.
-Worktree `.worktrees/002-mvp-v2` 可清理或保留。
-
-**Next**:
-- [ ] T068 Performance audit（Shiki bundle size, 大檔案壓測）
-- [ ] T069 Quickstart.md end-to-end 驗證
-- [ ] T070 E2E with `@vscode/test-electron`
-- [ ] Copilot Chat session 歷史讀取（`.jsonl` parser）
-- [ ] 15 個 code review suggestions
-- [ ] Skeleton loading + showLineNumbers
+<!-- Archived: mvp-merged-20260321-1437.md -->
