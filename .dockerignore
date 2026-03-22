@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.worktrees
+.vscode-test
+.vscode
+experiments
+*.png
+*.log

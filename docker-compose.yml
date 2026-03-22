@@ -1,0 +1,12 @@
+services:
+  code-viewer:
+    build: .
+    ports:
+      - "4800:4800"  # Backend WS relay
+      - "4801:4801"  # Frontend Web UI
+    environment:
+      - PORT=4800
+      - HOST=0.0.0.0
+      # Optional: set CODE_VIEWER_SECRET for WS auth
+      # - CODE_VIEWER_SECRET=your-secret
+    restart: unless-stopped

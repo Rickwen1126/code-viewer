@@ -1,5 +1,6 @@
 packages:
   - packages/shared
+  - packages/cli
   - backend
   - frontend
   - extension
