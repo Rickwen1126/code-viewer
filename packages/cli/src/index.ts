@@ -2,7 +2,7 @@
 
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { spawn, execSync, type ChildProcess } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import { existsSync } from 'fs'
 import { networkInterfaces } from 'os'
 
@@ -83,47 +83,36 @@ async function start(workspacePath: string) {
     })
   }
 
-  // 4. Launch VS Code with extension
+  // 4. Launch VS Code with extension via `code` CLI
   console.log('Launching VS Code with extension...')
   const extensionPath = resolve(projectRoot, 'extension')
-  const smokePath = resolve(projectRoot, 'tests/e2e/extension-smoke.cjs')
-
-  const vscodePath = process.platform === 'darwin'
-    ? '/Applications/Visual Studio Code.app/Contents/MacOS/Electron'
-    : process.platform === 'win32'
-      ? resolve(process.env.LOCALAPPDATA ?? '', 'Programs/Microsoft VS Code/Code.exe')
-      : '/usr/bin/code'
-
-  if (!existsSync(vscodePath)) {
-    console.error(`Error: VS Code not found at ${vscodePath}`)
-    console.error('Please install VS Code or set VSCODE_PATH environment variable.')
-    process.exit(1)
-  }
-
-  const userExtensionsDir = process.platform === 'darwin'
-    ? resolve(process.env.HOME ?? '', '.vscode/extensions')
-    : process.platform === 'win32'
-      ? resolve(process.env.USERPROFILE ?? '', '.vscode/extensions')
-      : resolve(process.env.HOME ?? '', '.vscode/extensions')
-
-  const { runTests } = await import('@vscode/test-electron')
 
   const lanIp = getLanIp()
   printBanner(absPath, lanIp)
 
+  // Use `code` CLI — supports multiple instances (unlike test-electron)
+  const codeCmd = process.platform === 'win32' ? 'code.cmd' : 'code'
   try {
-    await runTests({
-      vscodeExecutablePath: process.env.VSCODE_PATH ?? vscodePath,
-      extensionDevelopmentPath: extensionPath,
-      extensionTestsPath: smokePath,
-      launchArgs: [
-        absPath,
-        `--extensions-dir=${userExtensionsDir}`,
-      ],
-    })
-    console.log('VS Code exited.')
+    spawn(codeCmd, [
+      `--extensionDevelopmentPath=${extensionPath}`,
+      absPath,
+    ], {
+      stdio: 'ignore',
+      detached: true,
+      env: {
+        ...process.env,
+        CODE_VIEWER_AUTOCONNECT: '1',
+        CODE_VIEWER_BACKEND_URL: `ws://localhost:4800`,
+      },
+    }).unref()
+
+    console.log('  VS Code window opened. Extension will auto-connect.')
+    console.log('  Close the VS Code window to disconnect this workspace.')
+    console.log('')
   } catch (err) {
-    console.error('VS Code launch failed:', err)
+    console.error('Failed to launch VS Code:', err)
+    console.error('Make sure `code` CLI is in your PATH.')
+    console.error('VS Code → Cmd+Shift+P → "Shell Command: Install \'code\' command in PATH"')
     process.exit(1)
   }
 }

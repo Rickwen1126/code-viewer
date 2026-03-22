@@ -59,21 +59,44 @@ Desktop VS Code (Extension)  ─WS─  Backend (Hono relay :4800)  ─WS─  Mob
 
 ## Quick Start
 
+### Option A: CLI (recommended)
+
+```bash
+# Prerequisites: Docker, VS Code, `code` in PATH
+npm install -g @code-viewer/cli
+
+# Start (launches Docker + opens VS Code with extension)
+code-viewer start ~/code/my-project
+
+# Multiple repos simultaneously
+code-viewer start ~/code/another-project
+
+# Stop
+code-viewer stop
+```
+
+### Option B: Development mode
+
 ```bash
 # Prerequisites: Node.js >= 20, pnpm 9.x, VS Code >= 1.100
-
-# 1. Install
 pnpm install
 
-# 2. Start backend + frontend
+# Start backend + frontend
 pnpm --filter @code-viewer/backend dev    # → :4800
 pnpm --filter @code-viewer/frontend dev   # → :4801
 
-# 3. Extension: VS Code F5 → "Run Extension"
-#    Or: node tests/e2e/launch-extension.mjs --real
+# Extension: VS Code F5 → "Run Extension"
+# Or: node tests/e2e/launch-extension.mjs --real
 
-# 4. Open http://localhost:4801 (or LAN IP on phone)
+# Open http://localhost:4801 (or LAN IP on phone)
 ```
+
+### Extension Behavior
+
+- Extension does NOT auto-connect — stays silent until activated
+- CLI sets `CODE_VIEWER_AUTOCONNECT=1` to trigger auto-connect
+- Manual connect: Cmd+Shift+P → "Code Viewer: Connect to Backend"
+- Backend URL: `CODE_VIEWER_BACKEND_URL` env > VS Code setting > `ws://localhost:4800`
 
 ## Known Issues
 

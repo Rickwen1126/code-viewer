@@ -63,6 +63,33 @@ npx playwright test tests/e2e/
 - Playwright E2E 測試必須用 iPhone viewport (390x844) 執行
 - 這是 mobile-first 產品，所有 UI 行為以手機尺寸為準
 
+## Extension Behavior
+
+- Extension **不自動連線** — 只在 `CODE_VIEWER_AUTOCONNECT=1` 環境變數時才自動連
+- 平常使用者安裝了 extension 但沒開 backend → 零干擾，不噴 log
+- CLI 啟動時自動設定 `CODE_VIEWER_AUTOCONNECT=1` + `CODE_VIEWER_BACKEND_URL`
+- 手動連線：Command Palette → "Code Viewer: Connect to Backend"
+- Backend URL 優先順序：`CODE_VIEWER_BACKEND_URL` env > VS Code setting > default `ws://localhost:4800`
+
+## Deployment (CLI)
+
+```bash
+# 安裝
+npm install -g @code-viewer/cli
+
+# 啟動（Docker + VS Code）
+code-viewer start ~/code/my-project    # 自動 docker compose up + 開 VS Code
+
+# 多 repo 同時開
+code-viewer start ~/code/project-a
+code-viewer start ~/code/project-b     # 用 `code` CLI，無單實例限制
+
+# 停止
+code-viewer stop                       # docker compose down
+```
+
+**注意**：`code` CLI 需要在 PATH 裡。VS Code → Cmd+Shift+P → "Shell Command: Install 'code' command in PATH"
+
 ## Operational Notes
 
 - **CWD 問題**: 在 `extension/` 下跑 `tsc` build 後，Bash CWD 會留在 `extension/`。後續指令（如 `node tests/e2e/launch-extension.mjs`）必須加 `cd /Users/rickwen/code/code-viewer &&` 確保從 project root 執行。
