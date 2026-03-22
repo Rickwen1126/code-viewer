@@ -30,15 +30,66 @@
 
 **State**: main branch, commit `67af769`. VSIX 安裝驗證通過。Workspace name 顯示 "Unknown" 待修。
 
-**Next**:
-- [ ] 修 workspace name "Unknown"（esbuild bundle 後 workspaceFolders getter 問題）
-- [ ] 多 repo 測試（chatpilot + notebooklm-controller + code-viewer 同時連線）
-- [ ] Docker build 測試
-- [ ] CodeTour Record + Edit
+**Done** (final segment):
+- Fixed workspace name "Unknown"（wait for onDidChangeWorkspaceFolders）
+- esbuild bundle for VSIX（ws dependency, 158KB single file）
+- Setting-driven connection 驗證通過（codeViewer.enabled in workspace settings）
+- Multi-repo E2E 全部通過（chatpilot + notebooklm-controller + code-viewer 同時連線）
+- E2E checklist 8 項寫入 CLAUDE.md
+- 開發 vs 部署兩條路文檔化
+
+**State**: main branch, commit `36b28bc`. Pushed. Multi-repo verified. 166 tests pass.
+
+**Next — CodeTour Record + Edit feature（大改）**:
+
+1. **Tour Record 模式**
+   - Code view 加 "+" 按鈕 → 填 tour name → 進入 record 模式
+   - Auto commit tracking（記錄當前 commit hash）
+   - Record 狀態用 browser local state 保存（斷線不丟失）
+
+2. **行號互動**
+   - Record 模式下行號可點擊 → popup 輸入視窗
+   - 固定 markdown 格式：`## 標題` + 內文，一組一組
+   - 可無限加多組（同一個 step 多段描述）
+
+3. **Record 結束**
+   - Header 加 "Tour Record Done" action button
+   - 點擊 → confirm dialog → 離開 record 模式
+   - 沒離開就一直維持 record（跨頁面、跨檔案）
+
+4. **Tour preview**
+   - Record 中可切到 Tour tab 即時預覽
+   - 顯示已錄的所有 steps
+
+5. **Tour 編輯模式**
+   - 每個 tour item 可 "append" 新項目（同 record 格式）
+   - 不提供編輯已儲存的資料
+   - 不提供 re-order nodes
+
+6. **Commit-aware 觀看**
+   - 觀看 tour 時如果 commit 不對應 → 提示是否切 commit
+   - 點「是」→ stash → checkout 對應 commit
+   - 看完最後一步 → 恢復原 commit + stash pop
+
+7. **Extension 端**
+   - 新增 `tour.create` / `tour.addStep` / `tour.finalize` handlers
+   - 讀寫 `.tours/*.tour` 檔案（CodeTour 標準格式）
+   - Git stash/checkout/pop 操作
+
+8. **Frontend 端**
+   - CodeViewerPage: record 模式 UI（行號點擊、input popup）
+   - TourListPage: 編輯模式入口
+   - TourDetailPage: append 功能、commit-aware 觀看
+   - 全域 record state（Context 或 localStorage）
+
+**Other Next**:
 - [ ] chatpilot 接入
+- [ ] Application-level heartbeat
+- [ ] Docker build 完整測試
 
 **User Notes**:
-- 後修 Unknown workspace name 問題
+- 下一步是討論 CodeTour 大改 feature，先列出所有要做的再開始
+- CodeTour 是作為 AI context 的生產工具（建 tour → 給 AI 讀）
 
 ## 2026-03-22 01:17 — Production features: search, git history, file tree UX
 
