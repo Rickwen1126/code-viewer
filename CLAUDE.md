@@ -29,6 +29,69 @@ pnpm -w run test                 # run 166 unit tests (vitest)
 pnpm -r build                   # build all packages
 ```
 
+## 兩條路：開發 vs 部署使用
+
+### Path A: 開發模式（改 code-viewer 本身）
+
+```bash
+# 1. 安裝依賴
+pnpm install
+
+# 2. 啟動 3 個服務
+pnpm --filter @code-viewer/backend dev      # Terminal 1 → :4800
+pnpm --filter @code-viewer/frontend dev     # Terminal 2 → :4801
+# Terminal 3: VS Code F5 → "Run Extension"（或用 test-electron）
+
+# 3. 改 extension 後
+cd extension && pnpm build                  # tsc + esbuild bundle
+# VS Code 裡 Cmd+Shift+P → "Developer: Reload Window"
+
+# 4. 測試
+pnpm -w run test                            # 166 unit tests
+# Playwright: 用 MCP 或 npx playwright test
+```
+
+### Path B: 部署使用（用 code-viewer 看其他 repo）
+
+```bash
+# 前置（一次性）
+cd extension && pnpm build && vsce package --no-dependencies
+code --install-extension code-viewer-extension-0.0.1.vsix
+
+# 啟動服務
+docker compose up -d                       # backend:4800 + frontend:4801
+# 或 dev mode:
+pnpm --filter @code-viewer/backend dev &
+pnpm --filter @code-viewer/frontend dev &
+
+# 開 repo（可同時開多個）
+# 方法 1: CLI 自動寫 setting + 開 VS Code
+code-viewer start ~/code/my-project
+
+# 方法 2: 手動
+mkdir -p ~/code/my-project/.vscode
+echo '{"codeViewer.enabled":true}' > ~/code/my-project/.vscode/settings.json
+code ~/code/my-project
+
+# 手機瀏覽
+# 開 http://<LAN-IP>:4801
+
+# 停止
+docker compose down
+# 或 code-viewer stop
+```
+
+### 兩條路的差異
+
+| | 開發模式 | 部署使用 |
+|---|---------|---------|
+| 改誰的 code | code-viewer 本身 | 不改，只看其他 repo |
+| Extension 載入 | F5 / test-electron | VSIX 安裝 |
+| Backend | `pnpm dev`（tsx watch） | Docker 或 `pnpm dev` |
+| Frontend | Vite dev server（HMR） | Docker 或 Vite |
+| 多 repo | 通常只開 code-viewer | 同時開多個 workspace |
+| Setting | `codeViewer.backendUrl` 在 user settings | `codeViewer.enabled` 在 workspace settings |
+
 ## Dev Startup (3 terminals)
 
 ```bash
