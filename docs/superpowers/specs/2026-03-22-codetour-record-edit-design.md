@@ -105,10 +105,10 @@ export type ErrorCode =
 **Behavior**:
 1. Check no other tour has `status: "recording"` -> error `RECORDING_EXISTS` if found (include tourId of active recording)
 2. Ensure `.tours/` directory exists (create if missing)
-3. Slug title: lowercase, spaces to hyphens, strip to `[a-z0-9-]`, collapse consecutive hyphens, trim leading/trailing hyphens, truncate to 50 characters, error `INVALID_REQUEST` if result is empty
+3. Slug title: (a) lowercase (b) replace spaces with hyphens (c) strip to `[a-z0-9-]` (d) collapse consecutive hyphens (e) trim leading/trailing hyphens (f) truncate to 50 chars → error `INVALID_REQUEST` if result is empty
 4. Check file doesn't already exist -> error `TOUR_EXISTS`
-5. If `ref` not provided, get current branch via `git branch --show-current`
-6. Write `.tours/{slug}.tour`:
+5. If `ref` not provided, get current branch via VS Code Git API `repo.state.HEAD?.name` (not shell command)
+6. Write `.tours/{slug}.tour` with `JSON.stringify(data, null, 2)`:
 ```json
 {
   "$schema": "https://aka.ms/codetour-schema",
@@ -147,10 +147,11 @@ export type ErrorCode =
 ```
 
 **Behavior**:
-1. Verify tour `status === "recording"` -> error `NOT_RECORDING` if not
-2. Validate file path using `validatePath()` from `extension/src/utils/validate-path.ts` (prevents directory traversal)
-3. If `index` provided, splice at position; otherwise push to end
-4. Immediately rewrite `.tour` file to disk
+1. Load tour file -> error `NOT_FOUND` if tourId invalid
+2. Verify tour `status === "recording"` -> error `NOT_RECORDING` if not
+3. Validate file path using `validatePath()` from `extension/src/utils/validate-path.ts` (prevents directory traversal)
+4. If `index` provided and in bounds, splice at position; if out of bounds, silently append (matches JS splice behavior). Omit = append to end
+5. Immediately rewrite `.tour` file with `JSON.stringify(data, null, 2)`
 
 ### `tour.deleteStep`
 
@@ -171,9 +172,10 @@ export type ErrorCode =
 ```
 
 **Behavior**:
-1. Verify tour `status === "recording"` -> error `NOT_RECORDING`
-2. Validate `stepIndex` in bounds -> error `INDEX_OUT_OF_BOUNDS`
-3. Splice step out, rewrite file
+1. Load tour file -> error `NOT_FOUND` if tourId invalid
+2. Verify tour `status === "recording"` -> error `NOT_RECORDING`
+3. Validate `stepIndex` in bounds -> error `INDEX_OUT_OF_BOUNDS`
+4. Splice step out, rewrite file with `JSON.stringify(data, null, 2)`
 
 ### `tour.finalize`
 
@@ -189,9 +191,10 @@ export type ErrorCode =
 ```
 
 **Behavior**:
-1. Verify tour `status === "recording"` -> error `NOT_RECORDING` if tour has no `status` field (covers both "never recorded" and "already finalized" — frontend shows appropriate toast based on this single code)
-2. Remove `status` field from tour JSON
-3. Rewrite file
+1. Load tour file -> error `NOT_FOUND` if tourId invalid
+2. Verify tour `status === "recording"` -> error `NOT_RECORDING` if tour has no `status` field (covers both "never recorded" and "already finalized" — frontend shows appropriate toast based on this single code)
+3. Remove `status` field from tour JSON
+4. Rewrite file with `JSON.stringify(data, null, 2)`
 
 ### `tour.delete`
 
@@ -252,7 +255,7 @@ export type ErrorCode =
     description?: string
     stepCount: number
     ref?: string       // NEW: branch name or commit hash
-    status?: string    // NEW: "recording" if active recording
+    status?: "recording"  // NEW: present only during active recording
   }>
 }
 ```
@@ -381,8 +384,16 @@ export interface TourFinalizePayload {
   tourId: string
 }
 
+export interface TourFinalizeResultPayload {
+  ok: true
+}
+
 export interface TourDeletePayload {
   tourId: string
+}
+
+export interface TourDeleteResultPayload {
+  ok: true
 }
 
 export interface TourGetFileAtRefPayload {
