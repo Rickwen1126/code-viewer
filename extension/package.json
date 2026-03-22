@@ -42,7 +42,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",
     "package": "vsce package --no-dependencies"

@@ -65,24 +65,31 @@ npx playwright test tests/e2e/
 
 ## Extension Behavior
 
-- Extension **不自動連線** — 只在 `CODE_VIEWER_AUTOCONNECT=1` 環境變數時才自動連
-- 平常使用者安裝了 extension 但沒開 backend → 零干擾，不噴 log
-- CLI 啟動時自動設定 `CODE_VIEWER_AUTOCONNECT=1` + `CODE_VIEWER_BACKEND_URL`
-- 手動連線：Command Palette → "Code Viewer: Connect to Backend"
-- Backend URL 優先順序：`CODE_VIEWER_BACKEND_URL` env > VS Code setting > default `ws://localhost:4800`
+- Extension 由 workspace setting `codeViewer.enabled` 控制（default: `false`）
+- `enabled: false` → 完全靜默，不連線、不噴 log、零干擾
+- `enabled: true` → 自動連線 `codeViewer.backendUrl`（default: `ws://localhost:4800`）
+- Setting 變更即時生效（`onDidChangeConfiguration`），不需要 reload VS Code
+- CLI 自動寫入 `.vscode/settings.json`：`{ "codeViewer.enabled": true }`
+- 手動連線：Command Palette → "Code Viewer: Connect to Backend"（不受 setting 限制）
+- Setting 是 workspace 層級（`.vscode/settings.json`），不影響其他專案
 
 ## Deployment (CLI)
 
 ```bash
-# 安裝
-npm install -g @code-viewer/cli
+# 前置：安裝 extension（一次性）
+cd extension && npx vsce package --no-dependencies
+code --install-extension code-viewer-0.0.1.vsix
 
-# 啟動（Docker + VS Code）
-code-viewer start ~/code/my-project    # 自動 docker compose up + 開 VS Code
+# 啟動
+code-viewer start ~/code/my-project
+# 做了什麼：
+# 1. docker compose up -d (backend:4800 + frontend:4801)
+# 2. 寫入 .vscode/settings.json: { "codeViewer.enabled": true }
+# 3. code ~/code/my-project
 
-# 多 repo 同時開
+# 多 repo
 code-viewer start ~/code/project-a
-code-viewer start ~/code/project-b     # 用 `code` CLI，無單實例限制
+code-viewer start ~/code/project-b     # 每個 workspace 獨立 setting
 
 # 停止
 code-viewer stop                       # docker compose down
@@ -93,17 +100,16 @@ code-viewer stop                       # docker compose down
 ## Operational Notes
 
 - **CWD 問題**: 在 `extension/` 下跑 `tsc` build 後，Bash CWD 會留在 `extension/`。後續指令（如 `node tests/e2e/launch-extension.mjs`）必須加 `cd /Users/rickwen/code/code-viewer &&` 確保從 project root 執行。
-- **Extension build**: 改動 extension 後必須 `cd extension && node_modules/.bin/tsc` rebuild，再重啟 VS Code test instance。
+- **Extension build**: 改動 extension 後必須 `cd extension && pnpm build` rebuild（tsc + esbuild bundle）。
+- **Extension VSIX 打包**: 必須用 esbuild bundle（`--bundle --external:vscode`）才能包含 `ws` 等 runtime dependencies。pnpm monorepo 跟 `vsce package`（不加 `--no-dependencies`）不相容。打包指令：`cd extension && vsce package --no-dependencies`。
 - **Backend restart**: 改動 `backend/src/ws/handler.ts` 等 backend 檔案後，需重啟 backend（`tsx watch` 會自動 reload，但有時需手動 stop/start）。
 - **Frontend HMR**: 改動 frontend 後 Vite HMR 自動更新，但跨 Tailscale 的手機可能收不到 HMR，需手動刷新。
 - **Safari iCloud 私密轉送**: 必須關閉，否則 WebSocket 連線會失敗。詳見 README Known Issues。
 - **舊 port 殘留**: 確認沒有舊的 Vite dev server 跑在 5847/5848（`lsof -i :5847` 檢查，`kill` 清掉）。
-- **`code` CLI 環境變數不傳遞**: `code` CLI 開新視窗時，env vars 不會傳到 VS Code process（走 IPC 給已在跑的實例）。所以 extension 用 http health probe 偵測 backend，不靠環境變數。
-- **`code --extensionDevelopmentPath` 要用絕對路徑**: 相對路徑可能不被解析。
-- **Extension Development Host 的 `workspaceFolders` 延遲載入**: activation 時可能為空。用 getter function 延遲取得。
-- **`code` CLI 多實例**: 需要先 `pkill` 舊的 VS Code 才能確保新 extension build 被載入。VS Code 不會自動 reload extension code。
+- **`code` CLI 環境變數不傳遞**: `code` CLI 開新視窗時，env vars 不會傳到 VS Code process（走 IPC 給已在跑的實例）。所以改用 workspace setting 控制連線。
+- **`code --extensionDevelopmentPath` folder 會被丟棄**: 如果 VS Code 已在跑，Extension Dev Host 可能開空視窗（folder 被 `findWindowOnWorkspaceOrFolder` 過濾掉）。改用 VSIX 安裝 + 正常開 VS Code。
 - **Mac 權限**: 首次用 `code` CLI 從 terminal 開 VS Code 可能被 macOS 安全性攔截，需手動授權。
-- **`fetch` 不保證在 Extension Host 可用**: 用 `require('http').get` 取代 `fetch` 做 health probe。
+- **`fetch` 不保證在 Extension Host 可用**: 如需 HTTP 呼叫用 `require('http').get`。
 
 ## Code Style
 

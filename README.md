@@ -93,10 +93,13 @@ pnpm --filter @code-viewer/frontend dev   # → :4801
 
 ### Extension Behavior
 
-- Extension does NOT auto-connect — stays silent until activated
-- CLI sets `CODE_VIEWER_AUTOCONNECT=1` to trigger auto-connect
-- Manual connect: Cmd+Shift+P → "Code Viewer: Connect to Backend"
-- Backend URL: `CODE_VIEWER_BACKEND_URL` env > VS Code setting > `ws://localhost:4800`
+- Extension 由 workspace setting 控制：`codeViewer.enabled`（default: `false`）
+- `false` → 完全靜默，零干擾
+- `true` → 自動連線 backend
+- Setting 變更即時生效，不需 reload VS Code
+- CLI 自動寫入 `.vscode/settings.json`
+- 手動：Cmd+Shift+P → "Code Viewer: Connect to Backend"
+- 關閉：Setting 改 `false` 或 Cmd+Shift+P → "Code Viewer: Disconnect"
 
 ## Known Issues
 
