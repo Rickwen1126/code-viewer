@@ -111,6 +111,23 @@ code-viewer stop                       # docker compose down
 - **Mac 權限**: 首次用 `code` CLI 從 terminal 開 VS Code 可能被 macOS 安全性攔截，需手動授權。
 - **`fetch` 不保證在 Extension Host 可用**: 如需 HTTP 呼叫用 `require('http').get`。
 
+## E2E Checklist (per workspace)
+
+每次重大改動後用 Playwright 跑完整 checklist（iPhone viewport 390x844）：
+
+| # | Test | 驗證方式 |
+|---|------|---------|
+| 1 | 選 workspace → file tree 載入 | 檔案/目錄結構正確 |
+| 2 | 開檔案 → syntax highlight + 行號 | language label + 行號連續 |
+| 3 | 返回 file tree → 展開狀態保留 | 之前展開的目錄還在 |
+| 4 | 搜尋功能 | 輸入關鍵字 → 結果正確 |
+| 5 | Recent files | search focus → 顯示最近開過的檔案 |
+| 6 | Git → branch + changed files | branch name + staged/unstaged 分組 |
+| 7 | Git → commit history 展開 | 點 commit → file list → 點 file → diff |
+| 8 | Workspace 切換 → 資料正確切換 | 不同 repo 的檔案/branch/commits 完全獨立 |
+
+多 repo 測試須至少 2 個不同 workspace 驗證 #8。
+
 ## Code Style
 
 TypeScript 5.x across all 3 packages. Follow existing conventions.
