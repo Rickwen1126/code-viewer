@@ -70,12 +70,12 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'INVALID_REQUEST'
   // Tour domain (new)
-  | 'RECORDING_EXISTS'    // Another tour is already recording
-  | 'TOUR_EXISTS'         // Slug file already exists
-  | 'NOT_RECORDING'       // Tour is not in recording status
-  | 'INDEX_OUT_OF_BOUNDS' // Step index out of range
-  | 'REF_NOT_FOUND'       // Git ref does not exist
-  | 'FILE_NOT_AT_REF'     // File not found at specified git ref
+  | 'TOUR_RECORDING_EXISTS'    // Another tour is already recording
+  | 'TOUR_SLUG_EXISTS'         // Slug file already exists
+  | 'TOUR_NOT_RECORDING'       // Tour is not in recording status
+  | 'TOUR_STEP_OUT_OF_BOUNDS'  // Step index out of range
+  | 'TOUR_REF_NOT_FOUND'       // Git ref does not exist
+  | 'TOUR_FILE_NOT_AT_REF'     // File not found at specified git ref
 ```
 
 ---
@@ -103,10 +103,10 @@ export type ErrorCode =
 ```
 
 **Behavior**:
-1. Check no other tour has `status: "recording"` -> error `RECORDING_EXISTS` if found (include tourId of active recording)
+1. Check no other tour has `status: "recording"` -> error `TOUR_RECORDING_EXISTS` if found (include tourId of active recording)
 2. Ensure `.tours/` directory exists (create if missing)
 3. Slug title: (a) lowercase (b) replace spaces with hyphens (c) strip to `[a-z0-9-]` (d) collapse consecutive hyphens (e) trim leading/trailing hyphens (f) truncate to 50 chars → error `INVALID_REQUEST` if result is empty
-4. Check file doesn't already exist -> error `TOUR_EXISTS`
+4. Check file doesn't already exist -> error `TOUR_SLUG_EXISTS`
 5. If `ref` not provided, get current branch via VS Code Git API `repo.state.HEAD?.name` (not shell command)
 6. Write `.tours/{slug}.tour` with `JSON.stringify(data, null, 2)`:
 ```json
@@ -148,7 +148,7 @@ export type ErrorCode =
 
 **Behavior**:
 1. Load tour file -> error `NOT_FOUND` if tourId invalid
-2. Verify tour `status === "recording"` -> error `NOT_RECORDING` if not
+2. Verify tour `status === "recording"` -> error `TOUR_NOT_RECORDING` if not
 3. Validate file path using `validatePath()` from `extension/src/utils/validate-path.ts` (prevents directory traversal)
 4. If `index` provided and in bounds, splice at position; if out of bounds, silently append (matches JS splice behavior). Omit = append to end
 5. Immediately rewrite `.tour` file with `JSON.stringify(data, null, 2)`
@@ -173,8 +173,8 @@ export type ErrorCode =
 
 **Behavior**:
 1. Load tour file -> error `NOT_FOUND` if tourId invalid
-2. Verify tour `status === "recording"` -> error `NOT_RECORDING`
-3. Validate `stepIndex` in bounds -> error `INDEX_OUT_OF_BOUNDS`
+2. Verify tour `status === "recording"` -> error `TOUR_NOT_RECORDING`
+3. Validate `stepIndex` in bounds -> error `TOUR_STEP_OUT_OF_BOUNDS`
 4. Splice step out, rewrite file with `JSON.stringify(data, null, 2)`
 
 ### `tour.finalize`
@@ -192,7 +192,7 @@ export type ErrorCode =
 
 **Behavior**:
 1. Load tour file -> error `NOT_FOUND` if tourId invalid
-2. Verify tour `status === "recording"` -> error `NOT_RECORDING` if tour has no `status` field (covers both "never recorded" and "already finalized" — frontend shows appropriate toast based on this single code)
+2. Verify tour `status === "recording"` -> error `TOUR_NOT_RECORDING` if tour has no `status` field (covers both "never recorded" and "already finalized" — frontend shows appropriate toast based on this single code)
 3. Remove `status` field from tour JSON
 4. Rewrite file with `JSON.stringify(data, null, 2)`
 
@@ -237,7 +237,7 @@ export type ErrorCode =
 **Behavior**:
 1. If `ref` is null/undefined -> read from working tree using `vscode.workspace.fs.readFile` (reuse file-reading logic, NOT dispatch a `file.read` message), return in `tour.getFileAtRef.result` shape
 2. If `ref` provided -> execute `git show <ref>:<path>`
-3. Ref not found -> error `REF_NOT_FOUND`; file doesn't exist at that ref -> error `FILE_NOT_AT_REF`
+3. Ref not found -> error `TOUR_REF_NOT_FOUND`; file doesn't exist at that ref -> error `TOUR_FILE_NOT_AT_REF`
 4. Determine `languageId` from file extension
 
 ---
@@ -304,12 +304,12 @@ export type ErrorCode =
 
 | Code | When | HTTP-like |
 |------|------|-----------|
-| `RECORDING_EXISTS` | `tour.create` when another tour is recording | 409 Conflict |
-| `TOUR_EXISTS` | `tour.create` when slug file already exists | 409 Conflict |
-| `NOT_RECORDING` | `addStep/deleteStep/finalize` on non-recording tour (covers both "never recorded" and "already finalized") | 400 Bad Request |
-| `INDEX_OUT_OF_BOUNDS` | `tour.deleteStep` with invalid index | 400 Bad Request |
-| `REF_NOT_FOUND` | `tour.getFileAtRef` with invalid ref | 404 Not Found |
-| `FILE_NOT_AT_REF` | `tour.getFileAtRef` file doesn't exist at that ref | 404 Not Found |
+| `TOUR_RECORDING_EXISTS` | `tour.create` when another tour is recording | 409 Conflict |
+| `TOUR_SLUG_EXISTS` | `tour.create` when slug file already exists | 409 Conflict |
+| `TOUR_NOT_RECORDING` | `addStep/deleteStep/finalize` on non-recording tour (covers both "never recorded" and "already finalized") | 400 Bad Request |
+| `TOUR_STEP_OUT_OF_BOUNDS` | `tour.deleteStep` with invalid index | 400 Bad Request |
+| `TOUR_REF_NOT_FOUND` | `tour.getFileAtRef` with invalid ref | 404 Not Found |
+| `TOUR_FILE_NOT_AT_REF` | `tour.getFileAtRef` file doesn't exist at that ref | 404 Not Found |
 | `NOT_FOUND` | Any tour operation with invalid tourId (reuses existing ErrorCode) | 404 Not Found |
 | `INVALID_REQUEST` | Empty slug after sanitization (reuses existing ErrorCode) | 400 Bad Request |
 
