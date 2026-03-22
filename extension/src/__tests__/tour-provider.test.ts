@@ -1,0 +1,331 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Hoisted mocks (must come before vi.mock calls) ─────────────────────────
+
+const { mockFs, mockWorkspaceFoldersList, mockGetWorkspaceRepo } = vi.hoisted(() => {
+  const mockFs = {
+    readDirectory: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    stat: vi.fn(),
+    createDirectory: vi.fn(),
+    delete: vi.fn(),
+  }
+
+  const mockWorkspaceFoldersList: Array<{ uri: { fsPath: string; toString: () => string } }> = [
+    { uri: { fsPath: '/workspace', toString: () => 'file:///workspace' } },
+  ]
+
+  const mockGetWorkspaceRepo = vi.fn(() => ({
+    rootUri: { fsPath: '/workspace' },
+    state: { HEAD: { name: 'main', commit: 'abc123' } },
+  }))
+
+  return { mockFs, mockWorkspaceFoldersList, mockGetWorkspaceRepo }
+})
+
+// ── vscode mock ────────────────────────────────────────────────────────────
+
+vi.mock('vscode', () => ({
+  Uri: {
+    joinPath: vi.fn((_base: any, ...segments: string[]) => {
+      const basePath = _base?.fsPath ?? ''
+      const joined = [basePath, ...segments].join('/')
+      return { fsPath: joined, toString: () => joined }
+    }),
+    file: vi.fn((p: string) => ({ fsPath: p, toString: () => p })),
+  },
+  workspace: {
+    get workspaceFolders() { return mockWorkspaceFoldersList },
+    fs: mockFs,
+  },
+  FileType: {
+    File: 1,
+    Directory: 2,
+  },
+  extensions: {
+    getExtension: vi.fn(() => ({
+      isActive: true,
+      exports: {
+        getAPI: vi.fn(() => ({
+          repositories: [
+            {
+              rootUri: { fsPath: '/workspace' },
+              state: { HEAD: { name: 'main', commit: 'abc123' } },
+            },
+          ],
+        })),
+      },
+    })),
+  },
+}))
+
+// ── ws/client mock ─────────────────────────────────────────────────────────
+
+vi.mock('../ws/client', () => ({
+  createMessage: vi.fn((type: string, payload: unknown, replyTo?: string) => ({
+    type,
+    id: 'mock-id',
+    replyTo,
+    payload,
+    timestamp: 0,
+  })),
+}))
+
+// ── git-provider mock ──────────────────────────────────────────────────────
+
+vi.mock('../providers/git-provider', () => ({
+  getWorkspaceRepo: mockGetWorkspaceRepo,
+}))
+
+// ── Import after mocks ─────────────────────────────────────────────────────
+
+import { handleTourCreate, handleTourList, handleTourGetSteps } from '../providers/tour-provider'
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function makeMsg(payload: unknown = {}): import('@code-viewer/shared').WsMessage {
+  return { type: 'tour.create', id: 'req-1', payload, timestamp: Date.now() }
+}
+
+function resetWorkspaceFolder() {
+  mockWorkspaceFoldersList.length = 0
+  mockWorkspaceFoldersList.push({
+    uri: { fsPath: '/workspace', toString: () => 'file:///workspace' },
+  })
+}
+
+// ── handleTourCreate tests ─────────────────────────────────────────────────
+
+describe('handleTourCreate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+
+    // Default: .tours doesn't exist (readDirectory throws, stat throws)
+    mockFs.readDirectory.mockRejectedValue(new Error('ENOENT'))
+    mockFs.stat.mockRejectedValue(new Error('ENOENT'))
+    mockFs.createDirectory.mockResolvedValue(undefined)
+    mockFs.writeFile.mockResolvedValue(undefined)
+
+    // Default git repo
+    mockGetWorkspaceRepo.mockReturnValue({
+      rootUri: { fsPath: '/workspace' },
+      state: { HEAD: { name: 'main', commit: 'abc123' } },
+    })
+  })
+
+  it('creates a tour file with correct slug and uses branch name as ref', async () => {
+    const send = vi.fn()
+    await handleTourCreate(makeMsg({ title: 'My Tour', ref: undefined }), send)
+
+    expect(mockFs.createDirectory).toHaveBeenCalled()
+    expect(mockFs.writeFile).toHaveBeenCalledOnce()
+
+    // Check the written URI contains the slug
+    const [writtenUri] = mockFs.writeFile.mock.calls[0]
+    expect(writtenUri.fsPath).toContain('my-tour.tour')
+
+    // Check the written content
+    const [, writtenBytes] = mockFs.writeFile.mock.calls[0]
+    const written = JSON.parse(new TextDecoder().decode(writtenBytes))
+    expect(written.title).toBe('My Tour')
+    expect(written.ref).toBe('main')
+    expect(written.status).toBe('recording')
+    expect(written.steps).toEqual([])
+    expect(written.$schema).toBe('https://aka.ms/codetour-schema')
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.create.result',
+        payload: { tourId: 'my-tour', filePath: '.tours/my-tour.tour' },
+      }),
+    )
+  })
+
+  it('uses provided ref instead of branch name', async () => {
+    const send = vi.fn()
+    await handleTourCreate(makeMsg({ title: 'Pinned Tour', ref: 'v1.0.0' }), send)
+
+    expect(mockFs.writeFile).toHaveBeenCalledOnce()
+    const [, writtenBytes] = mockFs.writeFile.mock.calls[0]
+    const written = JSON.parse(new TextDecoder().decode(writtenBytes))
+    expect(written.ref).toBe('v1.0.0')
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'tour.create.result' }),
+    )
+  })
+
+  it('rejects when another tour is already recording (TOUR_RECORDING_EXISTS)', async () => {
+    // .tours exists and has a recording tour
+    mockFs.readDirectory.mockResolvedValue([['existing.tour', 1]])
+    mockFs.readFile.mockResolvedValue(
+      new TextEncoder().encode(JSON.stringify({ title: 'Existing', status: 'recording', steps: [] })),
+    )
+
+    const send = vi.fn()
+    await handleTourCreate(makeMsg({ title: 'New Tour' }), send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.create.error',
+        payload: expect.objectContaining({ code: 'TOUR_RECORDING_EXISTS' }),
+      }),
+    )
+  })
+
+  it('rejects when slug file already exists (TOUR_SLUG_EXISTS)', async () => {
+    // .tours doesn't have a recording tour but the slug file already exists
+    mockFs.readDirectory.mockResolvedValue([['other.tour', 1]])
+    mockFs.readFile.mockResolvedValue(
+      new TextEncoder().encode(JSON.stringify({ title: 'Other', status: 'done', steps: [] })),
+    )
+    // stat succeeds — file already exists
+    mockFs.stat.mockResolvedValue({ type: 1 })
+
+    const send = vi.fn()
+    await handleTourCreate(makeMsg({ title: 'Other' }), send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.create.error',
+        payload: expect.objectContaining({ code: 'TOUR_SLUG_EXISTS' }),
+      }),
+    )
+  })
+
+  it('rejects when no workspace is open', async () => {
+    mockWorkspaceFoldersList.length = 0
+    const send = vi.fn()
+    await handleTourCreate(makeMsg({ title: 'My Tour' }), send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.create.error',
+        payload: expect.objectContaining({ code: 'NOT_FOUND' }),
+      }),
+    )
+  })
+
+  it('rejects when title produces an empty slug', async () => {
+    const send = vi.fn()
+    // Title that slugifies to empty (only special chars)
+    await handleTourCreate(makeMsg({ title: '!!! ---' }), send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.create.error',
+        payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
+      }),
+    )
+  })
+
+  it('omits ref field when no ref provided and git repo has no HEAD name', async () => {
+    mockGetWorkspaceRepo.mockReturnValueOnce({
+      rootUri: { fsPath: '/workspace' },
+      state: { HEAD: { name: undefined, commit: 'abc123' } },
+    } as any)
+
+    const send = vi.fn()
+    await handleTourCreate(makeMsg({ title: 'No Ref Tour' }), send)
+
+    expect(mockFs.writeFile).toHaveBeenCalledOnce()
+    const [, writtenBytes] = mockFs.writeFile.mock.calls[0]
+    const written = JSON.parse(new TextDecoder().decode(writtenBytes))
+    expect(written.ref).toBeUndefined()
+  })
+})
+
+// ── handleTourList tests ───────────────────────────────────────────────────
+
+describe('handleTourList', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+  })
+
+  it('returns empty list when .tours directory does not exist', async () => {
+    mockFs.readDirectory.mockRejectedValue(new Error('ENOENT'))
+    const send = vi.fn()
+    await handleTourList(makeMsg(), send)
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'tour.list.result', payload: { tours: [] } }),
+    )
+  })
+
+  it('returns tour list with ref and status fields', async () => {
+    mockFs.readDirectory.mockResolvedValue([['my-tour.tour', 1]])
+    mockFs.readFile.mockResolvedValue(
+      new TextEncoder().encode(JSON.stringify({
+        title: 'My Tour',
+        description: 'desc',
+        ref: 'main',
+        status: 'recording',
+        steps: [{ file: 'a.ts', line: 1, description: 'step' }],
+      })),
+    )
+
+    const send = vi.fn()
+    await handleTourList(makeMsg(), send)
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.list.result',
+        payload: {
+          tours: [
+            expect.objectContaining({
+              id: 'my-tour',
+              title: 'My Tour',
+              description: 'desc',
+              stepCount: 1,
+              ref: 'main',
+              status: 'recording',
+            }),
+          ],
+        },
+      }),
+    )
+  })
+})
+
+// ── handleTourGetSteps tests ───────────────────────────────────────────────
+
+describe('handleTourGetSteps', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+  })
+
+  it('returns ref in tour metadata and selection in steps', async () => {
+    const stepSelection = { start: { line: 2, character: 0 }, end: { line: 5, character: 10 } }
+    mockFs.readFile.mockResolvedValue(
+      new TextEncoder().encode(JSON.stringify({
+        title: 'My Tour',
+        ref: 'main',
+        steps: [
+          { file: 'src/index.ts', line: 10, description: 'A step', selection: stepSelection },
+        ],
+      })),
+    )
+
+    const send = vi.fn()
+    await handleTourGetSteps({ ...makeMsg(), payload: { tourId: 'my-tour' } }, send)
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.getSteps.result',
+        payload: expect.objectContaining({
+          tour: expect.objectContaining({ ref: 'main' }),
+          steps: [
+            expect.objectContaining({ selection: stepSelection }),
+          ],
+        }),
+      }),
+    )
+  })
+})
