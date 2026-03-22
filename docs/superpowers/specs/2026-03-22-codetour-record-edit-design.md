@@ -412,6 +412,15 @@ export interface TourGetFileAtRefResultPayload {
 
 ## Implementation Scope
 
+### Reference Implementation
+
+開發實作可參考 `~/code/codetour`（原版 CodeTour VS Code extension）。核心邏輯幾乎照搬，差異見 spec 開頭 Design Principles。
+
+關鍵參考檔案：
+- `src/recorder/commands.ts` — tour 建立、addStep、save 邏輯
+- `src/store/actions.ts` — tour lifecycle（start, navigate, end）
+- `src/utils.ts` — slug 生成、git ref 處理、path validation
+
 ### In scope (Layer 1)
 - All 6 new extension handlers above
 - Updated `tour.list` and `tour.getSteps` responses
