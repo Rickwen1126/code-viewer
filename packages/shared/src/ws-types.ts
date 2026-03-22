@@ -23,6 +23,12 @@ export type ErrorCode =
   | 'TIMEOUT'
   | 'NOT_FOUND'
   | 'INVALID_REQUEST'
+  | 'TOUR_RECORDING_EXISTS'
+  | 'TOUR_SLUG_EXISTS'
+  | 'TOUR_NOT_RECORDING'
+  | 'TOUR_STEP_OUT_OF_BOUNDS'
+  | 'TOUR_REF_NOT_FOUND'
+  | 'TOUR_FILE_NOT_AT_REF'
 
 // ── Message type string literals ────────────────────────────────────
 
@@ -96,6 +102,25 @@ export const MSG_TOUR_LIST = 'tour.list' as const
 export const MSG_TOUR_LIST_RESULT = 'tour.list.result' as const
 export const MSG_TOUR_GET_STEPS = 'tour.getSteps' as const
 export const MSG_TOUR_GET_STEPS_RESULT = 'tour.getSteps.result' as const
+export const MSG_TOUR_CREATE = 'tour.create' as const
+export const MSG_TOUR_CREATE_RESULT = 'tour.create.result' as const
+export const MSG_TOUR_ADD_STEP = 'tour.addStep' as const
+export const MSG_TOUR_ADD_STEP_RESULT = 'tour.addStep.result' as const
+export const MSG_TOUR_DELETE_STEP = 'tour.deleteStep' as const
+export const MSG_TOUR_DELETE_STEP_RESULT = 'tour.deleteStep.result' as const
+export const MSG_TOUR_FINALIZE = 'tour.finalize' as const
+export const MSG_TOUR_FINALIZE_RESULT = 'tour.finalize.result' as const
+export const MSG_TOUR_DELETE = 'tour.delete' as const
+export const MSG_TOUR_DELETE_RESULT = 'tour.delete.result' as const
+export const MSG_TOUR_GET_FILE_AT_REF = 'tour.getFileAtRef' as const
+export const MSG_TOUR_GET_FILE_AT_REF_RESULT = 'tour.getFileAtRef.result' as const
+
+export const MSG_TOUR_CREATE_ERROR = 'tour.create.error' as const
+export const MSG_TOUR_ADD_STEP_ERROR = 'tour.addStep.error' as const
+export const MSG_TOUR_DELETE_STEP_ERROR = 'tour.deleteStep.error' as const
+export const MSG_TOUR_FINALIZE_ERROR = 'tour.finalize.error' as const
+export const MSG_TOUR_DELETE_ERROR = 'tour.delete.error' as const
+export const MSG_TOUR_GET_FILE_AT_REF_ERROR = 'tour.getFileAtRef.error' as const
 
 // ── Payload types per message ───────────────────────────────────────
 
@@ -341,6 +366,8 @@ export interface TourListResultPayload {
     title: string
     description?: string
     stepCount: number
+    ref?: string
+    status?: 'recording'
   }>
 }
 
@@ -353,6 +380,7 @@ export interface TourGetStepsResultPayload {
     id: string
     title: string
     description?: string
+    ref?: string
   }
   steps: Array<{
     file: string
@@ -360,5 +388,19 @@ export interface TourGetStepsResultPayload {
     endLine?: number
     title?: string
     description: string
+    selection?: { start: { line: number; character: number }; end: { line: number; character: number } }
   }>
 }
+
+export interface TourCreatePayload { title: string; ref?: string }
+export interface TourCreateResultPayload { tourId: string; filePath: string }
+export interface TourAddStepPayload { tourId: string; file: string; line: number; endLine?: number; selection?: { start: { line: number; character: number }; end: { line: number; character: number } }; title?: string; description: string; index?: number }
+export interface TourAddStepResultPayload { stepCount: number }
+export interface TourDeleteStepPayload { tourId: string; stepIndex: number }
+export interface TourDeleteStepResultPayload { stepCount: number }
+export interface TourFinalizePayload { tourId: string }
+export interface TourFinalizeResultPayload { ok: true }
+export interface TourDeletePayload { tourId: string }
+export interface TourDeleteResultPayload { ok: true }
+export interface TourGetFileAtRefPayload { ref: string | null; path: string }
+export interface TourGetFileAtRefResultPayload { content: string; languageId: string; ref: string | null }
