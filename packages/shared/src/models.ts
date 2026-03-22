@@ -27,6 +27,7 @@ export interface GitStatus {
   ahead: number
   behind: number
   changedFiles: ChangedFile[]
+  commitHash: string
 }
 
 export interface ChangedFile {
@@ -106,6 +107,8 @@ export interface CodeTour {
   description?: string
   steps: TourStep[]
   stepCount: number
+  ref?: string
+  status?: 'recording'
 }
 
 export interface TourStep {
@@ -114,6 +117,7 @@ export interface TourStep {
   endLine?: number
   title?: string
   description: string
+  selection?: { start: { line: number; character: number }; end: { line: number; character: number } }
 }
 
 // ── Connection ──────────────────────────────────────────────────────
