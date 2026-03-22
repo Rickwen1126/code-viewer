@@ -98,6 +98,12 @@ code-viewer stop                       # docker compose down
 - **Frontend HMR**: 改動 frontend 後 Vite HMR 自動更新，但跨 Tailscale 的手機可能收不到 HMR，需手動刷新。
 - **Safari iCloud 私密轉送**: 必須關閉，否則 WebSocket 連線會失敗。詳見 README Known Issues。
 - **舊 port 殘留**: 確認沒有舊的 Vite dev server 跑在 5847/5848（`lsof -i :5847` 檢查，`kill` 清掉）。
+- **`code` CLI 環境變數不傳遞**: `code` CLI 開新視窗時，env vars 不會傳到 VS Code process（走 IPC 給已在跑的實例）。所以 extension 用 http health probe 偵測 backend，不靠環境變數。
+- **`code --extensionDevelopmentPath` 要用絕對路徑**: 相對路徑可能不被解析。
+- **Extension Development Host 的 `workspaceFolders` 延遲載入**: activation 時可能為空。用 getter function 延遲取得。
+- **`code` CLI 多實例**: 需要先 `pkill` 舊的 VS Code 才能確保新 extension build 被載入。VS Code 不會自動 reload extension code。
+- **Mac 權限**: 首次用 `code` CLI 從 terminal 開 VS Code 可能被 macOS 安全性攔截，需手動授權。
+- **`fetch` 不保證在 Extension Host 可用**: 用 `require('http').get` 取代 `fetch` 做 health probe。
 
 ## Code Style
 

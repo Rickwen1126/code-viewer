@@ -92,13 +92,14 @@ export function activate(context: vscode.ExtensionContext) {
   // Generate extensionId: machineName-pid
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const extensionId = `${process.env.COMPUTERNAME ?? (require('os') as { hostname(): string }).hostname()}-${process.pid}`
-  const displayName = vscode.workspace.workspaceFolders?.[0]?.name ?? 'Unknown'
+  // Getter — workspaceFolders may not be ready at activation time (Extension Dev Host)
+  const getDisplayName = () => vscode.workspace.workspaceFolders?.[0]?.name ?? 'Unknown'
 
   // Register commands
   const connectCmd = vscode.commands.registerCommand('codeViewer.connect', () => {
     const backendUrl = process.env.CODE_VIEWER_BACKEND_URL
       ?? vscode.workspace.getConfiguration('codeViewer').get<string>('backendUrl', 'ws://localhost:4800')
-    wsClient!.connect(backendUrl, extensionId, displayName)
+    wsClient!.connect(backendUrl, extensionId, getDisplayName())
     vscode.window.showInformationMessage('Code Viewer: Connecting to backend...')
   })
 
@@ -136,7 +137,7 @@ export function activate(context: vscode.ExtensionContext) {
   const req = http.get({ host: probeHost, port: probePort, path: '/health', timeout: 3000 }, (res) => {
     if (res.statusCode === 200) {
       console.log('[CodeViewer] Backend detected — auto-connecting')
-      wsClient!.connect(backendUrl, extensionId, displayName)
+      wsClient!.connect(backendUrl, extensionId, getDisplayName())
     }
     res.resume() // consume response
   })
