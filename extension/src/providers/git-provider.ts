@@ -11,7 +11,7 @@ function getGitApi() {
 }
 
 // Get the repo matching the workspace root (not a worktree sub-repo)
-function getWorkspaceRepo() {
+export function getWorkspaceRepo() {
   const git = getGitApi()
   if (!git || git.repositories.length === 0) return null
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
