@@ -83,36 +83,47 @@ async function start(workspacePath: string) {
     })
   }
 
-  // 4. Launch VS Code with extension via `code` CLI
-  console.log('Launching VS Code with extension...')
-  const extensionPath = resolve(projectRoot, 'extension')
+  // 4. Write workspace setting to enable extension connection
+  const vscodeDir = resolve(absPath, '.vscode')
+  const settingsPath = resolve(vscodeDir, 'settings.json')
 
+  if (!existsSync(vscodeDir)) {
+    const { mkdirSync } = await import('fs')
+    mkdirSync(vscodeDir, { recursive: true })
+  }
+
+  // Read existing settings, merge codeViewer config
+  let settings: Record<string, unknown> = {}
+  if (existsSync(settingsPath)) {
+    try {
+      const { readFileSync } = await import('fs')
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+    } catch { /* start fresh */ }
+  }
+
+  settings['codeViewer.enabled'] = true
+  settings['codeViewer.backendUrl'] = 'ws://localhost:4800'
+
+  const { writeFileSync } = await import('fs')
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
+  console.log(`  ✅ Wrote .vscode/settings.json (codeViewer.enabled: true)`)
+
+  // 5. Open VS Code (normal mode, extension installed via VSIX)
   const lanIp = getLanIp()
   printBanner(absPath, lanIp)
 
-  // Use `code` CLI — supports multiple instances (unlike test-electron)
   const codeCmd = process.platform === 'win32' ? 'code.cmd' : 'code'
   try {
-    spawn(codeCmd, [
-      `--extensionDevelopmentPath=${extensionPath}`,
-      absPath,
-    ], {
+    spawn(codeCmd, [absPath], {
       stdio: 'ignore',
       detached: true,
-      env: {
-        ...process.env,
-        CODE_VIEWER_AUTOCONNECT: '1',
-        CODE_VIEWER_BACKEND_URL: `ws://localhost:4800`,
-      },
     }).unref()
 
-    console.log('  VS Code window opened. Extension will auto-connect.')
-    console.log('  Close the VS Code window to disconnect this workspace.')
+    console.log('  VS Code opened. Extension reads workspace setting → auto-connects.')
     console.log('')
   } catch (err) {
     console.error('Failed to launch VS Code:', err)
     console.error('Make sure `code` CLI is in your PATH.')
-    console.error('VS Code → Cmd+Shift+P → "Shell Command: Install \'code\' command in PATH"')
     process.exit(1)
   }
 }

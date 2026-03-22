@@ -28,6 +28,11 @@
     "configuration": {
       "title": "Code Viewer",
       "properties": {
+        "codeViewer.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Code Viewer connection to backend. Set to true in workspace settings to activate."
+        },
         "codeViewer.backendUrl": {
           "type": "string",
           "default": "ws://localhost:4800",
