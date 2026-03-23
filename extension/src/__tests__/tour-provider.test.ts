@@ -88,7 +88,7 @@ vi.mock('../utils/validate-path', () => ({
 
 // ── Import after mocks ─────────────────────────────────────────────────────
 
-import { handleTourCreate, handleTourList, handleTourGetSteps, handleTourAddStep } from '../providers/tour-provider'
+import { handleTourCreate, handleTourList, handleTourGetSteps, handleTourAddStep, handleTourDeleteStep } from '../providers/tour-provider'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -463,6 +463,103 @@ describe('handleTourAddStep', () => {
       expect.objectContaining({
         type: 'tour.addStep.error',
         payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
+      }),
+    )
+  })
+})
+
+// ── handleTourDeleteStep tests ─────────────────────────────────────────────
+
+describe('handleTourDeleteStep', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+    mockFs.writeFile.mockResolvedValue(undefined)
+  })
+
+  function makeTourJson(overrides: Record<string, any> = {}) {
+    return new TextEncoder().encode(JSON.stringify({
+      title: 'My Tour',
+      status: 'recording',
+      steps: [
+        { file: 'a.ts', line: 1, description: 'first' },
+        { file: 'b.ts', line: 2, description: 'second' },
+        { file: 'c.ts', line: 3, description: 'third' },
+      ],
+      ...overrides,
+    }))
+  }
+
+  it('deletes a step at a valid index', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson())
+    const send = vi.fn()
+    await handleTourDeleteStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', stepIndex: 1 },
+    }, send)
+
+    expect(mockFs.writeFile).toHaveBeenCalledOnce()
+    const [, writtenBytes] = mockFs.writeFile.mock.calls[0]
+    const written = JSON.parse(new TextDecoder().decode(writtenBytes))
+    expect(written.steps).toHaveLength(2)
+    expect(written.steps[0]).toMatchObject({ file: 'a.ts' })
+    expect(written.steps[1]).toMatchObject({ file: 'c.ts' })
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.deleteStep.result',
+        payload: { stepCount: 2 },
+      }),
+    )
+  })
+
+  it('rejects out of bounds step index (TOUR_STEP_OUT_OF_BOUNDS)', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson())
+    const send = vi.fn()
+    await handleTourDeleteStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', stepIndex: 10 },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.deleteStep.error',
+        payload: expect.objectContaining({ code: 'TOUR_STEP_OUT_OF_BOUNDS' }),
+      }),
+    )
+  })
+
+  it('rejects negative step index (TOUR_STEP_OUT_OF_BOUNDS)', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson())
+    const send = vi.fn()
+    await handleTourDeleteStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', stepIndex: -1 },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.deleteStep.error',
+        payload: expect.objectContaining({ code: 'TOUR_STEP_OUT_OF_BOUNDS' }),
+      }),
+    )
+  })
+
+  it('rejects when tour is not in recording mode (TOUR_NOT_RECORDING)', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson({ status: 'done' }))
+    const send = vi.fn()
+    await handleTourDeleteStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', stepIndex: 0 },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.deleteStep.error',
+        payload: expect.objectContaining({ code: 'TOUR_NOT_RECORDING' }),
       }),
     )
   })

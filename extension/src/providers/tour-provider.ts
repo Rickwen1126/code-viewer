@@ -1,5 +1,5 @@
 import * as vscode from 'vscode'
-import type { WsMessage, TourCreatePayload, TourAddStepPayload } from '@code-viewer/shared'
+import type { WsMessage, TourCreatePayload, TourAddStepPayload, TourDeleteStepPayload } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
 import { getWorkspaceRepo } from './git-provider'
 import { validatePath } from '../utils/validate-path'
@@ -217,4 +217,27 @@ export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => 
 
   await saveTourJson(vscode.Uri.joinPath(toursUri, `${payload.tourId}.tour`), tour)
   send(createMessage('tour.addStep.result', { stepCount: tour.steps.length }, msg.id))
+}
+
+// tour.deleteStep — remove a step from a recording tour
+export async function handleTourDeleteStep(msg: WsMessage, send: (m: WsMessage) => void): Promise<void> {
+  const { tourId, stepIndex } = msg.payload as TourDeleteStepPayload
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) { send(createMessage('tour.deleteStep.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
+  if (!/^[\w\-]+$/.test(tourId)) { send(createMessage('tour.deleteStep.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+
+  const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
+  let tour: any
+  try { tour = await loadTourJson(toursUri, `${tourId}.tour`) }
+  catch { send(createMessage('tour.deleteStep.error', { code: 'NOT_FOUND', message: 'Tour not found' }, msg.id)); return }
+
+  if (tour.status !== 'recording') { send(createMessage('tour.deleteStep.error', { code: 'TOUR_NOT_RECORDING', message: 'Tour is not in recording mode' }, msg.id)); return }
+
+  if (!Array.isArray(tour.steps) || stepIndex < 0 || stepIndex >= tour.steps.length) {
+    send(createMessage('tour.deleteStep.error', { code: 'TOUR_STEP_OUT_OF_BOUNDS', message: `Step index ${stepIndex} out of bounds` }, msg.id)); return
+  }
+
+  tour.steps.splice(stepIndex, 1)
+  await saveTourJson(vscode.Uri.joinPath(toursUri, `${tourId}.tour`), tour)
+  send(createMessage('tour.deleteStep.result', { stepCount: tour.steps.length }, msg.id))
 }
