@@ -1,5 +1,5 @@
 import * as vscode from 'vscode'
-import type { WsMessage, TourCreatePayload, TourAddStepPayload, TourDeleteStepPayload } from '@code-viewer/shared'
+import type { WsMessage, TourCreatePayload, TourAddStepPayload, TourDeleteStepPayload, TourFinalizePayload, TourDeletePayload } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
 import { getWorkspaceRepo } from './git-provider'
 import { validatePath } from '../utils/validate-path'
@@ -240,4 +240,38 @@ export async function handleTourDeleteStep(msg: WsMessage, send: (m: WsMessage) 
   tour.steps.splice(stepIndex, 1)
   await saveTourJson(vscode.Uri.joinPath(toursUri, `${tourId}.tour`), tour)
   send(createMessage('tour.deleteStep.result', { stepCount: tour.steps.length }, msg.id))
+}
+
+// tour.finalize — finalize a recording tour (remove status field)
+export async function handleTourFinalize(msg: WsMessage, send: (m: WsMessage) => void): Promise<void> {
+  const { tourId } = msg.payload as TourFinalizePayload
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) { send(createMessage('tour.finalize.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
+  if (!/^[\w\-]+$/.test(tourId)) { send(createMessage('tour.finalize.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+
+  const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
+  let tour: any
+  try { tour = await loadTourJson(toursUri, `${tourId}.tour`) }
+  catch { send(createMessage('tour.finalize.error', { code: 'NOT_FOUND', message: 'Tour not found' }, msg.id)); return }
+
+  if (tour.status !== 'recording') { send(createMessage('tour.finalize.error', { code: 'TOUR_NOT_RECORDING', message: 'Tour is not in recording mode' }, msg.id)); return }
+
+  delete tour.status
+  await saveTourJson(vscode.Uri.joinPath(toursUri, `${tourId}.tour`), tour)
+  send(createMessage('tour.finalize.result', { ok: true }, msg.id))
+}
+
+// tour.delete — delete a tour file
+export async function handleTourDelete(msg: WsMessage, send: (m: WsMessage) => void): Promise<void> {
+  const { tourId } = msg.payload as TourDeletePayload
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) { send(createMessage('tour.delete.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
+  if (!/^[\w\-]+$/.test(tourId)) { send(createMessage('tour.delete.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+
+  const tourUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours', `${tourId}.tour`)
+  try { await vscode.workspace.fs.stat(tourUri) }
+  catch { send(createMessage('tour.delete.error', { code: 'NOT_FOUND', message: 'Tour not found' }, msg.id)); return }
+
+  await vscode.workspace.fs.delete(tourUri)
+  send(createMessage('tour.delete.result', { ok: true }, msg.id))
 }

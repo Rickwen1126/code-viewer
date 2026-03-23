@@ -88,7 +88,7 @@ vi.mock('../utils/validate-path', () => ({
 
 // ── Import after mocks ─────────────────────────────────────────────────────
 
-import { handleTourCreate, handleTourList, handleTourGetSteps, handleTourAddStep, handleTourDeleteStep } from '../providers/tour-provider'
+import { handleTourCreate, handleTourList, handleTourGetSteps, handleTourAddStep, handleTourDeleteStep, handleTourFinalize, handleTourDelete } from '../providers/tour-provider'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -560,6 +560,146 @@ describe('handleTourDeleteStep', () => {
       expect.objectContaining({
         type: 'tour.deleteStep.error',
         payload: expect.objectContaining({ code: 'TOUR_NOT_RECORDING' }),
+      }),
+    )
+  })
+})
+
+// ── handleTourFinalize tests ───────────────────────────────────────────────
+
+describe('handleTourFinalize', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+    mockFs.writeFile.mockResolvedValue(undefined)
+  })
+
+  function makeTourJson(overrides: Record<string, any> = {}) {
+    return new TextEncoder().encode(JSON.stringify({
+      title: 'My Tour',
+      status: 'recording',
+      steps: [{ file: 'a.ts', line: 1, description: 'step' }],
+      ...overrides,
+    }))
+  }
+
+  it('removes the status field from the tour and saves', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson())
+    const send = vi.fn()
+    await handleTourFinalize({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour' },
+    }, send)
+
+    expect(mockFs.writeFile).toHaveBeenCalledOnce()
+    const [, writtenBytes] = mockFs.writeFile.mock.calls[0]
+    const written = JSON.parse(new TextDecoder().decode(writtenBytes))
+    expect(written.status).toBeUndefined()
+    expect(written.title).toBe('My Tour')
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.finalize.result',
+        payload: { ok: true },
+      }),
+    )
+  })
+
+  it('rejects when tour is not in recording mode (TOUR_NOT_RECORDING)', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson({ status: 'done' }))
+    const send = vi.fn()
+    await handleTourFinalize({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour' },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.finalize.error',
+        payload: expect.objectContaining({ code: 'TOUR_NOT_RECORDING' }),
+      }),
+    )
+  })
+
+  it('rejects when tour file does not exist (NOT_FOUND)', async () => {
+    mockFs.readFile.mockRejectedValue(new Error('ENOENT'))
+    const send = vi.fn()
+    await handleTourFinalize({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour' },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.finalize.error',
+        payload: expect.objectContaining({ code: 'NOT_FOUND' }),
+      }),
+    )
+  })
+})
+
+// ── handleTourDelete tests ─────────────────────────────────────────────────
+
+describe('handleTourDelete', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+    mockFs.delete.mockResolvedValue(undefined)
+  })
+
+  it('deletes the tour file and sends ok result', async () => {
+    // stat succeeds — file exists
+    mockFs.stat.mockResolvedValue({ type: 1 })
+    const send = vi.fn()
+    await handleTourDelete({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour' },
+    }, send)
+
+    expect(mockFs.delete).toHaveBeenCalledOnce()
+    const [deletedUri] = mockFs.delete.mock.calls[0]
+    expect(deletedUri.fsPath).toContain('my-tour.tour')
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.delete.result',
+        payload: { ok: true },
+      }),
+    )
+  })
+
+  it('rejects when tour file does not exist (NOT_FOUND)', async () => {
+    // stat throws — file doesn't exist
+    mockFs.stat.mockRejectedValue(new Error('ENOENT'))
+    const send = vi.fn()
+    await handleTourDelete({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour' },
+    }, send)
+
+    expect(mockFs.delete).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.delete.error',
+        payload: expect.objectContaining({ code: 'NOT_FOUND' }),
+      }),
+    )
+  })
+
+  it('rejects invalid tour ID format', async () => {
+    const send = vi.fn()
+    await handleTourDelete({
+      ...makeMsg(),
+      payload: { tourId: '../evil' },
+    }, send)
+
+    expect(mockFs.delete).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.delete.error',
+        payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
       }),
     )
   })
