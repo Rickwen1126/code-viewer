@@ -1,7 +1,8 @@
 import * as vscode from 'vscode'
-import type { WsMessage, TourCreatePayload } from '@code-viewer/shared'
+import type { WsMessage, TourCreatePayload, TourAddStepPayload } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
 import { getWorkspaceRepo } from './git-provider'
+import { validatePath } from '../utils/validate-path'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -184,4 +185,36 @@ export async function handleTourCreate(
     tourId: slug,
     filePath: `.tours/${slug}.tour`,
   }, msg.id))
+}
+
+// tour.addStep — add a step to a recording tour
+export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => void): Promise<void> {
+  const payload = msg.payload as TourAddStepPayload
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) { send(createMessage('tour.addStep.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
+
+  if (!/^[\w\-]+$/.test(payload.tourId)) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+
+  const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
+  let tour: any
+  try { tour = await loadTourJson(toursUri, `${payload.tourId}.tour`) }
+  catch { send(createMessage('tour.addStep.error', { code: 'NOT_FOUND', message: 'Tour not found' }, msg.id)); return }
+
+  if (tour.status !== 'recording') { send(createMessage('tour.addStep.error', { code: 'TOUR_NOT_RECORDING', message: 'Tour is not in recording mode' }, msg.id)); return }
+
+  const validation = validatePath(payload.file, workspaceFolder)
+  if (!validation.valid) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: `Invalid path: ${validation.reason}` }, msg.id)); return }
+
+  const step: any = { file: payload.file, line: payload.line }
+  if (payload.endLine != null) step.endLine = payload.endLine
+  if (payload.selection) step.selection = payload.selection
+  if (payload.title) step.title = payload.title
+  step.description = payload.description
+
+  if (!Array.isArray(tour.steps)) tour.steps = []
+  if (payload.index != null) { tour.steps.splice(payload.index, 0, step) }
+  else { tour.steps.push(step) }
+
+  await saveTourJson(vscode.Uri.joinPath(toursUri, `${payload.tourId}.tour`), tour)
+  send(createMessage('tour.addStep.result', { stepCount: tour.steps.length }, msg.id))
 }

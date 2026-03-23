@@ -78,9 +78,17 @@ vi.mock('../providers/git-provider', () => ({
   getWorkspaceRepo: mockGetWorkspaceRepo,
 }))
 
+// ── validate-path mock ─────────────────────────────────────────────────────
+
+const mockValidatePath = vi.fn(() => ({ valid: true, uri: { fsPath: '/workspace/src/index.ts' } }))
+
+vi.mock('../utils/validate-path', () => ({
+  validatePath: (...args: any[]) => mockValidatePath(...args),
+}))
+
 // ── Import after mocks ─────────────────────────────────────────────────────
 
-import { handleTourCreate, handleTourList, handleTourGetSteps } from '../providers/tour-provider'
+import { handleTourCreate, handleTourList, handleTourGetSteps, handleTourAddStep } from '../providers/tour-provider'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -325,6 +333,136 @@ describe('handleTourGetSteps', () => {
             expect.objectContaining({ selection: stepSelection }),
           ],
         }),
+      }),
+    )
+  })
+})
+
+// ── handleTourAddStep tests ────────────────────────────────────────────────
+
+describe('handleTourAddStep', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+    mockValidatePath.mockReturnValue({ valid: true, uri: { fsPath: '/workspace/src/index.ts' } })
+    mockFs.writeFile.mockResolvedValue(undefined)
+  })
+
+  function makeTourJson(overrides: Record<string, any> = {}) {
+    return new TextEncoder().encode(JSON.stringify({
+      title: 'My Tour',
+      status: 'recording',
+      steps: [],
+      ...overrides,
+    }))
+  }
+
+  it('appends a step to the end of the tour', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson({ steps: [{ file: 'a.ts', line: 1, description: 'existing' }] }))
+    const send = vi.fn()
+    await handleTourAddStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', file: 'src/index.ts', line: 5, description: 'New step' },
+    }, send)
+
+    expect(mockFs.writeFile).toHaveBeenCalledOnce()
+    const [, writtenBytes] = mockFs.writeFile.mock.calls[0]
+    const written = JSON.parse(new TextDecoder().decode(writtenBytes))
+    expect(written.steps).toHaveLength(2)
+    expect(written.steps[1]).toMatchObject({ file: 'src/index.ts', line: 5, description: 'New step' })
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.addStep.result',
+        payload: { stepCount: 2 },
+      }),
+    )
+  })
+
+  it('inserts a step at a specific index', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson({
+      steps: [
+        { file: 'a.ts', line: 1, description: 'first' },
+        { file: 'b.ts', line: 2, description: 'second' },
+      ],
+    }))
+    const send = vi.fn()
+    await handleTourAddStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', file: 'src/index.ts', line: 5, description: 'inserted', index: 1 },
+    }, send)
+
+    const [, writtenBytes] = mockFs.writeFile.mock.calls[0]
+    const written = JSON.parse(new TextDecoder().decode(writtenBytes))
+    expect(written.steps).toHaveLength(3)
+    expect(written.steps[1]).toMatchObject({ file: 'src/index.ts', description: 'inserted' })
+    expect(written.steps[2]).toMatchObject({ file: 'b.ts', description: 'second' })
+  })
+
+  it('rejects when tour is not in recording mode (TOUR_NOT_RECORDING)', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson({ status: 'done' }))
+    const send = vi.fn()
+    await handleTourAddStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', file: 'src/index.ts', line: 1, description: 'step' },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.addStep.error',
+        payload: expect.objectContaining({ code: 'TOUR_NOT_RECORDING' }),
+      }),
+    )
+  })
+
+  it('rejects with NOT_FOUND when tour file does not exist', async () => {
+    mockFs.readFile.mockRejectedValue(new Error('ENOENT'))
+    const send = vi.fn()
+    await handleTourAddStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', file: 'src/index.ts', line: 1, description: 'step' },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.addStep.error',
+        payload: expect.objectContaining({ code: 'NOT_FOUND' }),
+      }),
+    )
+  })
+
+  it('rejects invalid tour ID format', async () => {
+    const send = vi.fn()
+    await handleTourAddStep({
+      ...makeMsg(),
+      payload: { tourId: '../evil', file: 'src/index.ts', line: 1, description: 'step' },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.addStep.error',
+        payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
+      }),
+    )
+  })
+
+  it('rejects invalid file path', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson())
+    mockValidatePath.mockReturnValueOnce({ valid: false, reason: 'Path outside workspace' })
+    const send = vi.fn()
+    await handleTourAddStep({
+      ...makeMsg(),
+      payload: { tourId: 'my-tour', file: '../outside.ts', line: 1, description: 'step' },
+    }, send)
+
+    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.addStep.error',
+        payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
       }),
     )
   })
