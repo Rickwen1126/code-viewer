@@ -1,8 +1,26 @@
 import * as vscode from 'vscode'
-import type { WsMessage, TourCreatePayload, TourAddStepPayload, TourDeleteStepPayload, TourFinalizePayload, TourDeletePayload } from '@code-viewer/shared'
+import { execFileSync } from 'child_process'
+import * as path from 'path'
+import type { WsMessage, TourCreatePayload, TourAddStepPayload, TourDeleteStepPayload, TourFinalizePayload, TourDeletePayload, TourGetFileAtRefPayload } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
 import { getWorkspaceRepo } from './git-provider'
 import { validatePath } from '../utils/validate-path'
+
+const EXT_TO_LANG: Record<string, string> = {
+  '.ts': 'typescript', '.tsx': 'typescriptreact',
+  '.js': 'javascript', '.jsx': 'javascriptreact',
+  '.json': 'json', '.md': 'markdown',
+  '.html': 'html', '.css': 'css',
+  '.py': 'python', '.rs': 'rust',
+  '.go': 'go', '.java': 'java',
+  '.yml': 'yaml', '.yaml': 'yaml',
+  '.sh': 'shellscript', '.bash': 'shellscript',
+}
+
+function guessLanguageId(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase()
+  return EXT_TO_LANG[ext] ?? 'plaintext'
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -274,4 +292,47 @@ export async function handleTourDelete(msg: WsMessage, send: (m: WsMessage) => v
 
   await vscode.workspace.fs.delete(tourUri)
   send(createMessage('tour.delete.result', { ok: true }, msg.id))
+}
+
+// tour.getFileAtRef — read file content at a specific git ref (or working tree)
+export async function handleTourGetFileAtRef(msg: WsMessage, send: (m: WsMessage) => void): Promise<void> {
+  const { ref, path: filePath } = msg.payload as TourGetFileAtRefPayload
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) { send(createMessage('tour.getFileAtRef.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
+
+  // Validate path (prevents directory traversal)
+  const validation = validatePath(filePath, workspaceFolder)
+  if (!validation.valid) { send(createMessage('tour.getFileAtRef.error', { code: 'INVALID_REQUEST', message: `Invalid path: ${validation.reason}` }, msg.id)); return }
+
+  const languageId = guessLanguageId(filePath)
+
+  if (ref == null) {
+    // Read from working tree
+    try {
+      const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, filePath)
+      const raw = await vscode.workspace.fs.readFile(fileUri)
+      const content = new TextDecoder().decode(raw)
+      send(createMessage('tour.getFileAtRef.result', { content, languageId, ref: null }, msg.id))
+    } catch {
+      send(createMessage('tour.getFileAtRef.error', { code: 'TOUR_FILE_NOT_AT_REF', message: 'File not found' }, msg.id))
+    }
+    return
+  }
+
+  // Read from git ref (execFileSync — no shell injection)
+  try {
+    const output = execFileSync('git', ['show', `${ref}:${filePath}`], {
+      cwd: workspaceFolder.uri.fsPath,
+      encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024,
+    })
+    send(createMessage('tour.getFileAtRef.result', { content: output, languageId, ref }, msg.id))
+  } catch (err: any) {
+    const message = err?.message ?? ''
+    if (message.includes('bad revision') || message.includes('unknown revision')) {
+      send(createMessage('tour.getFileAtRef.error', { code: 'TOUR_REF_NOT_FOUND', message: `Git ref "${ref}" not found` }, msg.id))
+    } else {
+      send(createMessage('tour.getFileAtRef.error', { code: 'TOUR_FILE_NOT_AT_REF', message: `File "${filePath}" not found at ref "${ref}"` }, msg.id))
+    }
+  }
 }

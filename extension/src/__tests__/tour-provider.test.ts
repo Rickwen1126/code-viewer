@@ -83,12 +83,17 @@ vi.mock('../providers/git-provider', () => ({
 const mockValidatePath = vi.fn(() => ({ valid: true, uri: { fsPath: '/workspace/src/index.ts' } }))
 
 vi.mock('../utils/validate-path', () => ({
-  validatePath: (...args: any[]) => mockValidatePath(...args),
+  validatePath: (_requestedPath: any, _workspaceFolder: any) => (mockValidatePath as any)(_requestedPath, _workspaceFolder),
 }))
+
+// ── child_process mock ─────────────────────────────────────────────────────
+
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }))
 
 // ── Import after mocks ─────────────────────────────────────────────────────
 
-import { handleTourCreate, handleTourList, handleTourGetSteps, handleTourAddStep, handleTourDeleteStep, handleTourFinalize, handleTourDelete } from '../providers/tour-provider'
+import { handleTourCreate, handleTourList, handleTourGetSteps, handleTourAddStep, handleTourDeleteStep, handleTourFinalize, handleTourDelete, handleTourGetFileAtRef } from '../providers/tour-provider'
+import { execFileSync } from 'child_process'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -451,7 +456,7 @@ describe('handleTourAddStep', () => {
 
   it('rejects invalid file path', async () => {
     mockFs.readFile.mockResolvedValue(makeTourJson())
-    mockValidatePath.mockReturnValueOnce({ valid: false, reason: 'Path outside workspace' })
+    mockValidatePath.mockReturnValueOnce({ valid: false, reason: 'Path outside workspace' } as any)
     const send = vi.fn()
     await handleTourAddStep({
       ...makeMsg(),
@@ -700,6 +705,97 @@ describe('handleTourDelete', () => {
       expect.objectContaining({
         type: 'tour.delete.error',
         payload: expect.objectContaining({ code: 'INVALID_REQUEST' }),
+      }),
+    )
+  })
+})
+
+// ── handleTourGetFileAtRef tests ───────────────────────────────────────────
+
+describe('handleTourGetFileAtRef', () => {
+  const mockExecFileSync = execFileSync as ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkspaceFolder()
+    mockValidatePath.mockReturnValue({ valid: true, uri: { fsPath: '/workspace/src/index.ts' } })
+  })
+
+  it('returns file content at git ref (calls execFileSync with show)', async () => {
+    mockExecFileSync.mockReturnValue('const x = 1\n')
+    const send = vi.fn()
+    await handleTourGetFileAtRef({
+      ...makeMsg(),
+      payload: { ref: 'main', path: 'src/index.ts' },
+    }, send)
+
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['show', 'main:src/index.ts'],
+      expect.objectContaining({ cwd: '/workspace', encoding: 'utf-8' }),
+    )
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.getFileAtRef.result',
+        payload: expect.objectContaining({
+          content: 'const x = 1\n',
+          languageId: 'typescript',
+          ref: 'main',
+        }),
+      }),
+    )
+  })
+
+  it('reads from working tree when ref is null (execFileSync NOT called, readFile called)', async () => {
+    mockFs.readFile.mockResolvedValue(new TextEncoder().encode('working tree content'))
+    const send = vi.fn()
+    await handleTourGetFileAtRef({
+      ...makeMsg(),
+      payload: { ref: null, path: 'src/index.ts' },
+    }, send)
+
+    expect(mockExecFileSync).not.toHaveBeenCalled()
+    expect(mockFs.readFile).toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.getFileAtRef.result',
+        payload: expect.objectContaining({
+          content: 'working tree content',
+          languageId: 'typescript',
+          ref: null,
+        }),
+      }),
+    )
+  })
+
+  it('returns TOUR_REF_NOT_FOUND when git ref does not exist', async () => {
+    mockExecFileSync.mockImplementation(() => { throw new Error('fatal: bad revision') })
+    const send = vi.fn()
+    await handleTourGetFileAtRef({
+      ...makeMsg(),
+      payload: { ref: 'nonexistent-branch', path: 'src/index.ts' },
+    }, send)
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.getFileAtRef.error',
+        payload: expect.objectContaining({ code: 'TOUR_REF_NOT_FOUND' }),
+      }),
+    )
+  })
+
+  it('returns TOUR_FILE_NOT_AT_REF when file is missing at a valid ref', async () => {
+    mockExecFileSync.mockImplementation(() => { throw new Error('fatal: Path does not exist') })
+    const send = vi.fn()
+    await handleTourGetFileAtRef({
+      ...makeMsg(),
+      payload: { ref: 'main', path: 'src/index.ts' },
+    }, send)
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tour.getFileAtRef.error',
+        payload: expect.objectContaining({ code: 'TOUR_FILE_NOT_AT_REF' }),
       }),
     )
   })
