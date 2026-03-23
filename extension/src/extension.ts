@@ -17,7 +17,16 @@ import {
   handleReviewAcceptTool,
   handleReviewSkipTool,
 } from './providers/copilot-provider'
-import { handleTourList, handleTourGetSteps } from './providers/tour-provider'
+import {
+  handleTourList,
+  handleTourGetSteps,
+  handleTourCreate,
+  handleTourAddStep,
+  handleTourDeleteStep,
+  handleTourFinalize,
+  handleTourDelete,
+  handleTourGetFileAtRef,
+} from './providers/tour-provider'
 
 let wsClient: WsClient | undefined
 
@@ -49,6 +58,12 @@ const handlers: Record<string, Handler> = {
   'review.skipTool': handleReviewSkipTool,
   'tour.list': handleTourList,
   'tour.getSteps': handleTourGetSteps,
+  'tour.create': handleTourCreate,
+  'tour.addStep': handleTourAddStep,
+  'tour.deleteStep': handleTourDeleteStep,
+  'tour.finalize': handleTourFinalize,
+  'tour.delete': handleTourDelete,
+  'tour.getFileAtRef': handleTourGetFileAtRef,
 }
 
 // T017: Message routing — dispatches incoming messages to providers
