@@ -332,6 +332,7 @@ describe('GitStatus', () => {
   it('should have all required fields', () => {
     const status: GitStatus = {
       branch: 'main',
+      commitHash: 'abc1234',
       ahead: 2,
       behind: 0,
       changedFiles: [],
@@ -351,6 +352,7 @@ describe('GitStatus', () => {
     }
     const status: GitStatus = {
       branch: 'feature/x',
+      commitHash: 'abc1234',
       ahead: 1,
       behind: 0,
       changedFiles: [file],

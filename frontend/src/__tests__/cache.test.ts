@@ -62,6 +62,7 @@ const sampleFileContent: FileContent = {
 
 const sampleGitStatus: GitStatus = {
   branch: 'main',
+  commitHash: '',
   ahead: 0,
   behind: 0,
   changedFiles: [],

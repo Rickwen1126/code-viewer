@@ -30,6 +30,7 @@ export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMess
     return
   }
   const branch = repo.state.HEAD?.name ?? ''
+  const commitHash = repo.state.HEAD?.commit ?? ''
   const ahead = repo.state.HEAD?.ahead ?? 0
   const behind = repo.state.HEAD?.behind ?? 0
 
@@ -53,7 +54,7 @@ export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMess
   }
 
   sendResponse(createMessage('git.status.result', {
-    branch, ahead, behind, changedFiles: allFiles, stagedFiles, unstagedFiles,
+    branch, commitHash, ahead, behind, changedFiles: allFiles, stagedFiles, unstagedFiles,
   }, msg.id))
 }
 
