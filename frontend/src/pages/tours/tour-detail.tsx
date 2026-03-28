@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
@@ -91,6 +91,14 @@ export function TourDetailPage() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function showToast(msg: string) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToastMsg(msg)
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 3000)
+  }
 
   // Load tour steps
   useEffect(() => {
@@ -222,7 +230,7 @@ export function TourDetailPage() {
       await loadTour()
     } catch (err) {
       console.error('[TourDetailPage] edit error:', err)
-      setError('Failed to update step')
+      showToast('Failed to update step')
       setEditingStep(false)
     } finally {
       setSavingEdit(false)
@@ -249,7 +257,7 @@ export function TourDetailPage() {
       await loadTour()
     } catch (err) {
       console.error('[TourDetailPage] delete error:', err)
-      setError('Failed to delete step')
+      showToast('Failed to delete step')
       setConfirmDelete(false)
     } finally {
       setDeleting(false)
@@ -608,6 +616,25 @@ export function TourDetailPage() {
               {savingEdit ? 'Saving...' : 'Save'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          bottom: 80,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: toastMsg.startsWith('Failed') ? '#5a3030' : '#333',
+          color: toastMsg.startsWith('Failed') ? '#f48771' : '#d4d4d4',
+          padding: '8px 16px',
+          borderRadius: 8,
+          fontSize: 13,
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {toastMsg}
         </div>
       )}
     </div>
