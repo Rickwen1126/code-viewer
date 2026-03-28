@@ -24,15 +24,31 @@ A test item is PASS only when ALL of the following are met:
 3. **Round-trip verification**: After a mutation, navigate away and back (or re-enter from a different entry point) to confirm the change actually persisted — not just optimistic UI.
 4. **Error path verification** (where applicable): Trigger a failure scenario and confirm the UI shows an error message to the user (not silent failure).
 
-### How to use console logs for verification
+### Three-layer log verification
 
-- **After every WS operation**: call `browser_console_messages` and read the log file
-- **Look for**: `[relay]` lines showing message type + round-trip time = success; `.error` type = failure
-- **Look for**: `[CodeViewer]` error lines, uncaught exceptions, React error boundaries
-- **Log file path**: returned by `browser_console_messages` as `.playwright-mcp/console-*.log`
-- **Read the log file** with the Read tool to inspect actual content — don't just check if it exists
+Every WS operation passes through three layers. All three must agree for PASS:
 
-This catches silent failures (like the `TOUR_NOT_RECORDING` bug) that UI-only checks miss.
+```
+Frontend (browser console)  →  Backend (terminal stdout)  →  Extension (VS Code Output)
+```
+
+**Layer 1 — Frontend console** (Playwright `browser_console_messages` → Read log file):
+- WS request sent: look for request type in console
+- WS response received: `.result` = success, `.error` = failure
+- React errors, uncaught exceptions
+
+**Layer 2 — Backend relay** (read terminal output via Bash `cat` on backend log, or check recent stdout):
+- `[relay]` lines: `{type} {msgId} → extension (age: Nms)` = request forwarded
+- `[relay]` lines: `{type}.result {msgId} ← extension (round-trip: Nms)` = response routed back
+- Missing relay line = message never reached extension
+
+**Layer 3 — Extension handler** (VS Code Developer Tools console or Output channel):
+- `[CodeViewer]` lines: handler execution, errors
+- Handler errors: `[CodeViewer] {type} error: {message}`
+
+**For Playwright E2E**: Layer 1 (frontend console) is the primary check — always read the log file. Layer 2 (backend) can be checked via Bash if needed for debugging failures. Layer 3 (extension) is hardest to access from Playwright — check indirectly via response type (.result vs .error).
+
+**The key rule**: if frontend console shows `.error` response, the test FAILS regardless of UI state. If frontend console shows `.result` but UI doesn't update, the test also FAILS (frontend bug).
 
 **What counts as FAIL:**
 - UI shows expected elements but console has `.error` response (silent failure)
