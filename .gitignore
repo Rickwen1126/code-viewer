@@ -49,3 +49,7 @@ experiments/
 
 # Cython index
 .cython-index.json
+
+# Progress / plugin artifacts
+.progress/
+.superpowers/
