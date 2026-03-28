@@ -160,7 +160,10 @@ export function CodeViewerPage() {
 
   // Persist current file path immediately on navigation
   useEffect(() => {
-    if (path) localStorage.setItem('code-viewer:current-file', path)
+    if (path) {
+      localStorage.setItem('code-viewer:current-file', path)
+      if (workspace) localStorage.setItem(`code-viewer:current-file:${workspace.extensionId}`, path)
+    }
   }, [path])
 
   // Redirect to workspace selection if no workspace ever selected

@@ -21,18 +21,22 @@ import { ToolApprovalPage } from './pages/review/tool-approval'
 /** Smart redirect: restore last viewed file instead of always going to /workspaces */
 function InitialRedirect() {
   const savedWorkspace = localStorage.getItem('code-viewer:selected-workspace')
-  const savedFile = localStorage.getItem('code-viewer:current-file')
+  if (!savedWorkspace) return <Navigate to="/workspaces" replace />
 
-  if (savedWorkspace && savedFile) {
+  // Try per-workspace current file first, fallback to global
+  let savedFile: string | null = null
+  try {
+    const ws = JSON.parse(savedWorkspace)
+    savedFile = localStorage.getItem(`code-viewer:current-file:${ws.extensionId}`)
+  } catch { /* ignore */ }
+  if (!savedFile) savedFile = localStorage.getItem('code-viewer:current-file')
+
+  if (savedFile) {
     const encoded = savedFile.split('/').map(encodeURIComponent).join('/')
     return <Navigate to={`/files/${encoded}`} replace />
   }
 
-  if (savedWorkspace) {
-    return <Navigate to="/files" replace />
-  }
-
-  return <Navigate to="/workspaces" replace />
+  return <Navigate to="/files" replace />
 }
 
 /** Root paths that are considered tab roots (depth 1). */
