@@ -33,7 +33,9 @@ export function CodeViewerPage() {
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [tooLarge, setTooLarge] = useState(false)
-  const [wordWrap, setWordWrap] = useState(false)
+  const [wordWrap, setWordWrap] = useState(() =>
+    localStorage.getItem('code-viewer:wrap-enabled') === 'true',
+  )
   const [highlightLine, setHighlightLine] = useState<number | null>(null)
 
   // References list state (T041)
@@ -46,6 +48,12 @@ export function CodeViewerPage() {
 
   const codeContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const scrollRestoredRef = useRef('')
+
+  // Persist current file path immediately on navigation
+  useEffect(() => {
+    if (path) localStorage.setItem('code-viewer:current-file', path)
+  }, [path])
 
   // Redirect to workspace selection if no workspace ever selected
   useEffect(() => {
@@ -86,6 +94,65 @@ export function CodeViewerPage() {
     return unsub
   }, [path, connectionState])
 
+  // Scroll position: debounced save
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container || !workspace || !path) return
+    let timer: ReturnType<typeof setTimeout>
+    const handler = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        const key = `code-viewer:scroll:${workspace.extensionId}:${path}`
+        localStorage.setItem(key, JSON.stringify({
+          scrollTop: container.scrollTop,
+          contentLength: file?.content?.length ?? 0,
+          timestamp: Date.now(),
+        }))
+      }, 500)
+    }
+    container.addEventListener('scroll', handler, { passive: true })
+    return () => { clearTimeout(timer); container.removeEventListener('scroll', handler) }
+  }, [path, workspace, file])
+
+  // Scroll position: restore once per path (after content renders)
+  useEffect(() => {
+    if (!file || !workspace || !scrollContainerRef.current) return
+    if (scrollRestoredRef.current === path) return
+    scrollRestoredRef.current = path
+
+    // scrollToLine from navigation takes priority
+    const state = location.state as { scrollToLine?: number } | null
+    if (state?.scrollToLine != null) return
+
+    const key = `code-viewer:scroll:${workspace.extensionId}:${path}`
+    const saved = localStorage.getItem(key)
+    if (!saved) return
+
+    try {
+      const { scrollTop, contentLength } = JSON.parse(saved)
+      // Skip if content changed significantly
+      if (contentLength && Math.abs(file.content.length - contentLength) / contentLength > 0.1) return
+      requestAnimationFrame(() => {
+        scrollContainerRef.current?.scrollTo({ top: scrollTop })
+      })
+    } catch { /* ignore */ }
+  }, [file, path, workspace])
+
+  // Cleanup: purge scroll entries older than 7 days (once on mount)
+  useEffect(() => {
+    const now = Date.now()
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (key?.startsWith('code-viewer:scroll:')) {
+        try {
+          const { timestamp } = JSON.parse(localStorage.getItem(key)!)
+          if (now - timestamp > SEVEN_DAYS) localStorage.removeItem(key)
+        } catch { localStorage.removeItem(key) }
+      }
+    }
+  }, [])
+
   // Background load: silently update, no spinner
   async function loadFileBackground() {
     if (!path) return
@@ -97,7 +164,6 @@ export function CodeViewerPage() {
       } else {
         setFile(res.payload)
         addRecentFile(path)
-        localStorage.setItem('code-viewer:current-file', path)
         if (workspace) {
           cacheService.setFileContent(workspace.extensionId, path, {
             path: res.payload.path,
@@ -386,7 +452,11 @@ export function CodeViewerPage() {
         {/* Wrap toggle + Actions + Symbols */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           <button
-            onClick={() => setWordWrap((v) => !v)}
+            onClick={() => setWordWrap((v) => {
+              const next = !v
+              localStorage.setItem('code-viewer:wrap-enabled', String(next))
+              return next
+            })}
             style={{
               background: wordWrap ? '#333' : 'none',
               border: '1px solid #444',

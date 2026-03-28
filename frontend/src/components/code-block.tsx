@@ -51,8 +51,13 @@ const lineNumberTransformer: any = {
 
 export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine }: CodeBlockProps) {
   const safeCode = code ?? ''
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
+  const [fontSize, setFontSize] = useState(() => {
+    const saved = localStorage.getItem('code-viewer:font-size')
+    return saved ? Number(saved) : DEFAULT_FONT_SIZE
+  })
   const lastPinchDistance = useRef(0)
+  const fontSizeRef = useRef(fontSize)
+  fontSizeRef.current = fontSize
 
   const lineCount = useMemo(() => safeCode.split('\n').length, [safeCode])
   const gutterWidth = useMemo(() => Math.max(2, String(lineCount).length) * 0.6 + 1, [lineCount])
@@ -87,6 +92,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
 
   const handleTouchEnd = useCallback(() => {
     lastPinchDistance.current = 0
+    localStorage.setItem('code-viewer:font-size', String(fontSizeRef.current))
   }, [])
 
   const classNames = [

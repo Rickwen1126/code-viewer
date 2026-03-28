@@ -18,6 +18,23 @@ import { PendingEditsListPage } from './pages/review'
 import { EditDiffReviewPage } from './pages/review/edit-diff'
 import { ToolApprovalPage } from './pages/review/tool-approval'
 
+/** Smart redirect: restore last viewed file instead of always going to /workspaces */
+function InitialRedirect() {
+  const savedWorkspace = localStorage.getItem('code-viewer:selected-workspace')
+  const savedFile = localStorage.getItem('code-viewer:current-file')
+
+  if (savedWorkspace && savedFile) {
+    const encoded = savedFile.split('/').map(encodeURIComponent).join('/')
+    return <Navigate to={`/files/${encoded}`} replace />
+  }
+
+  if (savedWorkspace) {
+    return <Navigate to="/files" replace />
+  }
+
+  return <Navigate to="/workspaces" replace />
+}
+
 /** Root paths that are considered tab roots (depth 1). */
 const TAB_ROOTS = new Set([
   '/workspaces',
@@ -89,7 +106,7 @@ function TabLayout() {
       <ConnectionStatus />
       <main style={{ flex: 1, overflow: 'auto' }}>
         <Routes>
-          <Route index element={<Navigate to="/workspaces" replace />} />
+          <Route index element={<InitialRedirect />} />
           <Route path="workspaces" element={<WorkspacesPage />} />
           <Route path="files" element={<FileBrowserPage />} />
           <Route path="files/*" element={<CodeViewerPage />} />
