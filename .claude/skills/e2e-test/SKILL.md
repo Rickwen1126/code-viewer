@@ -16,21 +16,34 @@ Check ports 4800 + 4801 are listening and extension connected. If not, invoke `/
 A test item is PASS only when ALL of the following are met:
 
 1. **UI verification**: Take a screenshot at the verification point. Visually confirm the expected state in the screenshot — not just snapshot text.
-2. **Data verification**: Confirm the backend state actually changed via an independent check:
-   - For file writes: read the file or call a separate API to verify
-   - For state changes: navigate away and back, or reload, to confirm persistence
-   - For WS operations: check the response type is `.result` not `.error`
-3. **Round-trip verification**: After a mutation (create/edit/delete), re-fetch the data from a different entry point (e.g., navigate to list page, re-enter detail page) and confirm the change is reflected.
-4. **Error path verification** (where applicable): If the feature has error states, trigger at least one and confirm the UI shows an appropriate error message.
+2. **Data verification via console logs**: After every mutation (create/edit/delete/add step), call `browser_console_messages` to check:
+   - WS request was sent (look for `[relay]` or `[ws]` log lines)
+   - Response type is `.result` not `.error` (e.g., `tour.addStep.result`, NOT `tour.addStep.error`)
+   - No uncaught exceptions or error logs
+   - If error logs present → immediate FAIL, log the full error message
+3. **Round-trip verification**: After a mutation, navigate away and back (or re-enter from a different entry point) to confirm the change actually persisted — not just optimistic UI.
+4. **Error path verification** (where applicable): Trigger a failure scenario and confirm the UI shows an error message to the user (not silent failure).
+
+### How to use console logs for verification
+
+- **After every WS operation**: call `browser_console_messages` and read the log file
+- **Look for**: `[relay]` lines showing message type + round-trip time = success; `.error` type = failure
+- **Look for**: `[CodeViewer]` error lines, uncaught exceptions, React error boundaries
+- **Log file path**: returned by `browser_console_messages` as `.playwright-mcp/console-*.log`
+- **Read the log file** with the Read tool to inspect actual content — don't just check if it exists
+
+This catches silent failures (like the `TOUR_NOT_RECORDING` bug) that UI-only checks miss.
 
 **What counts as FAIL:**
-- UI shows expected elements but data didn't persist (e.g., edit overlay closes but content unchanged on reload)
-- Operation silently fails (no error shown, no data change)
+- UI shows expected elements but console has `.error` response (silent failure)
+- UI shows expected elements but data didn't persist on round-trip
+- Console shows uncaught exception or error boundary
+- Operation completes but console shows no WS request was sent
 - Crash or error boundary triggered
-- Behaviour differs between Playwright and real device (note as CONDITIONAL PASS with explanation)
 
 **What to do on FAIL:**
 - Take screenshot of failure state
+- Capture console log content (read the log file)
 - Log the exact error or unexpected behaviour
 - Continue to next test item (don't stop)
 - Include failure details in report
@@ -100,10 +113,12 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
 2. Navigate to `http://localhost:4801`
 3. Execute each item sequentially
 4. At EVERY verification point:
-   a. Take a screenshot (`browser_take_screenshot`)
-   b. Take a snapshot (`browser_snapshot`) for data checks
-   c. For mutations: perform the independent data verification described in the "Data Verification" column
-5. On failure: capture screenshot, log exact failure reason, continue to next item
+   a. Take a screenshot (`browser_take_screenshot`) — visually confirm
+   b. Take a snapshot (`browser_snapshot`) — confirm UI elements
+   c. For mutations: call `browser_console_messages` → Read the console log file → check for `.result` (success) or `.error` (failure)
+   d. For mutations: navigate away and back to confirm persistence (round-trip)
+5. On failure: screenshot + console log content + exact failure reason, continue to next item
+6. **NEVER mark PASS based solely on UI snapshot** — console log verification is mandatory for any WS operation
 
 ## Report
 
