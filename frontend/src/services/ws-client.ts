@@ -235,7 +235,7 @@ class WsClientService {
         clearTimeout(pending.timer)
         this.pendingRequests.delete(message.replyTo)
         const rt = Date.now() - message.timestamp
-        if (message.type.endsWith('.error')) {
+        if (message.type === 'error' || message.type.endsWith('.error')) {
           const errPayload = message.payload as { code?: string; message?: string }
           dbg('⇐ ERROR', message.type, message.replyTo.slice(0, 8), `${rt}ms`, errPayload?.code, errPayload?.message)
           pending.reject(new Error(errPayload?.message ?? message.type))
