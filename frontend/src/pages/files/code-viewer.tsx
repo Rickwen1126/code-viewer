@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
@@ -6,6 +6,7 @@ import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
+import { InFileSearch, type SearchMatch } from '../../components/in-file-search'
 import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
@@ -51,6 +52,30 @@ export function CodeViewerPage() {
   // Symbol outline state (T042)
   const [symbolsOpen, setSymbolsOpen] = useState(false)
   const [symbols, setSymbols] = useState<LspDocumentSymbolResultPayload['symbols']>([])
+
+  // In-file search state
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
+  const [searchCurrentIndex, setSearchCurrentIndex] = useState(-1)
+
+  const handleSearchMatchesChange = useCallback((matches: SearchMatch[], currentIndex: number) => {
+    setSearchMatches(matches)
+    setSearchCurrentIndex(currentIndex)
+    // Auto-scroll to current match
+    if (matches.length > 0 && currentIndex >= 0) {
+      const match = matches[currentIndex]
+      const scrollContainer = scrollContainerRef.current
+      if (scrollContainer) {
+        const targetTop = match.line * LINE_HEIGHT
+        const containerHeight = scrollContainer.clientHeight
+        const currentScroll = scrollContainer.scrollTop
+        // Only scroll if match is outside visible area
+        if (targetTop < currentScroll || targetTop > currentScroll + containerHeight - 60) {
+          scrollContainer.scrollTo({ top: Math.max(0, targetTop - containerHeight / 3), behavior: 'smooth' })
+        }
+      }
+    }
+  }, [])
 
   const codeContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -509,8 +534,44 @@ export function CodeViewerPage() {
           >
             Symbols
           </button>
+          <button
+            onClick={() => {
+              // In rendered markdown mode, switch to raw for search
+              if (isMarkdown && mdRendered) {
+                setMdRendered(false)
+                localStorage.setItem('code-viewer:md-view-mode', 'raw')
+              }
+              setSearchOpen(v => !v)
+            }}
+            style={{
+              background: searchOpen ? '#333' : 'none',
+              border: '1px solid #444',
+              color: searchOpen ? '#d4d4d4' : '#888',
+              fontSize: 13,
+              padding: '2px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            &#x1F50D;
+          </button>
         </div>
       </div>
+
+      {/* In-file search bar */}
+      <InFileSearch
+        content={file.content}
+        visible={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onMatchesChange={handleSearchMatchesChange}
+      />
+
+      {/* Search highlight styles */}
+      {searchMatches.length > 0 && (
+        <style>{searchMatches.map((m, i) => `
+          .line:nth-child(${m.line + 1}) { background: ${i === searchCurrentIndex ? 'rgba(226,185,61,0.25)' : 'rgba(226,185,61,0.1)'} !important; }
+        `).join('')}</style>
+      )}
 
       {/* Content area */}
       <div
