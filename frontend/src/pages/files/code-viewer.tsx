@@ -81,8 +81,9 @@ export function CodeViewerPage() {
   }, [])
 
   // Tour edit state
-  const { tourEdit, setTourEdit } = useTourEdit()
+  const { tourEdit } = useTourEdit()
   const [addStepLine, setAddStepLine] = useState<number | null>(null)
+  const [stepModeActive, setStepModeActive] = useState(true) // toggle within session, doesn't clear reference point
 
   // Bookmarks state
   const [bookmarkedLines, setBookmarkedLines] = useState<Set<number>>(new Set())
@@ -97,7 +98,7 @@ export function CodeViewerPage() {
   const handleLineNumberClick = useCallback((lineNum: number) => {
     if (!workspace || !path || !file) return
 
-    if (tourEdit) {
+    if (tourEdit && stepModeActive) {
       // Step+ is ON: open add step overlay
       setAddStepLine(lineNum)
       if (navigator.vibrate) navigator.vibrate(50)
@@ -118,7 +119,7 @@ export function CodeViewerPage() {
       showToast(`Bookmarked line ${lineNum}`)
     }
     if (navigator.vibrate) navigator.vibrate(50)
-  }, [workspace, path, file, bookmarkedLines, tourEdit])
+  }, [workspace, path, file, bookmarkedLines, tourEdit, stepModeActive])
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -613,11 +614,11 @@ export function CodeViewerPage() {
           </button>
           {tourEdit && (
             <button
-              onClick={() => setTourEdit(null)}
+              onClick={() => setStepModeActive(v => !v)}
               style={{
-                background: '#264f78',
-                border: '1px solid #569cd6',
-                color: '#d4d4d4',
+                background: stepModeActive ? '#264f78' : 'none',
+                border: stepModeActive ? '1px solid #569cd6' : '1px solid #444',
+                color: stepModeActive ? '#d4d4d4' : '#888',
                 fontSize: 11,
                 padding: '2px 8px',
                 borderRadius: 4,
@@ -627,7 +628,7 @@ export function CodeViewerPage() {
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}
-              title={`Step+ (${tourEdit.tourTitle}) — tap to stop`}
+              title={`Step+ (${tourEdit.tourTitle}) — tap to toggle`}
             >
               Step+
             </button>

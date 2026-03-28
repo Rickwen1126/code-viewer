@@ -275,6 +275,41 @@ export function TourDetailPage() {
   }
 
   const steps = tourData.steps
+
+  // Empty tour: show prompt to add steps
+  if (steps.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid #333', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <button onClick={() => navigate('/tours')} style={{ background: 'none', border: 'none', color: '#569cd6', fontSize: 14, cursor: 'pointer', padding: '2px 6px 2px 0' }}>
+            ← Tours
+          </button>
+          <span style={{ fontSize: 15, fontWeight: 600, color: '#d4d4d4', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {tourData.tour.title}
+          </span>
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 }}>
+          <div style={{ fontSize: 15, color: '#888' }}>This tour has no steps yet</div>
+          <button
+            onClick={() => {
+              if (!workspace) return
+              setTourEdit({
+                tourId,
+                tourTitle: tourData.tour.title,
+                extensionId: workspace.extensionId,
+                afterIndex: -1,
+              })
+              navigate('/files')
+            }}
+            style={{ background: '#569cd6', border: 'none', color: '#fff', fontSize: 14, padding: '10px 24px', borderRadius: 6, cursor: 'pointer' }}
+          >
+            + Add Steps
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const step = steps[currentStep]
   const isFirst = currentStep === 0
   const isLast = currentStep === steps.length - 1
