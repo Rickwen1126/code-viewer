@@ -92,36 +92,28 @@ export function CodeViewerPage() {
   // Long-press handler for bookmarking lines
   const handleContentTouchStart = useCallback((e: React.TouchEvent) => {
     if (!workspace || !path || !file) return
-    // Only detect long-press on gutter area (left 40px) or line numbers
     const touch = e.touches[0]
-    if (touch.clientX > 50) return
 
     longPressTriggeredRef.current = false
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true
-      // Find which line was pressed
+      // Find which line was pressed using .line element bounding rects
       const container = codeContainerRef.current
       if (!container) return
-      const range = document.caretRangeFromPoint(touch.clientX, touch.clientY)
-      if (!range || !container.contains(range.startContainer)) return
-
-      let node: Node | null = range.startContainer
-      let lineEl: HTMLElement | null = null
-      while (node && node !== container) {
-        if (node instanceof HTMLElement && node.classList?.contains('line')) {
-          lineEl = node
+      const lineEls = container.querySelectorAll('.line')
+      let lineNum = 0
+      for (let i = 0; i < lineEls.length; i++) {
+        const rect = lineEls[i].getBoundingClientRect()
+        if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+          const dataLine = lineEls[i].getAttribute('data-line')
+          if (dataLine) lineNum = parseInt(dataLine, 10)
           break
         }
-        node = node.parentNode
       }
-      if (!lineEl) return
+      if (!lineNum) return
 
-      const dataLine = lineEl.getAttribute('data-line')
-      if (!dataLine) return
-      const lineNum = parseInt(dataLine, 10) // 1-based from Shiki
-
-      const lines = file.content.split('\n')
-      const preview = lines[lineNum - 1] ?? ''
+      const contentLines = file.content.split('\n')
+      const preview = contentLines[lineNum - 1] ?? ''
 
       if (bookmarkedLines.has(lineNum)) {
         removeBookmark(workspace.extensionId, path, lineNum)
