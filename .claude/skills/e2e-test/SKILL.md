@@ -25,8 +25,13 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
 | 6 | Git tab | Branch name + staged/unstaged groups |
 | 7 | Git commit history | Click commit -> file list -> click file -> diff renders |
 | 8 | Workspace switch | Different repo's files/branch/commits are independent |
+| 9 | Markdown preview | Open .md file → rendered view with headings/lists/code blocks, Raw/Rendered toggle works |
+| 10 | In-file search | Tap 🔍 → search bar appears, type query → match count + highlights, ▲/▼ navigate |
+| 11 | Session resilience | Navigate to `/` → auto-redirects to last viewed file (not grey screen/workspaces) |
+| 12 | Bookmarks (manual) | Long-press gutter → toast + ★ appears, focus search → bookmarks section shown |
 
 Item #8 requires 2+ connected workspaces. If only 1, skip and note.
+Item #12 requires real touch events (long-press 400ms), skip in Playwright and test on phone.
 
 ## Execution
 

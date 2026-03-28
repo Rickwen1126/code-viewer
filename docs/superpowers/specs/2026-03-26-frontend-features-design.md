@@ -85,12 +85,14 @@ Preserve view state across WS disconnects, mobile app backgrounding, and page re
 
 | State | Key | Scope | Trigger |
 |-------|-----|-------|---------|
+| Current file path | `code-viewer:current-file:{extensionId}` | Per-workspace | On file open |
 | Scroll position | `code-viewer:scroll:{extensionId}:{path}` | Per-file | Debounce 500ms on scroll |
 | Word wrap | `code-viewer:wrap-enabled` | Global | On toggle |
 | Font size (pinch) | `code-viewer:font-size` | Global | On pinch end. Note: requires lifting fontSize state out of `CodeBlock` to `code-viewer.tsx` — `CodeBlock` currently owns this state internally. Pass `fontSize` + `onFontSizeChange` props instead. |
 | Markdown view mode | `code-viewer:md-view-mode` | Global | On toggle |
 
 **Restore flow** (on `code-viewer.tsx` mount):
+0. Read current file path from localStorage → if cached content exists in IndexedDB → **render immediately** (no grey screen, no WS wait)
 1. Read wrap, font size, md-view-mode from localStorage → set state
 2. After content renders, read scroll position → `scrollContainerRef.current.scrollTop = saved`
 3. If content changed (hash mismatch), skip scroll restore
