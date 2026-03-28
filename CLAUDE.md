@@ -35,7 +35,7 @@ pnpm -r build                   # build all packages
 |-------|------|
 | `/codeview-dev` | 開發模式：啟動 backend + frontend + test-electron，用於改 code-viewer 本身 |
 | `/codeview-start <path>` | 部署模式：Docker + VSIX，用於瀏覽任意 repo |
-| `/e2e-test` | E2E checklist：12 項 Playwright 測試（iPhone 390x844） |
+| `/e2e-test` | E2E checklist：40 項 Playwright 測試（iPhone 390x844），三層 log 驗證 |
 
 ## Extension Behavior
 
@@ -52,6 +52,8 @@ pnpm -r build                   # build all packages
 - Mobile-first 產品，所有 UI 行為以手機尺寸為準
 - Playwright E2E 測試必須用 iPhone viewport (390x844)
 - **新功能完成後必須跑 `/e2e-test`**，確認既有功能不 break + 新功能納入 checklist
+- **E2E pass 標準**：UI 截圖 + console log 三層驗證（frontend `[ws]` / backend `[relay]` / extension `[CodeViewer]`）+ round-trip 持久化。絕不能只看 snapshot 文字就標 PASS。
+- **Debug mode**：`localStorage code-viewer:debug=true`（前端）、`CODE_VIEWER_DEBUG=true`（後端）、`codeViewer.debug`（extension）
 
 ## Code Style
 
