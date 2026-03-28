@@ -7,6 +7,7 @@ interface CodeBlockProps {
   showLineNumbers?: boolean
   wordWrap?: boolean
   highlightLine?: number | null
+  bookmarkedLines?: Set<number>
 }
 
 const MIN_FONT_SIZE = 8
@@ -41,15 +42,20 @@ function mapLanguage(lang: string): string {
   return LANGUAGE_MAP[lang] ?? lang
 }
 
-// Shiki transformer: inject data-line attribute on each .line span
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const lineNumberTransformer: any = {
-  line(node: { properties: Record<string, unknown> }, line: number) {
-    node.properties['data-line'] = line
-  },
+// Shiki transformer factory: inject data-line + optional .bookmarked class
+function createLineTransformer(bookmarked?: Set<number>) {
+  return {
+    line(node: { properties: Record<string, unknown> }, line: number) {
+      node.properties['data-line'] = line
+      if (bookmarked?.has(line)) {
+        const existing = (node.properties['class'] as string) ?? ''
+        node.properties['class'] = existing ? `${existing} bookmarked` : 'bookmarked'
+      }
+    },
+  }
 }
 
-export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine }: CodeBlockProps) {
+export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine, bookmarkedLines }: CodeBlockProps) {
   const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem('code-viewer:font-size')
@@ -62,9 +68,10 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
   const lineCount = useMemo(() => safeCode.split('\n').length, [safeCode])
   const gutterWidth = useMemo(() => Math.max(2, String(lineCount).length) * 0.6 + 1, [lineCount])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const transformers = useMemo(
-    () => showLineNumbers ? [lineNumberTransformer] : undefined,
-    [showLineNumbers],
+    () => showLineNumbers ? [createLineTransformer(bookmarkedLines)] : undefined,
+    [showLineNumbers, bookmarkedLines],
   )
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -122,9 +129,15 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
             paddingTop: '0.5em',
           }}
         >
-          {Array.from({ length: lineCount }, (_, i) => (
-            <div key={i}>{i + 1}</div>
-          ))}
+          {Array.from({ length: lineCount }, (_, i) => {
+            const lineNum = i + 1
+            const isBookmarked = bookmarkedLines?.has(lineNum)
+            return (
+              <div key={i} style={isBookmarked ? { color: '#e2b93d' } : undefined}>
+                {isBookmarked ? `\u2605${lineNum}` : lineNum}
+              </div>
+            )
+          })}
         </div>
       )}
       <div

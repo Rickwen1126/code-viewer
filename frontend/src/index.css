@@ -98,6 +98,12 @@ html {
   border-right: 1px solid #333;
 }
 
+/* Bookmark star on line in wrap mode — toggled via .bookmarked class */
+.code-line-numbers.code-wrap-mode .line.bookmarked::before {
+  content: "\2605" attr(data-line);
+  color: #e2b93d;
+}
+
 /* Remove tabindex focus outline that causes select-all on click */
 pre.shiki {
   outline: none;

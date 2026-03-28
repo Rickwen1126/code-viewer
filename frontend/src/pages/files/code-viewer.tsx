@@ -7,6 +7,7 @@ import { useWorkspace } from '../../hooks/use-workspace'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { InFileSearch, type SearchMatch } from '../../components/in-file-search'
+import { getBookmarkedLines, addBookmark, removeBookmark, getBookmarksForFile } from '../../services/bookmarks'
 import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
@@ -76,6 +77,90 @@ export function CodeViewerPage() {
       }
     }
   }, [])
+
+  // Bookmarks state
+  const [bookmarkedLines, setBookmarkedLines] = useState<Set<number>>(new Set())
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressTriggeredRef = useRef(false)
+
+  // Load bookmarks when file changes
+  useEffect(() => {
+    if (!workspace || !path) return
+    setBookmarkedLines(getBookmarkedLines(workspace.extensionId, path))
+  }, [workspace, path])
+
+  // Long-press handler for bookmarking lines
+  const handleContentTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!workspace || !path || !file) return
+    // Only detect long-press on gutter area (left 40px) or line numbers
+    const touch = e.touches[0]
+    if (touch.clientX > 50) return
+
+    longPressTriggeredRef.current = false
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true
+      // Find which line was pressed
+      const container = codeContainerRef.current
+      if (!container) return
+      const range = document.caretRangeFromPoint(touch.clientX, touch.clientY)
+      if (!range || !container.contains(range.startContainer)) return
+
+      let node: Node | null = range.startContainer
+      let lineEl: HTMLElement | null = null
+      while (node && node !== container) {
+        if (node instanceof HTMLElement && node.classList?.contains('line')) {
+          lineEl = node
+          break
+        }
+        node = node.parentNode
+      }
+      if (!lineEl) return
+
+      const dataLine = lineEl.getAttribute('data-line')
+      if (!dataLine) return
+      const lineNum = parseInt(dataLine, 10) // 1-based from Shiki
+
+      const lines = file.content.split('\n')
+      const preview = lines[lineNum - 1] ?? ''
+
+      if (bookmarkedLines.has(lineNum)) {
+        removeBookmark(workspace.extensionId, path, lineNum)
+        setBookmarkedLines(prev => { const next = new Set(prev); next.delete(lineNum); return next })
+        showToast(`Bookmark removed (line ${lineNum})`)
+      } else {
+        addBookmark(workspace.extensionId, path, lineNum, preview)
+        setBookmarkedLines(prev => new Set(prev).add(lineNum))
+        showToast(`Bookmarked line ${lineNum}`)
+      }
+
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(50)
+    }, 400)
+  }, [workspace, path, file, bookmarkedLines])
+
+  const handleContentTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+
+  const handleContentTouchMove = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+
+  // Toast state
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function showToast(msg: string) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToastMsg(msg)
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 1500)
+  }
 
   const codeContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -480,6 +565,11 @@ export function CodeViewerPage() {
             unsaved
           </span>
         )}
+        {bookmarkedLines.size > 0 && (
+          <span style={{ fontSize: 11, color: '#e2b93d' }}>
+            &#x2605;{bookmarkedLines.size}
+          </span>
+        )}
         {/* Header buttons */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           {isMarkdown && (
@@ -578,12 +668,15 @@ export function CodeViewerPage() {
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
         onClick={isMarkdown && mdRendered ? undefined : handleCodeClick}
+        onTouchStart={handleContentTouchStart}
+        onTouchEnd={handleContentTouchEnd}
+        onTouchMove={handleContentTouchMove}
       >
         {isMarkdown && mdRendered ? (
           <MarkdownRenderer content={file.content} />
         ) : (
           <div ref={codeContainerRef}>
-            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} />
+            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} bookmarkedLines={bookmarkedLines} />
           </div>
         )}
       </div>
@@ -691,6 +784,25 @@ export function CodeViewerPage() {
         symbols={symbols}
         onNavigate={scrollToLine}
       />
+
+      {/* Toast */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          bottom: 80,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#333',
+          color: '#d4d4d4',
+          padding: '8px 16px',
+          borderRadius: 8,
+          fontSize: 13,
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {toastMsg}
+        </div>
+      )}
     </div>
   )
 }

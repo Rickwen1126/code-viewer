@@ -5,6 +5,7 @@ import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { PullToRefresh } from '../../components/pull-to-refresh'
+import { getBookmarks, type Bookmark } from '../../services/bookmarks'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
 
 const RECENT_FILES_KEY = 'code-viewer:recent-files'
@@ -202,6 +203,11 @@ export function FileBrowserPage() {
   }, [searchQuery, allFiles])
 
   const recentFiles = useMemo(() => getRecentFiles(), [nodes]) // re-read when tree changes
+  const bookmarks = useMemo(
+    () => workspace ? getBookmarks(workspace.extensionId) : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspace, showRecent], // re-read when dropdown opens
+  )
 
   // Redirect to workspace selection if no workspace ever selected
   useEffect(() => {
@@ -307,6 +313,52 @@ export function FileBrowserPage() {
             </button>
           )}
         </div>
+
+        {/* Bookmarks (shown on focus when no query) */}
+        {showRecent && !isSearching && bookmarks.length > 0 && (
+          <div style={{ borderBottom: '1px solid #333' }}>
+            <div style={{ padding: '6px 12px', fontSize: 11, color: '#e2b93d', textTransform: 'uppercase' }}>
+              &#x2605; Bookmarks ({bookmarks.length})
+            </div>
+            {bookmarks.map((b: Bookmark) => (
+              <button
+                key={`${b.path}:${b.line}`}
+                onClick={() => {
+                  setSearchQuery('')
+                  setShowRecent(false)
+                  const encoded = b.path.split('/').map(encodeURIComponent).join('/')
+                  navigate(`/files/${encoded}`, { state: { scrollToLine: b.line - 1 } })
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '1px solid #2a2a2a',
+                  color: '#d4d4d4',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <div>
+                  <span style={{ color: '#e2b93d' }}>&#x2605; </span>
+                  <span style={{ color: '#569cd6' }}>{b.path.split('/').pop()}</span>
+                  <span style={{ color: '#888', marginLeft: 6, fontSize: 11 }}>
+                    {b.path.split('/').slice(0, -1).join('/')}
+                  </span>
+                  <span style={{ color: '#666', marginLeft: 6, fontSize: 11 }}>:{b.line}</span>
+                </div>
+                {b.preview && (
+                  <div style={{ fontSize: 11, color: '#666', marginTop: 2, fontFamily: "'JetBrains Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {b.preview}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Recent files (shown on focus when no query) */}
         {showRecent && !isSearching && recentFiles.length > 0 && (
