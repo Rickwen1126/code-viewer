@@ -94,7 +94,11 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
 | 15 | New Tour: empty title | Tours tab → + New Tour → leave title empty | Create button is disabled. |
 | 16 | Step+ visibility | After creating tour (reference point exists) → open a file | Step+ button visible in header. |
 | 17 | Step+ toggle | Tap Step+ to toggle OFF (grey) → tap line number | Should bookmark (not open add-step overlay). Toggle back ON → tap line number → opens add-step overlay. |
-| 18 | Add Step: Screen 1 | Step+ ON → tap line number N | Overlay opens. Tour name in header. File name shown. Start line = N pre-filled. End line = N. |
+| 18 | Add Step: Screen 1 | Step+ ON → tap line number N | Overlay opens. Tour name in header. File name shown. Start line = N pre-filled. End line empty (placeholder = N). |
+| 18a | End line: empty → Next | Leave end line empty → Next | Passes validation. Screen 2 shows `file:N` (single line). |
+| 18b | End line: invalid → Next | Type end line < start line → Next | Alert shown "End line must be ≥ N". Does NOT proceed to Screen 2. |
+| 18c | End line: clear & retype | Clear end line field completely → type new value | Field accepts deletion and re-entry (no stuck value). |
+| 18d | End line: Auto button | Tap Auto button | `lsp.documentSymbol.result` in console. End line filled with enclosing symbol's last line. If no symbol found → alert "No enclosing symbol found". |
 | 19 | Add Step: Screen 2 | Screen 1 → set end line → Next | Section editor with title + content inputs. |
 | 20 | Add Step: save | Fill title + content → Save | Overlay closes. Toast "Step added to {tour}". **Go to Tours tab → tour now shows "1 step". Open tour detail → step has correct file, line range, description.** |
 | 21 | Add Step: cancel | Open overlay → Cancel (on either screen) | Overlay closes. No step added. Tour step count unchanged. |

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useWebSocket } from '../hooks/use-websocket'
 import { useTourEdit } from '../hooks/use-tour-edit'
-import type { TourAddStepResultPayload } from '@code-viewer/shared'
+import type { TourAddStepResultPayload, LspDocumentSymbolResultPayload } from '@code-viewer/shared'
 
 interface Section {
   title: string
@@ -20,12 +20,54 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
   const { tourEdit, advanceIndex } = useTourEdit()
   const [screen, setScreen] = useState<1 | 2>(1)
   const [startLine, setStartLine] = useState(tappedLine)
-  const [endLine, setEndLine] = useState(tappedLine)
+  const [endLineText, setEndLineText] = useState('') // empty = same as startLine
   const [sections, setSections] = useState<Section[]>([{ title: '', content: '' }])
+  const [autoLoading, setAutoLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   if (!tourEdit) return null
+
+  const effectiveEndLine = endLineText.trim() === '' ? startLine : Number(endLineText)
+
+  function handleNext() {
+    if (endLineText.trim() !== '' && (isNaN(effectiveEndLine) || effectiveEndLine < startLine)) {
+      alert(`End line must be ≥ ${startLine}`)
+      return
+    }
+    setScreen(2)
+  }
+
+  async function handleAuto() {
+    try {
+      setAutoLoading(true)
+      const res = await request<{ path: string }, LspDocumentSymbolResultPayload>(
+        'lsp.documentSymbol', { path: file },
+      )
+      const symbols = res.payload?.symbols ?? []
+      // Find the innermost symbol that contains startLine (0-indexed in LSP)
+      const line0 = startLine - 1
+      let bestEnd = -1
+      function search(syms: typeof symbols) {
+        for (const s of syms) {
+          if (s.range.start.line <= line0 && s.range.end.line >= line0) {
+            bestEnd = s.range.end.line + 1 // convert back to 1-indexed
+            if (s.children) search(s.children)
+          }
+        }
+      }
+      search(symbols)
+      if (bestEnd > 0) {
+        setEndLineText(String(bestEnd))
+      } else {
+        alert('No enclosing symbol found')
+      }
+    } catch {
+      alert('LSP unavailable')
+    } finally {
+      setAutoLoading(false)
+    }
+  }
 
   function updateSection(index: number, field: 'title' | 'content', value: string) {
     setSections(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s))
@@ -67,7 +109,7 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
         tourId: tourEdit!.tourId,
         file,
         line: startLine,
-        endLine: endLine !== startLine ? endLine : undefined,
+        endLine: effectiveEndLine !== startLine ? effectiveEndLine : undefined,
         description,
         index: tourEdit!.afterIndex + 1,
       })
@@ -122,18 +164,38 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
             />
 
             <label style={{ display: 'block', fontSize: 13, color: '#888', marginBottom: 6, marginTop: 16 }}>End line</label>
-            <input
-              type="number"
-              value={endLine}
-              onChange={(e) => setEndLine(Math.max(startLine, Number(e.target.value)))}
-              style={inputStyle}
-            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder={String(startLine)}
+                value={endLineText}
+                onChange={(e) => setEndLineText(e.target.value.replace(/[^0-9]/g, ''))}
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <button
+                onClick={handleAuto}
+                disabled={autoLoading}
+                style={{
+                  background: '#333',
+                  border: '1px solid #444',
+                  color: autoLoading ? '#555' : '#569cd6',
+                  fontSize: 12,
+                  padding: '8px 12px',
+                  borderRadius: 4,
+                  cursor: autoLoading ? 'default' : 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                {autoLoading ? '...' : 'Auto'}
+              </button>
+            </div>
           </div>
         ) : (
           /* Screen 2: Description editor */
           <div style={{ padding: 16 }}>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 16, fontFamily: "'JetBrains Mono', monospace" }}>
-              {fileName}:{startLine}{endLine !== startLine ? `–${endLine}` : ''}
+              {fileName}:{startLine}{effectiveEndLine !== startLine ? `–${effectiveEndLine}` : ''}
             </div>
 
             {sections.map((section, i) => (
@@ -222,7 +284,7 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
           <>
             <button onClick={onClose} style={secondaryBtnStyle}>Cancel</button>
             <button
-              onClick={() => setScreen(2)}
+              onClick={handleNext}
               style={primaryBtnStyle}
             >
               Next &rarr;
