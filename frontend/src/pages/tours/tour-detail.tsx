@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { useTourEdit } from '../../hooks/use-tour-edit'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
-import type { TourGetStepsResultPayload, TourGetFileAtRefResultPayload } from '@code-viewer/shared'
+import type { TourGetStepsResultPayload, TourGetFileAtRefResultPayload, TourDeleteStepResultPayload, TourAddStepResultPayload } from '@code-viewer/shared'
 
 type TourData = TourGetStepsResultPayload
 type TourStep = TourData['steps'][number]
@@ -82,6 +83,14 @@ export function TourDetailPage() {
   const [loadingTour, setLoadingTour] = useState(true)
   const [loadingCode, setLoadingCode] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { setTourEdit } = useTourEdit()
+
+  // Edit/delete state
+  const [editingStep, setEditingStep] = useState(false)
+  const [editSections, setEditSections] = useState<{ title: string; content: string }[]>([])
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Load tour steps
   useEffect(() => {
@@ -144,6 +153,108 @@ export function TourDetailPage() {
     if (!workspace || !tourId || !tourData) return
     saveProgress(workspace.extensionId, tourId, currentStep)
   }, [currentStep, workspace, tourId, tourData])
+
+  // Parse description into sections for editing
+  function parseDescription(desc: string): { title: string; content: string }[] {
+    const parts = desc.split(/^## /m).filter(Boolean)
+    if (parts.length === 0) return [{ title: '', content: desc }]
+    return parts.map(part => {
+      const newlineIndex = part.indexOf('\n')
+      if (newlineIndex === -1) return { title: part.trim(), content: '' }
+      return { title: part.slice(0, newlineIndex).trim(), content: part.slice(newlineIndex + 1).trim() }
+    })
+  }
+
+  function startEditStep() {
+    if (!tourData) return
+    const step = tourData.steps[currentStep]
+    if (!step) return
+    setEditSections(parseDescription(step.description))
+    setEditingStep(true)
+  }
+
+  function buildDescription(sections: { title: string; content: string }[]): string {
+    return sections
+      .map(s => {
+        const title = s.title.trim()
+        const content = s.content.trim()
+        if (title && content) return `## ${title}\n${content}`
+        if (title) return `## ${title}`
+        if (content) return content
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n\n')
+  }
+
+  async function handleSaveEdit() {
+    if (!tourData) return
+    const step = tourData.steps[currentStep]
+    if (!step) return
+    const description = buildDescription(editSections)
+    if (!description) return
+
+    try {
+      setSavingEdit(true)
+      // Delete old step, re-add with new description at same index
+      await request<{ tourId: string; stepIndex: number }, TourDeleteStepResultPayload>(
+        'tour.deleteStep', { tourId, stepIndex: currentStep },
+      )
+      await request<
+        { tourId: string; file: string; line: number; endLine?: number; description: string; index?: number },
+        TourAddStepResultPayload
+      >('tour.addStep', {
+        tourId,
+        file: step.file,
+        line: step.line,
+        endLine: step.endLine,
+        description,
+        index: currentStep,
+      })
+      setEditingStep(false)
+      await loadTour() // reload to get fresh data
+    } catch (err) {
+      console.error('[TourDetailPage] edit error:', err)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function handleDeleteStep() {
+    if (!tourData) return
+    try {
+      setDeleting(true)
+      await request<{ tourId: string; stepIndex: number }, TourDeleteStepResultPayload>(
+        'tour.deleteStep', { tourId, stepIndex: currentStep },
+      )
+      setConfirmDelete(false)
+      // Adjust current step if needed
+      if (tourData.steps.length <= 1) {
+        navigate('/tours')
+        return
+      }
+      if (currentStep >= tourData.steps.length - 1) {
+        setCurrentStep(prev => Math.max(0, prev - 1))
+      }
+      await loadTour()
+    } catch (err) {
+      console.error('[TourDetailPage] delete error:', err)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // Add steps entry point: set reference point after current step
+  function handleAddStepsHere() {
+    if (!tourData || !workspace) return
+    setTourEdit({
+      tourId,
+      tourTitle: tourData.tour.title,
+      extensionId: workspace.extensionId,
+      afterIndex: currentStep,
+    })
+    navigate('/files')
+  }
 
   function goTo(index: number) {
     if (!tourData) return
@@ -266,6 +377,40 @@ export function TourDetailPage() {
             )}
           </div>
         )}
+
+        {/* Step actions: Edit / Delete / Add steps here */}
+        <div style={{ padding: '0 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={startEditStep} style={actionBtnStyle}>
+            Edit
+          </button>
+          <button onClick={() => setConfirmDelete(true)} style={{ ...actionBtnStyle, color: '#f48771', borderColor: '#5a3030' }}>
+            Delete
+          </button>
+          <button onClick={handleAddStepsHere} style={{ ...actionBtnStyle, color: '#569cd6', borderColor: '#264f78' }}>
+            + Add step after
+          </button>
+        </div>
+
+        {/* Delete confirmation */}
+        {confirmDelete && (
+          <div style={{ padding: '0 16px 16px' }}>
+            <div style={{ background: '#2a2020', border: '1px solid #5a3030', borderRadius: 6, padding: 12 }}>
+              <div style={{ fontSize: 13, color: '#f48771', marginBottom: 8 }}>Delete this step?</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={handleDeleteStep}
+                  disabled={deleting}
+                  style={{ ...actionBtnStyle, background: '#5a3030', color: '#f48771', borderColor: '#5a3030' }}
+                >
+                  {deleting ? '...' : 'Yes, delete'}
+                </button>
+                <button onClick={() => setConfirmDelete(false)} style={actionBtnStyle}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Navigation footer */}
@@ -334,6 +479,114 @@ export function TourDetailPage() {
           Next
         </button>
       </div>
+
+      {/* Edit step overlay */}
+      {editingStep && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: '#1e1e1e',
+          zIndex: 200,
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          <div style={{
+            padding: '10px 16px',
+            paddingTop: 'calc(10px + env(safe-area-inset-top))',
+            borderBottom: '1px solid #333',
+            flexShrink: 0,
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#d4d4d4' }}>Edit Step Description</div>
+            {step.file && (
+              <div style={{ fontSize: 12, color: '#888', marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                {step.file}:{step.line}{step.endLine !== undefined && step.endLine !== step.line ? `–${step.endLine}` : ''}
+              </div>
+            )}
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16, WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
+            {editSections.map((section, i) => (
+              <div key={i} style={{ marginBottom: 16, border: '1px solid #333', borderRadius: 6, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', background: '#252526', padding: '6px 10px' }}>
+                  <span style={{ fontSize: 12, color: '#888', flex: 1 }}>Section {i + 1}</span>
+                  {editSections.length > 1 && (
+                    <button
+                      onClick={() => setEditSections(prev => prev.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: '#f48771', fontSize: 14, cursor: 'pointer', padding: '0 4px' }}
+                    >
+                      &#x1F5D1;
+                    </button>
+                  )}
+                </div>
+                <input
+                  placeholder="Title (## heading)"
+                  value={section.title}
+                  onChange={(e) => setEditSections(prev => prev.map((s, j) => j === i ? { ...s, title: e.target.value } : s))}
+                  style={editInputStyle}
+                />
+                <textarea
+                  placeholder="Content..."
+                  value={section.content}
+                  onChange={(e) => setEditSections(prev => prev.map((s, j) => j === i ? { ...s, content: e.target.value } : s))}
+                  rows={4}
+                  style={{ ...editInputStyle, resize: 'vertical', minHeight: 80 }}
+                />
+              </div>
+            ))}
+            <button
+              onClick={() => setEditSections(prev => [...prev, { title: '', content: '' }])}
+              style={{ display: 'block', width: '100%', padding: 10, background: 'none', border: '1px dashed #444', borderRadius: 6, color: '#888', fontSize: 13, cursor: 'pointer' }}
+            >
+              + Add Section
+            </button>
+          </div>
+          <div style={{
+            padding: '10px 16px',
+            paddingBottom: 'calc(10px + env(safe-area-inset-bottom))',
+            borderTop: '1px solid #333',
+            display: 'flex',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+          }}>
+            <button
+              onClick={() => setEditingStep(false)}
+              style={{ background: 'none', border: '1px solid #444', color: '#888', fontSize: 14, padding: '8px 20px', borderRadius: 6, cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveEdit}
+              disabled={savingEdit}
+              style={{ background: '#569cd6', border: 'none', color: '#fff', fontSize: 14, padding: '8px 20px', borderRadius: 6, cursor: savingEdit ? 'default' : 'pointer', opacity: savingEdit ? 0.5 : 1 }}
+            >
+              {savingEdit ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+const actionBtnStyle: React.CSSProperties = {
+  background: 'none',
+  border: '1px solid #444',
+  color: '#888',
+  fontSize: 12,
+  padding: '4px 12px',
+  borderRadius: 4,
+  cursor: 'pointer',
+}
+
+const editInputStyle: React.CSSProperties = {
+  background: '#2a2a2a',
+  border: 'none',
+  borderBottom: '1px solid #333',
+  color: '#d4d4d4',
+  fontSize: 14,
+  padding: '8px 10px',
+  outline: 'none',
+  display: 'block',
+  width: '100%',
+  boxSizing: 'border-box',
+  fontFamily: 'inherit',
 }

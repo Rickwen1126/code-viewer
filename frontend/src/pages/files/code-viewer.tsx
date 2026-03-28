@@ -11,6 +11,8 @@ import { getBookmarkedLines, addBookmark, removeBookmark, getBookmarksForFile } 
 import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
+import { useTourEdit } from '../../hooks/use-tour-edit'
+import { AddStepOverlay } from '../../components/add-step-overlay'
 import type {
   FileReadResultPayload,
   LspDefinitionResultPayload,
@@ -78,6 +80,10 @@ export function CodeViewerPage() {
     }
   }, [])
 
+  // Tour edit state
+  const { tourEdit, setTourEdit } = useTourEdit()
+  const [addStepLine, setAddStepLine] = useState<number | null>(null)
+
   // Bookmarks state
   const [bookmarkedLines, setBookmarkedLines] = useState<Set<number>>(new Set())
 
@@ -87,9 +93,18 @@ export function CodeViewerPage() {
     setBookmarkedLines(getBookmarkedLines(workspace.extensionId, path))
   }, [workspace, path])
 
-  // Bookmark toggle — triggered by clicking line number in CodeBlock
-  const handleBookmarkToggle = useCallback((lineNum: number) => {
+  // Line number click — Step+ ON: open add-step overlay; OFF: toggle bookmark
+  const handleLineNumberClick = useCallback((lineNum: number) => {
     if (!workspace || !path || !file) return
+
+    if (tourEdit) {
+      // Step+ is ON: open add step overlay
+      setAddStepLine(lineNum)
+      if (navigator.vibrate) navigator.vibrate(50)
+      return
+    }
+
+    // Step+ is OFF: toggle bookmark
     const contentLines = file.content.split('\n')
     const preview = contentLines[lineNum - 1] ?? ''
 
@@ -103,7 +118,7 @@ export function CodeViewerPage() {
       showToast(`Bookmarked line ${lineNum}`)
     }
     if (navigator.vibrate) navigator.vibrate(50)
-  }, [workspace, path, file, bookmarkedLines])
+  }, [workspace, path, file, bookmarkedLines, tourEdit])
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -596,6 +611,27 @@ export function CodeViewerPage() {
           >
             &#x1F50D;
           </button>
+          {tourEdit && (
+            <button
+              onClick={() => setTourEdit(null)}
+              style={{
+                background: '#264f78',
+                border: '1px solid #569cd6',
+                color: '#d4d4d4',
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                maxWidth: 100,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={`Step+ (${tourEdit.tourTitle}) — tap to stop`}
+            >
+              Step+
+            </button>
+          )}
           </div>
         </div>
       </div>
@@ -625,7 +661,7 @@ export function CodeViewerPage() {
           <MarkdownRenderer content={file.content} />
         ) : (
           <div ref={codeContainerRef}>
-            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} bookmarkedLines={bookmarkedLines} onLineNumberClick={handleBookmarkToggle} />
+            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} bookmarkedLines={bookmarkedLines} onLineNumberClick={handleLineNumberClick} />
           </div>
         )}
       </div>
@@ -733,6 +769,19 @@ export function CodeViewerPage() {
         symbols={symbols}
         onNavigate={scrollToLine}
       />
+
+      {/* Add Step Overlay */}
+      {addStepLine !== null && tourEdit && (
+        <AddStepOverlay
+          file={path}
+          tappedLine={addStepLine}
+          onClose={() => setAddStepLine(null)}
+          onSaved={() => {
+            setAddStepLine(null)
+            showToast(`Step added to "${tourEdit.tourTitle}"`)
+          }}
+        />
+      )}
 
       {/* Toast */}
       {toastMsg && (

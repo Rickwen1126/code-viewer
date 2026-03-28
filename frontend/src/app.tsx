@@ -4,6 +4,7 @@ import { useContext, useCallback, Component, type ReactNode } from 'react'
 import { TabBar } from './components/tab-bar'
 import { ConnectionStatus } from './components/connection-status'
 import { WorkspaceProvider } from './hooks/use-workspace'
+import { TourEditProvider } from './hooks/use-tour-edit'
 import { ReviewProvider, ReviewContext } from './hooks/use-review'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
@@ -190,11 +191,13 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <WorkspaceProvider>
-          <ReviewProvider>
-            <Routes>
-              <Route path="/*" element={<TabLayout />} />
-            </Routes>
-          </ReviewProvider>
+          <TourEditProvider>
+            <ReviewProvider>
+              <Routes>
+                <Route path="/*" element={<TabLayout />} />
+              </Routes>
+            </ReviewProvider>
+          </TourEditProvider>
         </WorkspaceProvider>
       </BrowserRouter>
     </ErrorBoundary>
