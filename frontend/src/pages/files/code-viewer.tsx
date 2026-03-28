@@ -5,6 +5,7 @@ import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { CodeBlock } from '../../components/code-block'
+import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
@@ -37,6 +38,11 @@ export function CodeViewerPage() {
     localStorage.getItem('code-viewer:wrap-enabled') === 'true',
   )
   const [highlightLine, setHighlightLine] = useState<number | null>(null)
+  const [mdRendered, setMdRendered] = useState(() =>
+    localStorage.getItem('code-viewer:md-view-mode') !== 'raw',
+  )
+
+  const isMarkdown = file?.languageId === 'markdown'
 
   // References list state (T041)
   const [referencesOpen, setReferencesOpen] = useState(false)
@@ -449,8 +455,28 @@ export function CodeViewerPage() {
             unsaved
           </span>
         )}
-        {/* Wrap toggle + Actions + Symbols */}
+        {/* Header buttons */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          {isMarkdown && (
+            <button
+              onClick={() => setMdRendered((v) => {
+                const next = !v
+                localStorage.setItem('code-viewer:md-view-mode', next ? 'rendered' : 'raw')
+                return next
+              })}
+              style={{
+                background: mdRendered ? '#333' : 'none',
+                border: '1px solid #444',
+                color: mdRendered ? '#d4d4d4' : '#888',
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              {mdRendered ? 'Rendered' : 'Raw'}
+            </button>
+          )}
           <button
             onClick={() => setWordWrap((v) => {
               const next = !v
@@ -486,15 +512,19 @@ export function CodeViewerPage() {
         </div>
       </div>
 
-      {/* Code area — tap to show popover with hover + actions */}
+      {/* Content area */}
       <div
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
-        onClick={handleCodeClick}
+        onClick={isMarkdown && mdRendered ? undefined : handleCodeClick}
       >
-        <div ref={codeContainerRef}>
-          <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} />
-        </div>
+        {isMarkdown && mdRendered ? (
+          <MarkdownRenderer content={file.content} />
+        ) : (
+          <div ref={codeContainerRef}>
+            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} />
+          </div>
+        )}
       </div>
 
       {/* Code popover: hover info + Go to Definition / Find References */}
