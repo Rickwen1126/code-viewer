@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { CodeBlock } from '../../components/code-block'
-import type { TourGetStepsResultPayload, FileReadResultPayload } from '@code-viewer/shared'
+import { MarkdownRenderer } from '../../components/markdown-renderer'
+import type { TourGetStepsResultPayload, TourGetFileAtRefResultPayload } from '@code-viewer/shared'
 
 type TourData = TourGetStepsResultPayload
 type TourStep = TourData['steps'][number]
@@ -66,42 +67,6 @@ function extractLines(content: string, startLine: number, endLine?: number): str
   return lines.slice(start, end).join('\n')
 }
 
-// Simple markdown renderer (bold, inline code, line breaks)
-function renderDescription(text: string) {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
-  return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('`') && part.endsWith('`')) {
-          return (
-            <code
-              key={i}
-              style={{
-                background: '#1e1e1e',
-                border: '1px solid #444',
-                borderRadius: 3,
-                padding: '1px 4px',
-                fontSize: 12,
-                fontFamily: "'JetBrains Mono', monospace",
-                color: '#ce9178',
-              }}
-            >
-              {part.slice(1, -1)}
-            </code>
-          )
-        }
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return (
-            <strong key={i} style={{ color: '#d4d4d4' }}>
-              {part.slice(2, -2)}
-            </strong>
-          )
-        }
-        return <span key={i}>{part}</span>
-      })}
-    </>
-  )
-}
 
 export function TourDetailPage() {
   const { tourId: rawTourId } = useParams<{ tourId: string }>()
@@ -143,16 +108,19 @@ export function TourDetailPage() {
     }
   }
 
-  // Load step code whenever step changes
+  // Load step code — use tour.getFileAtRef to read at recorded commit
   const loadStepCode = useCallback(
-    async (step: TourStep) => {
+    async (step: TourStep, ref: string | null | undefined) => {
       if (!step.file) {
         setStepCode(null)
         return
       }
       try {
         setLoadingCode(true)
-        const res = await request<{ path: string }, FileReadResultPayload>('file.read', { path: step.file })
+        const res = await request<{ ref: string | null; path: string }, TourGetFileAtRefResultPayload>(
+          'tour.getFileAtRef',
+          { ref: ref ?? null, path: step.file },
+        )
         const snippet = extractLines(res.payload.content, step.line, step.endLine)
         setStepCode(snippet)
         setStepLanguage(res.payload.languageId || getLanguageFromFile(step.file))
@@ -168,7 +136,7 @@ export function TourDetailPage() {
   useEffect(() => {
     if (!tourData || tourData.steps.length === 0) return
     const step = tourData.steps[currentStep]
-    if (step) loadStepCode(step)
+    if (step) loadStepCode(step, tourData.tour.ref)
   }, [tourData, currentStep, loadStepCode])
 
   // T063: save progress when step changes
@@ -243,9 +211,9 @@ export function TourDetailPage() {
           </div>
         )}
 
-        {/* Description */}
-        <div style={{ padding: '10px 16px', fontSize: 14, color: '#b0b0b0', lineHeight: 1.6 }}>
-          {renderDescription(step.description)}
+        {/* Description — full markdown rendering */}
+        <div style={{ padding: '0 4px' }}>
+          <MarkdownRenderer content={step.description} />
         </div>
 
         {/* File + line info + T062: "View in Code Viewer" link */}
@@ -264,7 +232,7 @@ export function TourDetailPage() {
               {step.endLine !== undefined && step.endLine !== step.line ? `–${step.endLine}` : ''}
             </span>
             <button
-              onClick={() => navigate(`/files/${encodeURIComponent(step.file)}`)}
+              onClick={() => navigate(`/files/${encodeURIComponent(step.file)}`, { state: { scrollToLine: step.line - 1 } })}
               style={{
                 background: 'none',
                 border: '1px solid #444',
@@ -286,7 +254,13 @@ export function TourDetailPage() {
             {loadingCode ? (
               <div style={{ padding: '8px 16px', color: '#888', fontSize: 13 }}>Loading code...</div>
             ) : stepCode !== null ? (
-              <CodeBlock code={stepCode} language={stepLanguage} />
+              <CodeBlock
+                code={stepCode}
+                language={stepLanguage}
+                showLineNumbers
+                startLine={step.line}
+                selectionHighlight={step.selection ?? null}
+              />
             ) : (
               <div style={{ padding: '8px 16px', color: '#888', fontSize: 13 }}>Could not load code snippet</div>
             )}

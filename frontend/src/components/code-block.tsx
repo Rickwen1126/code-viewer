@@ -1,6 +1,11 @@
 import ShikiHighlighter from 'react-shiki'
 import { useState, useRef, useCallback, useMemo } from 'react'
 
+interface SelectionRange {
+  start: { line: number; character: number }
+  end: { line: number; character: number }
+}
+
 interface CodeBlockProps {
   code: string
   language: string
@@ -9,6 +14,10 @@ interface CodeBlockProps {
   highlightLine?: number | null
   bookmarkedLines?: Set<number>
   onLineNumberClick?: (lineNum: number) => void
+  /** Offset for line numbers (e.g., startLine=10 makes first line show as 10) */
+  startLine?: number
+  /** Highlight a selection range within the code */
+  selectionHighlight?: SelectionRange | null
 }
 
 const MIN_FONT_SIZE = 8
@@ -56,7 +65,7 @@ function createLineTransformer(bookmarked?: Set<number>) {
   }
 }
 
-export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine, bookmarkedLines, onLineNumberClick }: CodeBlockProps) {
+export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine, bookmarkedLines, onLineNumberClick, startLine = 1, selectionHighlight }: CodeBlockProps) {
   const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem('code-viewer:font-size')
@@ -131,7 +140,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           }}
         >
           {Array.from({ length: lineCount }, (_, i) => {
-            const lineNum = i + 1
+            const lineNum = startLine + i
             const isBookmarked = bookmarkedLines?.has(lineNum)
             return (
               <div
@@ -201,6 +210,18 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           }
         `}</style>
       )}
+      {/* Selection highlight for CodeTour steps */}
+      {selectionHighlight && (() => {
+        // Convert absolute line numbers to 1-based line indices within this snippet
+        const startIdx = selectionHighlight.start.line - startLine + 1
+        const endIdx = selectionHighlight.end.line - startLine + 1
+        const rules: string[] = []
+        for (let idx = startIdx; idx <= endIdx; idx++) {
+          if (idx < 1 || idx > lineCount) continue
+          rules.push(`.line:nth-child(${idx}) { background: rgba(86, 156, 214, 0.15) !important; }`)
+        }
+        return rules.length > 0 ? <style>{rules.join('\n')}</style> : null
+      })()}
     </div>
   )
 }
