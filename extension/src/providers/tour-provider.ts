@@ -205,7 +205,7 @@ export async function handleTourCreate(
   }, msg.id))
 }
 
-// tour.addStep — add a step to a recording tour
+// tour.addStep — add a step to a tour
 export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => void): Promise<void> {
   const payload = msg.payload as TourAddStepPayload
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
@@ -217,8 +217,6 @@ export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => 
   let tour: any
   try { tour = await loadTourJson(toursUri, `${payload.tourId}.tour`) }
   catch { send(createMessage('tour.addStep.error', { code: 'NOT_FOUND', message: 'Tour not found' }, msg.id)); return }
-
-  if (tour.status !== 'recording') { send(createMessage('tour.addStep.error', { code: 'TOUR_NOT_RECORDING', message: 'Tour is not in recording mode' }, msg.id)); return }
 
   const validation = validatePath(payload.file, workspaceFolder)
   if (!validation.valid) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: `Invalid path: ${validation.reason}` }, msg.id)); return }
@@ -237,7 +235,7 @@ export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => 
   send(createMessage('tour.addStep.result', { stepCount: tour.steps.length }, msg.id))
 }
 
-// tour.deleteStep — remove a step from a recording tour
+// tour.deleteStep — remove a step from a tour
 export async function handleTourDeleteStep(msg: WsMessage, send: (m: WsMessage) => void): Promise<void> {
   const { tourId, stepIndex } = msg.payload as TourDeleteStepPayload
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
@@ -248,8 +246,6 @@ export async function handleTourDeleteStep(msg: WsMessage, send: (m: WsMessage) 
   let tour: any
   try { tour = await loadTourJson(toursUri, `${tourId}.tour`) }
   catch { send(createMessage('tour.deleteStep.error', { code: 'NOT_FOUND', message: 'Tour not found' }, msg.id)); return }
-
-  if (tour.status !== 'recording') { send(createMessage('tour.deleteStep.error', { code: 'TOUR_NOT_RECORDING', message: 'Tour is not in recording mode' }, msg.id)); return }
 
   if (!Array.isArray(tour.steps) || stepIndex < 0 || stepIndex >= tour.steps.length) {
     send(createMessage('tour.deleteStep.error', { code: 'TOUR_STEP_OUT_OF_BOUNDS', message: `Step index ${stepIndex} out of bounds` }, msg.id)); return

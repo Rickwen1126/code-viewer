@@ -404,20 +404,17 @@ describe('handleTourAddStep', () => {
     expect(written.steps[2]).toMatchObject({ file: 'b.ts', description: 'second' })
   })
 
-  it('rejects when tour is not in recording mode (TOUR_NOT_RECORDING)', async () => {
-    mockFs.readFile.mockResolvedValue(makeTourJson({ status: 'done' }))
+  it('allows addStep on tour without recording status', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson({ status: undefined }))
     const send = vi.fn()
     await handleTourAddStep({
       ...makeMsg(),
       payload: { tourId: 'my-tour', file: 'src/index.ts', line: 1, description: 'step' },
     }, send)
 
-    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(mockFs.writeFile).toHaveBeenCalled()
     expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'tour.addStep.error',
-        payload: expect.objectContaining({ code: 'TOUR_NOT_RECORDING' }),
-      }),
+      expect.objectContaining({ type: 'tour.addStep.result' }),
     )
   })
 
@@ -552,20 +549,17 @@ describe('handleTourDeleteStep', () => {
     )
   })
 
-  it('rejects when tour is not in recording mode (TOUR_NOT_RECORDING)', async () => {
-    mockFs.readFile.mockResolvedValue(makeTourJson({ status: 'done' }))
+  it('allows deleteStep on tour without recording status', async () => {
+    mockFs.readFile.mockResolvedValue(makeTourJson({ status: undefined }))
     const send = vi.fn()
     await handleTourDeleteStep({
       ...makeMsg(),
       payload: { tourId: 'my-tour', stepIndex: 0 },
     }, send)
 
-    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(mockFs.writeFile).toHaveBeenCalled()
     expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'tour.deleteStep.error',
-        payload: expect.objectContaining({ code: 'TOUR_NOT_RECORDING' }),
-      }),
+      expect.objectContaining({ type: 'tour.deleteStep.result' }),
     )
   })
 })

@@ -217,9 +217,11 @@ export function TourDetailPage() {
         index: currentStep,
       })
       setEditingStep(false)
-      await loadTour() // reload to get fresh data
+      await loadTour()
     } catch (err) {
       console.error('[TourDetailPage] edit error:', err)
+      setError('Failed to update step')
+      setEditingStep(false)
     } finally {
       setSavingEdit(false)
     }
@@ -245,6 +247,8 @@ export function TourDetailPage() {
       await loadTour()
     } catch (err) {
       console.error('[TourDetailPage] delete error:', err)
+      setError('Failed to delete step')
+      setConfirmDelete(false)
     } finally {
       setDeleting(false)
     }
