@@ -103,11 +103,16 @@ export function TourDetailPage() {
       setLoadingTour(true)
       setError(null)
       const res = await request<{ tourId: string }, TourGetStepsResultPayload>('tour.getSteps', { tourId })
-      setTourData(res.payload)
+      const data = res.payload
+      if (!data?.steps) {
+        setError('Invalid tour data')
+        return
+      }
+      setTourData(data)
 
       // T063: restore progress from localStorage
       const savedStep = loadProgress(workspace!.extensionId, tourId)
-      const clampedStep = Math.min(savedStep, res.payload.steps.length - 1)
+      const clampedStep = Math.min(savedStep, data.steps.length - 1)
       setCurrentStep(clampedStep >= 0 ? clampedStep : 0)
     } catch (err) {
       setError('Tour not found')
@@ -143,7 +148,7 @@ export function TourDetailPage() {
   )
 
   useEffect(() => {
-    if (!tourData || tourData.steps.length === 0) return
+    if (!tourData?.steps || tourData.steps.length === 0) return
     const step = tourData.steps[currentStep]
     if (step) loadStepCode(step, tourData.tour.ref)
   }, [tourData, currentStep, loadStepCode])
@@ -229,11 +234,12 @@ export function TourDetailPage() {
       )
       setConfirmDelete(false)
       // Adjust current step if needed
-      if (tourData.steps.length <= 1) {
+      const stepCount = tourData.steps?.length ?? 0
+      if (stepCount <= 1) {
         navigate('/tours')
         return
       }
-      if (currentStep >= tourData.steps.length - 1) {
+      if (currentStep >= stepCount - 1) {
         setCurrentStep(prev => Math.max(0, prev - 1))
       }
       await loadTour()
@@ -274,7 +280,7 @@ export function TourDetailPage() {
     return <div style={{ padding: 16, color: '#f48771' }}>{error ?? 'Tour not found'}</div>
   }
 
-  const steps = tourData.steps
+  const steps = tourData.steps ?? []
 
   // Empty tour: show prompt to add steps
   if (steps.length === 0) {
