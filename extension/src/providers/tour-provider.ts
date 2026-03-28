@@ -199,10 +199,14 @@ export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => 
   try { tour = await loadTourJson(toursUri, `${payload.tourId}.tour`) }
   catch { send(createMessage('tour.addStep.error', { code: 'NOT_FOUND', message: 'Tour not found' }, msg.id)); return }
 
-  const validation = validatePath(payload.file, workspaceFolder)
-  if (!validation.valid) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: `Invalid path: ${validation.reason}` }, msg.id)); return }
+  // file is optional — context-only steps have no file/line
+  if (payload.file) {
+    const validation = validatePath(payload.file, workspaceFolder)
+    if (!validation.valid) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: `Invalid path: ${validation.reason}` }, msg.id)); return }
+  }
 
-  const step: any = { file: payload.file, line: payload.line }
+  const step: any = {}
+  if (payload.file) { step.file = payload.file; step.line = payload.line }
   if (payload.endLine != null) step.endLine = payload.endLine
   if (payload.selection) step.selection = payload.selection
   if (payload.title) step.title = payload.title

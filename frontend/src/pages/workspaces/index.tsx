@@ -13,7 +13,7 @@ import type {
 
 export function WorkspacesPage() {
   const { connectionState, request } = useWebSocket()
-  const { selectWorkspace } = useWorkspace()
+  const { workspace: currentWorkspace, selectWorkspace } = useWorkspace()
   const navigate = useNavigate()
   const [workspaces, setWorkspaces] = useState<WorkspaceEntry[]>([])
   const [initialLoading, setInitialLoading] = useState(true)
@@ -111,7 +111,9 @@ export function WorkspacesPage() {
       </h1>
 
       {/* Workspace list — show cached or live, each row independently clickable */}
-      {workspaces.map((ws) => (
+      {workspaces.map((ws) => {
+        const isSelected = currentWorkspace?.extensionId === ws.extensionId
+        return (
         <button
           key={ws.extensionId}
           onClick={() => handleSelectWorkspace(ws.extensionId)}
@@ -123,8 +125,8 @@ export function WorkspacesPage() {
             width: '100%',
             padding: 16,
             marginBottom: 8,
-            background: '#252526',
-            border: '1px solid #333',
+            background: isSelected ? '#1a2a3a' : '#252526',
+            border: isSelected ? '1px solid #569cd6' : '1px solid #333',
             borderRadius: 8,
             color: '#d4d4d4',
             textAlign: 'left',
@@ -164,7 +166,8 @@ export function WorkspacesPage() {
             )}
           </div>
         </button>
-      ))}
+        )
+      })}
 
       {/* Empty state */}
       {workspaces.length === 0 && (

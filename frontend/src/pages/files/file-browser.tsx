@@ -426,9 +426,14 @@ export function FileBrowserPage() {
         {/* File tree (hidden during search) */}
         {!isSearching && !showRecent && (
           <>
-            {/* Collapse All / Recovery */}
-            {(expandedDirs.size > 0 || collapsedSnapshot) && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', borderBottom: '1px solid #2a2a2a' }}>
+            {/* Workspace name + Collapse All / Recovery */}
+            <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #2a2a2a' }}>
+              {workspace && (
+                <span style={{ padding: '6px 12px', fontSize: 11, color: '#569cd6', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {workspace.name}
+                </span>
+              )}
+              <div style={{ display: 'flex', marginLeft: 'auto' }}>
                 {collapsedSnapshot && (
                   <button
                     onClick={recoverState}
@@ -460,7 +465,7 @@ export function FileBrowserPage() {
                   </button>
                 )}
               </div>
-            )}
+            </div>
             {(nodes ?? []).map((node) => (
               <TreeNode key={node.path} node={node} depth={0} onFileClick={handleFileClick} expandedDirs={expandedDirs} onToggle={handleToggle} currentFile={currentFile} />
             ))}

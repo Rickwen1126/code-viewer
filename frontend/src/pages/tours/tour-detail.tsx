@@ -205,17 +205,19 @@ export function TourDetailPage() {
       await request<{ tourId: string; stepIndex: number }, TourDeleteStepResultPayload>(
         'tour.deleteStep', { tourId, stepIndex: currentStep },
       )
-      await request<
-        { tourId: string; file: string; line: number; endLine?: number; description: string; index?: number },
-        TourAddStepResultPayload
-      >('tour.addStep', {
+      const addPayload: Record<string, unknown> = {
         tourId,
-        file: step.file,
-        line: step.line,
-        endLine: step.endLine,
         description,
         index: currentStep,
-      })
+      }
+      if (step.file) {
+        addPayload.file = step.file
+        addPayload.line = step.line
+        if (step.endLine != null) addPayload.endLine = step.endLine
+      }
+      await request<Record<string, unknown>, TourAddStepResultPayload>(
+        'tour.addStep', addPayload,
+      )
       setEditingStep(false)
       await loadTour()
     } catch (err) {
