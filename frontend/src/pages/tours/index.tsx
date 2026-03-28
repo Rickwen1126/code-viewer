@@ -11,7 +11,7 @@ type TourSummary = TourListResultPayload['tours'][number]
 export function TourListPage() {
   const { request, connectionState } = useWebSocket()
   const { workspace } = useWorkspace()
-  const { setTourEdit } = useTourEdit()
+  const { tourEdit, setTourEdit } = useTourEdit()
   const navigate = useNavigate()
   const [tours, setTours] = useState<TourSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,18 +61,6 @@ export function TourListPage() {
     } finally {
       setCreating(false)
     }
-  }
-
-  function handleEditTour(e: React.MouseEvent, tour: TourSummary) {
-    e.stopPropagation()
-    if (!workspace) return
-    setTourEdit({
-      tourId: tour.id,
-      tourTitle: tour.title,
-      extensionId: workspace.extensionId,
-      afterIndex: tour.stepCount - 1, // append after last step
-    })
-    navigate('/files')
   }
 
   if (!workspace) {
@@ -165,53 +153,65 @@ export function TourListPage() {
           <div style={{ fontSize: 16, marginBottom: 8 }}>No tours found</div>
           <div style={{ fontSize: 13 }}>Tap "+ New Tour" to create one</div>
         </div>
-      ) : tours.map((tour) => (
-        <div
-          key={tour.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            borderBottom: '1px solid #2a2a2a',
-          }}
-        >
-          <button
-            onClick={() => navigate(`/tours/${encodeURIComponent(tour.id)}`)}
+      ) : tours.map((tour) => {
+        const isEditing = tourEdit?.tourId === tour.id
+        return (
+          <div
+            key={tour.id}
             style={{
-              flex: 1,
-              padding: '14px 16px',
-              background: 'none',
-              border: 'none',
-              color: '#d4d4d4',
-              cursor: 'pointer',
-              textAlign: 'left',
+              borderBottom: '1px solid #2a2a2a',
+              background: isEditing ? '#1a2a3a' : 'none',
+              borderLeft: isEditing ? '3px solid #569cd6' : '3px solid transparent',
             }}
           >
-            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>{tour.title}</div>
-            {tour.description && (
-              <div style={{ fontSize: 13, color: '#888', marginBottom: 6 }}>{tour.description}</div>
-            )}
-            <div style={{ fontSize: 12, color: '#569cd6' }}>
-              {tour.stepCount} {tour.stepCount === 1 ? 'step' : 'steps'}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <button
+                onClick={() => navigate(`/tours/${encodeURIComponent(tour.id)}`)}
+                style={{
+                  flex: 1,
+                  padding: '14px 16px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#d4d4d4',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>{tour.title}</div>
+                {tour.description && (
+                  <div style={{ fontSize: 13, color: '#888', marginBottom: 6 }}>{tour.description}</div>
+                )}
+                <div style={{ fontSize: 12, color: '#569cd6' }}>
+                  {tour.stepCount} {tour.stepCount === 1 ? 'step' : 'steps'}
+                </div>
+              </button>
+              {isEditing && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setTourEdit(null) }}
+                  style={{
+                    background: '#569cd6',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 12,
+                    padding: '4px 12px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    marginRight: 16,
+                    flexShrink: 0,
+                  }}
+                >
+                  Done
+                </button>
+              )}
             </div>
-          </button>
-          <button
-            onClick={(e) => handleEditTour(e, tour)}
-            style={{
-              background: 'none',
-              border: '1px solid #444',
-              color: '#569cd6',
-              fontSize: 12,
-              padding: '4px 12px',
-              borderRadius: 4,
-              cursor: 'pointer',
-              marginRight: 16,
-              flexShrink: 0,
-            }}
-          >
-            Edit
-          </button>
-        </div>
-      ))}
+            {isEditing && (
+              <div style={{ padding: '0 16px 10px', fontSize: 12, color: '#569cd6' }}>
+                Adding steps... (Step {tourEdit!.afterIndex + 2})
+              </div>
+            )}
+          </div>
+        )
+      })}
       </div>
     </PullToRefresh>
   )
