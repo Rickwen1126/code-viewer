@@ -23,6 +23,7 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
   const [endLineText, setEndLineText] = useState('') // empty = same as startLine
   const [sections, setSections] = useState<Section[]>([{ title: '', content: '' }])
   const [autoLoading, setAutoLoading] = useState(false)
+  const [lineError, setLineError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,9 +33,10 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
 
   function handleNext() {
     if (endLineText.trim() !== '' && (isNaN(effectiveEndLine) || effectiveEndLine < startLine)) {
-      alert(`End line must be ≥ ${startLine}`)
+      setLineError(`End line must be ≥ ${startLine}`)
       return
     }
+    setLineError(null)
     setScreen(2)
   }
 
@@ -60,10 +62,10 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
       if (bestEnd > 0) {
         setEndLineText(String(bestEnd))
       } else {
-        alert('No enclosing symbol found')
+        setLineError('No enclosing symbol found')
       }
     } catch {
-      alert('LSP unavailable')
+      setLineError('LSP unavailable')
     } finally {
       setAutoLoading(false)
     }
@@ -170,7 +172,7 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
                 inputMode="numeric"
                 placeholder={String(startLine)}
                 value={endLineText}
-                onChange={(e) => setEndLineText(e.target.value.replace(/[^0-9]/g, ''))}
+                onChange={(e) => { setEndLineText(e.target.value.replace(/[^0-9]/g, '')); setLineError(null) }}
                 style={{ ...inputStyle, flex: 1 }}
               />
               <button
@@ -190,6 +192,9 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
                 {autoLoading ? '...' : 'Auto'}
               </button>
             </div>
+            {lineError && (
+              <div style={{ marginTop: 6, color: '#f48771', fontSize: 12 }}>{lineError}</div>
+            )}
           </div>
         ) : (
           /* Screen 2: Description editor */
