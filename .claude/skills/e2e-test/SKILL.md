@@ -129,6 +129,7 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
 | 40 | WS error handling | Trigger a WS error (e.g., invalid tourId) | Error message shown to user, not silently swallowed. |
 | 41 | Workspace highlight | Workspaces page → select a workspace → go back to Workspaces | Selected workspace has blue border + highlight background. Others are grey. |
 | 42 | Workspace name in Files | Files tab with workspace selected | Workspace name shown on left side of toolbar row (next to Collapse All). |
+| 43 | Edit/Delete error toast | Trigger edit/delete failure (e.g. WS error) | Red toast "Failed to update step" shown at bottom, auto-dismiss 3s. Tour content NOT replaced by error. |
 
 ## Execution Protocol
 
