@@ -170,8 +170,7 @@ describe('handleTourCreate', () => {
     )
   })
 
-  it('rejects when another tour is already recording (TOUR_RECORDING_EXISTS)', async () => {
-    // .tours exists and has a recording tour
+  it('allows creating tour even when another tour has recording status', async () => {
     mockFs.readDirectory.mockResolvedValue([['existing.tour', 1]])
     mockFs.readFile.mockResolvedValue(
       new TextEncoder().encode(JSON.stringify({ title: 'Existing', status: 'recording', steps: [] })),
@@ -180,12 +179,9 @@ describe('handleTourCreate', () => {
     const send = vi.fn()
     await handleTourCreate(makeMsg({ title: 'New Tour' }), send)
 
-    expect(mockFs.writeFile).not.toHaveBeenCalled()
+    expect(mockFs.writeFile).toHaveBeenCalled()
     expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'tour.create.error',
-        payload: expect.objectContaining({ code: 'TOUR_RECORDING_EXISTS' }),
-      }),
+      expect.objectContaining({ type: 'tour.create.result' }),
     )
   })
 

@@ -238,10 +238,11 @@ class WsClientService {
         if (message.type.endsWith('.error')) {
           const errPayload = message.payload as { code?: string; message?: string }
           dbg('⇐ ERROR', message.type, message.replyTo.slice(0, 8), `${rt}ms`, errPayload?.code, errPayload?.message)
+          pending.reject(new Error(errPayload?.message ?? message.type))
         } else {
           dbg('⇐', message.type, message.replyTo.slice(0, 8), `${rt}ms`)
+          pending.resolve(message)
         }
-        pending.resolve(message)
         return
       }
     }

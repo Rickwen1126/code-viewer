@@ -145,25 +145,6 @@ export async function handleTourCreate(
 
   const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
 
-  // Check no other tour is recording
-  try {
-    const entries = await vscode.workspace.fs.readDirectory(toursUri)
-    for (const [name, type] of entries) {
-      if (type !== vscode.FileType.File || !name.endsWith('.tour')) continue
-      const tour = await loadTourJson(toursUri, name)
-      if (tour.status === 'recording') {
-        send(createMessage('tour.create.error', {
-          code: 'TOUR_RECORDING_EXISTS',
-          message: `Tour "${tour.title}" is already recording`,
-          tourId: name.replace('.tour', ''),
-        }, msg.id))
-        return
-      }
-    }
-  } catch {
-    // .tours/ doesn't exist yet — fine
-  }
-
   // Ensure .tours/ directory exists
   try { await vscode.workspace.fs.createDirectory(toursUri) } catch { /* already exists */ }
 
