@@ -1,0 +1,38 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "02 - Sky Eye: Code Viewer Edit Step Boundary",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 白話導讀\n\n這條 tour 其實是在看：使用者在手機上按下「Edit step → Save」之後，舊 step 的 metadata 怎麼跨過 `frontend -> shared -> extension` 三個模組邊界，最後安全地寫回 `.tour` 檔。\n\n如果先記不住細節，先抓住每個 step 只是在回答「這個邊界負責保留什麼、在哪裡最容易掉資料」。\n\n## Code Viewer 是什麼\n\n一個把 Desktop VS Code 能力 relay 到手機 PWA 的內部專案，目前不是 npm library，所以沒有公開 npm download 數字。\n\n## 錨定已知\n\n如果你熟悉 typed RPC 或 protobuf/gRPC：`frontend` 像 client、`packages/shared` 像 IDL/contract、`extension` 像真正執行 side effect 的 server handler。這次 bug 就是典型的 client 重新組 payload 時漏欄位。\n\n## 這條路徑在解決什麼問題\n\nEdit step 不是直接 patch 既有 step，而是先 `deleteStep` 再 `addStep`。這種流程簡單，但很容易在重建 payload 時漏掉不在當前畫面上編輯的 metadata，例如 `title` 或 `selection`。\n\n## 這條路徑展示什麼 mental model\n\n**跨模組邊界的真正風險，不是在主要業務邏輯，而是在「重建資料」的那一刻。** 只要某一層用自己的局部心智模型拼 payload，shared contract 就會失去價值。\n\n## 為什麼值得讀\n\n走完這條 tour，你可以很快辨認出任何 typed message 系統裡最脆弱的地方：誰在重新序列化資料、誰是 contract owner、哪裡需要 compile-time 與 runtime 的雙重防線。\n\n## DeepWiki 延伸閱讀\n\n目前沒有 public DeepWiki。先搭配 `.tours/01-architecture-skyeye-code-viewer.tour` 一起讀，先抓三層 WS relay 架構，再回來看這條較細的 edit-step 邊界路徑。\n\n## 版本註記\n\n這條 tour 以 `de5cd8b9628f9eb1b1b8159baa74d9b553c511c4` 為最近的 commit 基準，說明的是目前 working tree 上尚未 commit 的 edit-step 邊界修正。"
+    },
+    {
+      "file": "frontend/src/pages/tours/tour-detail.tsx",
+      "line": 204,
+      "ref": "de5cd8b9628f9eb1b1b8159baa74d9b553c511c4",
+      "title": "Step 1: Tour detail 頁面是 edit flow 的 orchestration 邊界",
+      "description": "## Insight\n\n**機制**：`handleSaveEdit()` 不自己理解每個 step 欄位，而是只負責 orchestration：先刪舊 step，再交給 payload builder 重建 `tour.addStep` 的 request，最後送到 WS client。\n\n**故障模式**：如果 UI layer 直接在這裡手拼 payload，很容易只帶畫面上顯眼的欄位，漏掉 `title`、`selection` 這種不是當前 editor 核心輸入欄位的 metadata。這就是原本 bug 的根源。\n\n**設計取捨**：把 orchestration 跟 payload assembly 分開，會多一個 helper 檔，但可以把「資料重建」變成可測試的小單元；反過來把所有東西留在 component 內，短期看起來少檔案，長期更容易 drift。\n\n### 白話解析\n\n這一層其實就是流程控制員。它只知道 edit save 要分成 delete → add 兩段，不應該再自己決定 step payload 長什麼樣。你會在 bug 出現時，看到 UI 上描述改了，但其他 metadata 靜默消失。\n\n### Code Detail\n\n**這段在幹嘛**：取得當前 step、組出新的 description、呼叫 `tour.deleteStep`，再把 `buildEditedStepAddPayload()` 的結果送進 `tour.addStep`。\n\n**為什麼這樣寫**：\n- 好處：component 只保留流程語意，少了 ad-hoc shape knowledge\n- 好處：helper 可獨立測試，不必靠整個 React component 才能驗證 payload\n- 壞處：edit 流程仍然是 delete + re-add，不是真正 patch，語意上還是比較脆弱\n\n**思考問題**：\n1. 如果未來 step 有更多 metadata，這一層需要改嗎？還是只改 helper 就夠？\n2. 真正的 `tour.updateStep` API 會不會比 delete + re-add 更好？代價是什麼？"
+    },
+    {
+      "file": "packages/shared/src/ws-types.ts",
+      "line": 397,
+      "ref": "de5cd8b9628f9eb1b1b8159baa74d9b553c511c4",
+      "title": "Step 2: Shared ws-types 是模組邊界真正的 contract owner",
+      "description": "## Insight\n\n**機制**：`TourAddStepPayload` 是 `frontend` 和 `extension` 共同依賴的 contract。只要這裡定義清楚，兩邊就應該圍繞同一個資料形狀演化。\n\n**故障模式**：如果 shared type 太嚴，context-only step 會被型別系統擋掉；如果太鬆，partial payload 又會混進來，變成 runtime 才補洞。這裡一旦失衡，contract 就會從 \"來源真相\" 退化成 \"大概長這樣\"。\n\n**設計取捨**：這次把 `file`/`line` 放寬成 optional，先解決 context-only step 的真實需求，但也把部份 compile-time safety 讓渡給了 runtime validation。這是典型的 contract flexibility vs. strictness 取捨。\n\n### 白話解析\n\n這一層就像 API spec。前後端都應該看它做事。如果 spec 本身模糊，兩邊就會各自補腦；如果 spec 太死，真實案例又塞不進來。你實際會在這裡看到「到底 context-only step 算不算合法」被正式寫下來。\n\n### Code Detail\n\n**這段在幹嘛**：定義 `tour.addStep` 的 payload，把 `title`、`selection`、`description`、`index` 和 file-based metadata 放進 shared message contract。\n\n**為什麼這樣寫**：\n- 好處：frontend 與 extension 用同一份 type，減少口頭同步成本\n- 好處：新欄位一旦進 shared，兩邊 IDE 都會收到型別訊號\n- 壞處：`file` 和 `line` 現在獨立 optional，還沒把關聯性編進型別\n\n**思考問題**：\n1. 這裡應該用 union type 表達 \"要嘛 context-only，要嘛 file-backed\" 嗎？\n2. shared contract 改了之後，怎麼確保所有 caller 都真的跟上，而不是只修其中一條路徑？"
+    },
+    {
+      "file": "extension/src/providers/tour-provider.ts",
+      "line": 202,
+      "ref": "de5cd8b9628f9eb1b1b8159baa74d9b553c511c4",
+      "title": "Step 3: Extension provider 是最終 side effect 的防線",
+      "description": "## Insight\n\n**機制**：`handleTourAddStep()` 是真正把 step 寫進 `.tour` 檔的地方。它接受 shared payload 後，先做邊界驗證，再把資料轉成儲存格式。\n\n**故障模式**：如果 extension 不驗 `file` 與 `line` 的組合關係，partial payload 會穿過 contract 邊界，最後寫出半合法資料。這種錯誤通常不是立刻 crash，而是之後某個讀 step 的地方才炸。\n\n**設計取捨**：runtime validation 會讓 handler 多幾行分支，但它是 shared type 之外的最後一道安全網。少這層，所有 caller 都必須 100% 正確；有這層，caller 出錯時至少會 fail fast。\n\n### 白話解析\n\n這一層就是資料真正落盤前的守門員。frontend 可以有自己的心智模型，但到了這裡一定要說清楚：你這是 context step，還是 file step？如果是 file step，就不能只帶一半。\n\n### Code Detail\n\n**這段在幹嘛**：載入 tour JSON，檢查 `tourId`、驗 path，然後根據 payload 內容決定 step 要不要寫 `file`/`line`/`selection`/`title`。\n\n**為什麼這樣寫**：\n- 好處：把 context-only 與 file-backed step 分得很清楚\n- 好處：在真正寫檔前失敗，避免留下髒資料\n- 壞處：runtime validation 只能補救，無法取代更強的 compile-time contract\n\n**思考問題**：\n1. 如果未來 `selection` 也有更嚴格的 invariant，該放在 shared type 還是 extension validation？\n2. 哪些欄位屬於 persistence model，哪些只是 transport convenience？"
+    },
+    {
+      "file": "frontend/src/components/add-step-overlay.tsx",
+      "line": 107,
+      "ref": "de5cd8b9628f9eb1b1b8159baa74d9b553c511c4",
+      "title": "Step 4: 還留著的 boundary debt 在另一個 frontend caller",
+      "description": "## Insight\n\n**機制**：`AddStepOverlay` 仍然用 inline object type 呼叫 `tour.addStep`。這表示即使 shared contract 已經更新，另一條 caller 路徑仍然可以不受 shared type 的直接約束。\n\n**故障模式**：下一次 `TourAddStepPayload` 再演化時，edit-step flow 可能是對的，add-step flow 卻悄悄落後。使用者體感會變成「有些 step 路徑正常，有些路徑會丟 metadata」，而且很難第一眼看出是 caller 不一致。\n\n**設計取捨**：inline type 寫起來很快，但每多一個 caller，實際上就是多一份 shadow contract。把它改成 shared type 會稍微增加 import，但能把 boundary ownership 拉回 `packages/shared`。\n\n### 白話解析\n\n這一步是在提醒：你修掉了一條漏水的管子，但同一套水路旁邊還有一條自己畫的管線。只要那條也在送同一種 payload，shared contract 沒被全面採用，這類 bug 就還有復發空間。\n\n### Code Detail\n\n**這段在幹嘛**：使用者從檔案畫面新增 step 時，直接在 request generic 裡寫出一份 `tour.addStep` payload shape。\n\n**為什麼這樣寫**：\n- 好處：當下就地可讀，不必跳去找 shared type\n- 好處：對單一 caller 來說改起來快\n- 壞處：contract 來源分裂，長期容易 drift\n\n**思考問題**：\n1. 哪些 payload shape 值得允許 inline，哪些一定要回收進 shared type？\n2. 只要是跨模組的 request，是不是都應該禁止 local ad-hoc type？"
+    }
+  ]
+}

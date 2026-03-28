@@ -394,7 +394,16 @@ export interface TourGetStepsResultPayload {
 
 export interface TourCreatePayload { title: string; ref?: string }
 export interface TourCreateResultPayload { tourId: string; filePath: string }
-export interface TourAddStepPayload { tourId: string; file: string; line: number; endLine?: number; selection?: { start: { line: number; character: number }; end: { line: number; character: number } }; title?: string; description: string; index?: number }
+export interface TourAddStepPayload {
+  tourId: string
+  file?: string
+  line?: number
+  endLine?: number
+  selection?: { start: { line: number; character: number }; end: { line: number; character: number } }
+  title?: string
+  description: string
+  index?: number
+}
 export interface TourAddStepResultPayload { stepCount: number }
 export interface TourDeleteStepPayload { tourId: string; stepIndex: number }
 export interface TourDeleteStepResultPayload { stepCount: number }

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router'
+import { Copy } from 'lucide-react'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useTourEdit } from '../../hooks/use-tour-edit'
@@ -7,6 +8,34 @@ import { PullToRefresh } from '../../components/pull-to-refresh'
 import type { TourListResultPayload, TourCreateResultPayload } from '@code-viewer/shared'
 
 type TourSummary = TourListResultPayload['tours'][number]
+
+function buildTourAbsolutePath(rootPath: string, tourId: string): string {
+  return `${rootPath}/.tours/${tourId}.tour`
+}
+
+async function copyText(text: string): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // Fallback below for insecure contexts / Safari oddities
+    }
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  textarea.style.pointerEvents = 'none'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  if (!ok) throw new Error('Copy failed')
+}
 
 export function TourListPage() {
   const { request, connectionState } = useWebSocket()
@@ -19,6 +48,14 @@ export function TourListPage() {
   const [showNewTour, setShowNewTour] = useState(false)
   const [newTourTitle, setNewTourTitle] = useState('')
   const [creating, setCreating] = useState(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function showToast(msg: string) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToastMsg(msg)
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 1500)
+  }
 
   useEffect(() => {
     if (connectionState !== 'connected' || !workspace) return
@@ -60,6 +97,16 @@ export function TourListPage() {
       setError('Failed to create tour')
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleCopyTourPath(tourId: string) {
+    if (!workspace) return
+    try {
+      await copyText(buildTourAbsolutePath(workspace.rootPath, tourId))
+      showToast('Copied tour path')
+    } catch {
+      showToast('Failed to copy tour path')
     }
   }
 
@@ -166,10 +213,28 @@ export function TourListPage() {
           >
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <button
+                onClick={() => void handleCopyTourPath(tour.id)}
+                title={workspace ? buildTourAbsolutePath(workspace.rootPath, tour.id) : undefined}
+                aria-label={`Copy path for ${tour.title}`}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#888',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '8px 6px 8px 12px',
+                  flexShrink: 0,
+                }}
+              >
+                <Copy size={14} />
+              </button>
+              <button
                 onClick={() => navigate(`/tours/${encodeURIComponent(tour.id)}`)}
                 style={{
                   flex: 1,
-                  padding: '14px 16px',
+                  padding: '14px 16px 14px 8px',
                   background: 'none',
                   border: 'none',
                   color: '#d4d4d4',
@@ -212,6 +277,25 @@ export function TourListPage() {
           </div>
         )
       })}
+      {toastMsg && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 'calc(72px + env(safe-area-inset-bottom))',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: toastMsg.startsWith('Failed') ? '#5a3030' : '#333',
+            color: toastMsg.startsWith('Failed') ? '#f48771' : '#d4d4d4',
+            padding: '8px 14px',
+            borderRadius: 6,
+            fontSize: 13,
+            zIndex: 1000,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {toastMsg}
+        </div>
+      )}
       </div>
     </PullToRefresh>
   )

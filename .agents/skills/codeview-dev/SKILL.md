@@ -19,18 +19,18 @@ Start code-viewer's 3 services in development mode for working on code-viewer it
    ```bash
    ps -p $PID -o command= 2>/dev/null | grep -q "code-viewer"
    ```
-   - If code-viewer process → kill it (we want fresh restart for dev)
-   - If NON-code-viewer process → **report conflict**, do NOT kill
+   - If code-viewer process -> kill it (we want fresh restart for dev)
+   - If NON-code-viewer process -> **report conflict**, do NOT kill
 
 2. **Build extension if source changed** (test-electron loads from local `dist/`, not installed VSIX):
    ```bash
    find /Users/rickwen/code/code-viewer/extension/src -name "*.ts" -newer /Users/rickwen/code/code-viewer/extension/dist/extension.js 2>/dev/null | head -1
    ```
-   If any source files are newer than `dist/extension.js` → rebuild:
+   If any source files are newer than `dist/extension.js` -> rebuild:
    ```bash
    cd /Users/rickwen/code/code-viewer/extension && npx tsc && npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node
    ```
-   If up-to-date → skip.
+   If up-to-date -> skip.
    Note: No VSIX packaging or version bump needed — dev mode loads from local dist directly.
 
 3. **Start backend + frontend** (background, must disable sandbox):

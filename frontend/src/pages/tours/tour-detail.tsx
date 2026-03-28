@@ -5,7 +5,8 @@ import { useWorkspace } from '../../hooks/use-workspace'
 import { useTourEdit } from '../../hooks/use-tour-edit'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
-import type { TourGetStepsResultPayload, TourGetFileAtRefResultPayload, TourDeleteStepResultPayload, TourAddStepResultPayload } from '@code-viewer/shared'
+import { buildEditedStepAddPayload } from './tour-detail-utils'
+import type { TourGetStepsResultPayload, TourGetFileAtRefResultPayload, TourDeleteStepResultPayload, TourAddStepResultPayload, TourAddStepPayload } from '@code-viewer/shared'
 
 type TourData = TourGetStepsResultPayload
 type TourStep = TourData['steps'][number]
@@ -213,17 +214,8 @@ export function TourDetailPage() {
       await request<{ tourId: string; stepIndex: number }, TourDeleteStepResultPayload>(
         'tour.deleteStep', { tourId, stepIndex: currentStep },
       )
-      const addPayload: Record<string, unknown> = {
-        tourId,
-        description,
-        index: currentStep,
-      }
-      if (step.file) {
-        addPayload.file = step.file
-        addPayload.line = step.line
-        if (step.endLine != null) addPayload.endLine = step.endLine
-      }
-      await request<Record<string, unknown>, TourAddStepResultPayload>(
+      const addPayload = buildEditedStepAddPayload(tourId, step, description, currentStep)
+      await request<TourAddStepPayload, TourAddStepResultPayload>(
         'tour.addStep', addPayload,
       )
       setEditingStep(false)

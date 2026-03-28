@@ -2,16 +2,19 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { DiffView } from '../../components/diff-view'
-import type { GitDiffResultPayload } from '@code-viewer/shared'
+import { buildAddedFileHunks } from './diff-detail-utils'
+import type { GitDiffResultPayload, FileReadResultPayload } from '@code-viewer/shared'
 
 export function GitDiffDetailPage() {
   const { '*': rawPath } = useParams()
   const [searchParams] = useSearchParams()
   const path = rawPath ? decodeURIComponent(rawPath) : ''
   const commit = searchParams.get('commit') ?? undefined
+  const status = searchParams.get('status') ?? undefined
   const { request, connectionState } = useWebSocket()
   const navigate = useNavigate()
   const [diff, setDiff] = useState<GitDiffResultPayload | null>(null)
+  const [addedFileContent, setAddedFileContent] = useState<FileReadResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -28,8 +31,17 @@ export function GitDiffDetailPage() {
     try {
       setLoading(true)
       setError(false)
+      setAddedFileContent(null)
       const res = await request<{ path: string; commit?: string }, GitDiffResultPayload>('git.diff', { path, commit })
       setDiff(res.payload)
+      if (!commit && status === 'added' && res.payload.hunks.length === 0) {
+        try {
+          const fileRes = await request<{ path: string }, FileReadResultPayload>('file.read', { path })
+          setAddedFileContent(fileRes.payload)
+        } catch {
+          // Fall back to empty diff state
+        }
+      }
     } catch {
       setError(true)
     } finally {
@@ -38,6 +50,8 @@ export function GitDiffDetailPage() {
   }
 
   const fileName = path.split('/').pop() ?? path
+  const hunks = diff?.hunks.length ? diff.hunks : addedFileContent ? buildAddedFileHunks(addedFileContent.content) : []
+  const isEmptyAddedFile = status === 'added' && addedFileContent?.content === '' && diff?.hunks.length === 0
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -110,8 +124,10 @@ export function GitDiffDetailPage() {
           </div>
         ) : !diff ? (
           <div style={{ padding: 16, color: '#888' }}>No diff available.</div>
+        ) : isEmptyAddedFile ? (
+          <div style={{ padding: 16, color: '#888' }}>New file is empty.</div>
         ) : (
-          <DiffView hunks={diff.hunks} />
+          <DiffView hunks={hunks} />
         )}
       </div>
     </div>

@@ -201,6 +201,10 @@ export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => 
 
   // file is optional — context-only steps have no file/line
   if (payload.file) {
+    if (payload.line == null) {
+      send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: 'Line is required when file is provided' }, msg.id))
+      return
+    }
     const validation = validatePath(payload.file, workspaceFolder)
     if (!validation.valid) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: `Invalid path: ${validation.reason}` }, msg.id)); return }
   }

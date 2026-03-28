@@ -35,9 +35,9 @@ A test item is PASS only when ALL of the following are met:
 1. **UI verification**: Take a screenshot at the verification point. Visually confirm the expected state in the screenshot — not just snapshot text.
 2. **Data verification via console logs**: After every mutation (create/edit/delete/add step), call `browser_console_messages` to check:
    - WS request was sent (look for `[relay]` or `[ws]` log lines)
-   - Response type is `.result` not `.error` (e.g., `tour.addStep.result`, NOT `tour.addStep.error`)
+   - Response type is `.result` not `.error` (e.g. `tour.addStep.result`, NOT `tour.addStep.error`)
    - No uncaught exceptions or error logs
-   - If error logs present → immediate FAIL, log the full error message
+   - If error logs present -> immediate FAIL, log the full error message
 3. **Round-trip verification**: After a mutation, navigate away and back (or re-enter from a different entry point) to confirm the change actually persisted — not just optimistic UI.
 4. **Error path verification** (where applicable): Trigger a failure scenario and confirm the UI shows an error message to the user (not silent failure).
 
@@ -144,7 +144,7 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
 | 38 | Edit on existing tour | Open a pre-existing tour (not created via UI, no `status: 'recording'`) → Edit a step | Edit succeeds. Backend accepts addStep/deleteStep without recording status. **This was a real bug — verify explicitly.** |
 | 38a | Edit context-only step | Edit a step that has NO file/line (title+description only, e.g. chatpilot tour context step) | `deleteStep.result` + `addStep.result` succeed. Content preserved. **Was bug #8 — addStep required file.** |
 | 39 | Add step to existing tour | Set reference point on pre-existing tour (via detail page "+ Add step after") → add step | Step added successfully. Tour file updated. |
-| 40 | WS error handling | Trigger a WS error (e.g., invalid tourId) | Error message shown to user, not silently swallowed. |
+| 40 | WS error handling | Trigger a WS error (e.g. invalid tourId) | Error message shown to user, not silently swallowed. |
 | 41 | Workspace highlight | Workspaces page → select a workspace → go back to Workspaces | Selected workspace has blue border + highlight background. Others are grey. |
 | 42 | Workspace name in Files | Files tab with workspace selected | Workspace name shown on left side of toolbar row (next to Collapse All). |
 | 43 | Edit/Delete error toast | Trigger edit/delete failure (e.g. WS error) | Red toast "Failed to update step" shown at bottom, auto-dismiss 3s. Tour content NOT replaced by error. |
@@ -159,7 +159,7 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
    b. Take a snapshot (`browser_snapshot`) — confirm UI elements
    c. For mutations: call `browser_console_messages` → Read the console log file → check for `.result` (success) or `.error` (failure)
    d. For mutations: navigate away and back to confirm persistence (round-trip)
-5. On failure: screenshot + console log content + exact failure reason, continue to next item
+5. On failure: screenshot + console log content + exact failure reason, continue to next test item
 6. **NEVER mark PASS based solely on UI snapshot** — console log verification is mandatory for any WS operation
 
 ## Report

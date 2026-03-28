@@ -133,8 +133,10 @@ export function GitChangesPage() {
     }
   }
 
-  function handleFileClick(path: string) {
-    navigate(`/git/diff/${encodeURIComponent(path)}`)
+  function handleFileClick(path: string, status?: string) {
+    const params = new URLSearchParams()
+    if (status) params.set('status', status)
+    navigate(`/git/diff/${encodeURIComponent(path)}${params.size > 0 ? `?${params.toString()}` : ''}`)
   }
 
   if (loading && !gitStatus) {
@@ -174,7 +176,7 @@ export function GitChangesPage() {
           {staged.length > 0 && (
             <>
               <SectionHeader title="Staged" count={staged.length} color="#4ec9b0" />
-              {staged.map(file => <FileRow key={'s:' + file.path} file={file} onClick={() => handleFileClick(file.path)} />)}
+              {staged.map(file => <FileRow key={'s:' + file.path} file={file} onClick={() => handleFileClick(file.path, file.status)} />)}
             </>
           )}
 
@@ -182,7 +184,7 @@ export function GitChangesPage() {
           {unstaged.length > 0 && (
             <>
               <SectionHeader title={staged.length > 0 ? 'Unstaged' : 'Changes'} count={unstaged.length} color={staged.length > 0 ? '#e2b93d' : '#d4d4d4'} />
-              {unstaged.map(file => <FileRow key={'u:' + file.path} file={file} onClick={() => handleFileClick(file.path)} />)}
+              {unstaged.map(file => <FileRow key={'u:' + file.path} file={file} onClick={() => handleFileClick(file.path, file.status)} />)}
             </>
           )}
 
@@ -232,7 +234,7 @@ export function GitChangesPage() {
                         commitFiles[commit.hash].map(file => (
                           <button
                             key={file.path}
-                            onClick={() => navigate(`/git/diff/${encodeURIComponent(file.path)}?commit=${commit.hash}`)}
+                            onClick={() => navigate(`/git/diff/${encodeURIComponent(file.path)}?${new URLSearchParams({ commit: commit.hash, status: file.status }).toString()}`)}
                             style={{
                               display: 'flex',
                               gap: 8,

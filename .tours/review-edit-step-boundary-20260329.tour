@@ -1,0 +1,40 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: edit-step-boundary 2026-03-29",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 0\n🟡 Suggestions: 2\n✅ Good Practices: 3\n\n### Scope\nReviewed the edit-step metadata preservation fix across `frontend`, `packages/shared`, and `extension`, including the new payload builder and regression test.\n\n### Focus\nContract consistency across module boundaries, runtime validation, and whether the regression is actually pinned by tests."
+    },
+    {
+      "file": "packages/shared/src/ws-types.ts",
+      "line": 397,
+      "title": "🟡 Optional `file` and `line` weaken compile-time contract safety",
+      "description": "## Problem\n\n`TourAddStepPayload` now makes `file` and `line` independently optional. That matches the runtime need for context-only steps, but it also permits impossible states at compile time, such as `{ file: 'x.ts', description: '...', line: undefined }`.\n\n## Fix\n\nModel the payload as a union so the contract keeps the pair coupled:\n\n```ts\ninterface ContextOnlyStepPayload {\n  tourId: string\n  description: string\n  index?: number\n  title?: string\n  selection?: Selection\n}\n\ninterface FileStepPayload extends ContextOnlyStepPayload {\n  file: string\n  line: number\n  endLine?: number\n}\n\nexport type TourAddStepPayload = ContextOnlyStepPayload | FileStepPayload\n```\n\n## Rationale\n\nRight now the extension has to reject an invalid partial payload at runtime. A union keeps the new context-step support while restoring the stronger boundary guarantee in `shared`, which is where this RPC contract should be enforced first."
+    },
+    {
+      "file": "frontend/src/components/add-step-overlay.tsx",
+      "line": 107,
+      "title": "🟡 Another frontend caller still duplicates the `tour.addStep` contract",
+      "description": "## Problem\n\n`TourDetailPage` now uses the shared `TourAddStepPayload`, but `AddStepOverlay` still hand-writes its own request payload type inline. That means the boundary is only fixed in one caller; the next shape change can drift again between edit-step flow and add-step flow.\n\n## Fix\n\nSwitch the overlay to the shared contract too:\n\n```ts\nawait request<TourAddStepPayload, TourAddStepResultPayload>('tour.addStep', {\n  tourId: tourEdit!.tourId,\n  file,\n  line: startLine,\n  endLine: effectiveEndLine !== startLine ? effectiveEndLine : undefined,\n  description,\n  index: tourEdit!.afterIndex + 1,\n})\n```\n\n## Rationale\n\nThis change is specifically about a cross-module contract. Leaving one caller on a local ad-hoc type preserves the exact class of bug that just got fixed: the shared shape evolves, but one boundary participant silently keeps an older mental model."
+    },
+    {
+      "file": "frontend/src/pages/tours/tour-detail-utils.ts",
+      "line": 5,
+      "title": "✅ Payload construction is now centralized at the edit boundary",
+      "description": "## Problem\n\nThe original bug existed because `handleSaveEdit()` reconstructed a step payload ad hoc and forgot to carry metadata fields like `title`.\n\n## Fix\n\nThe new `buildEditedStepAddPayload()` helper concentrates that reconstruction logic in one place and explicitly preserves `title`, `selection`, and `endLine`.\n\n## Rationale\n\nThis is the right direction architecturally: the edit screen should express intent, while the boundary-specific shape assembly lives in a small testable function. It narrows the surface where metadata loss can happen again."
+    },
+    {
+      "file": "extension/src/providers/tour-provider.ts",
+      "line": 203,
+      "title": "✅ Runtime validation now matches the relaxed payload semantics",
+      "description": "## Problem\n\nOnce `TourAddStepPayload` started allowing context-only steps, the extension also needed to distinguish \"no file by design\" from \"file provided but malformed\".\n\n## Fix\n\nThe handler now explicitly rejects `file` without `line` before path validation.\n\n## Rationale\n\nThis preserves a clean runtime boundary: context-only steps are accepted, but partial file-backed steps fail fast with a concrete error instead of falling into an ambiguous half-valid state."
+    },
+    {
+      "file": "frontend/src/__tests__/tour-detail-utils.test.ts",
+      "line": 4,
+      "title": "✅ The regression is pinned with focused tests for both main paths",
+      "description": "## Problem\n\nThis bug lived in a narrow payload-building seam, so broad UI tests alone would have made it easy to miss again.\n\n## Fix\n\nThe new tests exercise both the file-backed path and the context-only path, and they assert the exact serialized payload shape.\n\n## Rationale\n\nThat is a strong fit for this failure mode. The tests are small, deterministic, and directly protect the boundary where metadata was previously lost."
+    }
+  ]
+}
