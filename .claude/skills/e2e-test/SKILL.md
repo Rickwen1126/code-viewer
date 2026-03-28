@@ -124,8 +124,11 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
 |---|------|-------|-------------------|
 | 37 | Tour detail reconnect | Open tour detail → disconnect WS (kill backend briefly) → reconnect | Page recovers. Tour data reloads. No crash. |
 | 38 | Edit on existing tour | Open a pre-existing tour (not created via UI, no `status: 'recording'`) → Edit a step | Edit succeeds. Backend accepts addStep/deleteStep without recording status. **This was a real bug — verify explicitly.** |
+| 38a | Edit context-only step | Edit a step that has NO file/line (title+description only, e.g. chatpilot tour context step) | `deleteStep.result` + `addStep.result` succeed. Content preserved. **Was bug #8 — addStep required file.** |
 | 39 | Add step to existing tour | Set reference point on pre-existing tour (via detail page "+ Add step after") → add step | Step added successfully. Tour file updated. |
 | 40 | WS error handling | Trigger a WS error (e.g., invalid tourId) | Error message shown to user, not silently swallowed. |
+| 41 | Workspace highlight | Workspaces page → select a workspace → go back to Workspaces | Selected workspace has blue border + highlight background. Others are grey. |
+| 42 | Workspace name in Files | Files tab with workspace selected | Workspace name shown on left side of toolbar row (next to Collapse All). |
 
 ## Execution Protocol
 
