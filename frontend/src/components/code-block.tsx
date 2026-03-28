@@ -8,6 +8,7 @@ interface CodeBlockProps {
   wordWrap?: boolean
   highlightLine?: number | null
   bookmarkedLines?: Set<number>
+  onLineNumberClick?: (lineNum: number) => void
 }
 
 const MIN_FONT_SIZE = 8
@@ -55,7 +56,7 @@ function createLineTransformer(bookmarked?: Set<number>) {
   }
 }
 
-export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine, bookmarkedLines }: CodeBlockProps) {
+export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine, bookmarkedLines, onLineNumberClick }: CodeBlockProps) {
   const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem('code-viewer:font-size')
@@ -133,7 +134,14 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
             const lineNum = i + 1
             const isBookmarked = bookmarkedLines?.has(lineNum)
             return (
-              <div key={i} style={isBookmarked ? { color: '#e2b93d' } : undefined}>
+              <div
+                key={i}
+                onClick={onLineNumberClick ? (e) => { e.stopPropagation(); onLineNumberClick(lineNum) } : undefined}
+                style={{
+                  ...(isBookmarked ? { color: '#e2b93d' } : undefined),
+                  ...(onLineNumberClick ? { cursor: 'pointer', WebkitTapHighlightColor: 'transparent' } : undefined),
+                }}
+              >
                 {isBookmarked ? `\u2605${lineNum}` : lineNum}
               </div>
             )
@@ -142,6 +150,22 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
       )}
       <div
         className={classNames}
+        onClick={wordWrap && onLineNumberClick ? (e) => {
+          // In wrap mode, line numbers are CSS pseudo-elements — detect click in gutter area
+          const target = e.currentTarget
+          const rect = target.getBoundingClientRect()
+          if (e.clientX - rect.left > 50) return // not in gutter area
+          // Find which .line element was clicked
+          const lineEls = target.querySelectorAll('.line')
+          for (let i = 0; i < lineEls.length; i++) {
+            const lineRect = lineEls[i].getBoundingClientRect()
+            if (e.clientY >= lineRect.top && e.clientY <= lineRect.bottom) {
+              const dataLine = lineEls[i].getAttribute('data-line')
+              if (dataLine) { e.stopPropagation(); onLineNumberClick(parseInt(dataLine, 10)) }
+              break
+            }
+          }
+        } : undefined}
         style={{
           flex: 1,
           minWidth: 0,

@@ -80,8 +80,6 @@ export function CodeViewerPage() {
 
   // Bookmarks state
   const [bookmarkedLines, setBookmarkedLines] = useState<Set<number>>(new Set())
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const longPressTriggeredRef = useRef(false)
 
   // Load bookmarks when file changes
   useEffect(() => {
@@ -89,23 +87,9 @@ export function CodeViewerPage() {
     setBookmarkedLines(getBookmarkedLines(workspace.extensionId, path))
   }, [workspace, path])
 
-  // Toggle bookmark at a given Y coordinate
-  const toggleBookmarkAtY = useCallback((clientY: number) => {
+  // Bookmark toggle — triggered by clicking line number in CodeBlock
+  const handleBookmarkToggle = useCallback((lineNum: number) => {
     if (!workspace || !path || !file) return
-    const container = codeContainerRef.current
-    if (!container) return
-    const lineEls = container.querySelectorAll('.line')
-    let lineNum = 0
-    for (let i = 0; i < lineEls.length; i++) {
-      const rect = lineEls[i].getBoundingClientRect()
-      if (clientY >= rect.top && clientY <= rect.bottom) {
-        const dataLine = lineEls[i].getAttribute('data-line')
-        if (dataLine) lineNum = parseInt(dataLine, 10)
-        break
-      }
-    }
-    if (!lineNum) return
-
     const contentLines = file.content.split('\n')
     const preview = contentLines[lineNum - 1] ?? ''
 
@@ -120,38 +104,6 @@ export function CodeViewerPage() {
     }
     if (navigator.vibrate) navigator.vibrate(50)
   }, [workspace, path, file, bookmarkedLines])
-
-  // Long-press: start timer (touch + mouse)
-  const startLongPress = useCallback((clientY: number) => {
-    longPressTriggeredRef.current = false
-    longPressTimerRef.current = setTimeout(() => {
-      longPressTriggeredRef.current = true
-      toggleBookmarkAtY(clientY)
-    }, 400)
-  }, [toggleBookmarkAtY])
-
-  const cancelLongPress = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-  }, [])
-
-  // Touch handlers
-  const handleContentTouchStart = useCallback((e: React.TouchEvent) => {
-    startLongPress(e.touches[0].clientY)
-  }, [startLongPress])
-
-  const handleContentTouchEnd = useCallback(() => cancelLongPress(), [cancelLongPress])
-  const handleContentTouchMove = useCallback(() => cancelLongPress(), [cancelLongPress])
-
-  // Mouse handlers (desktop)
-  const handleContentMouseDown = useCallback((e: React.MouseEvent) => {
-    startLongPress(e.clientY)
-  }, [startLongPress])
-
-  const handleContentMouseUp = useCallback(() => cancelLongPress(), [cancelLongPress])
-  const handleContentMouseLeave = useCallback(() => cancelLongPress(), [cancelLongPress])
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -668,18 +620,12 @@ export function CodeViewerPage() {
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
         onClick={isMarkdown && mdRendered ? undefined : handleCodeClick}
-        onTouchStart={handleContentTouchStart}
-        onTouchEnd={handleContentTouchEnd}
-        onTouchMove={handleContentTouchMove}
-        onMouseDown={handleContentMouseDown}
-        onMouseUp={handleContentMouseUp}
-        onMouseLeave={handleContentMouseLeave}
       >
         {isMarkdown && mdRendered ? (
           <MarkdownRenderer content={file.content} />
         ) : (
           <div ref={codeContainerRef}>
-            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} bookmarkedLines={bookmarkedLines} />
+            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} bookmarkedLines={bookmarkedLines} onLineNumberClick={handleBookmarkToggle} />
           </div>
         )}
       </div>
