@@ -89,60 +89,69 @@ export function CodeViewerPage() {
     setBookmarkedLines(getBookmarkedLines(workspace.extensionId, path))
   }, [workspace, path])
 
-  // Long-press handler for bookmarking lines
-  const handleContentTouchStart = useCallback((e: React.TouchEvent) => {
+  // Toggle bookmark at a given Y coordinate
+  const toggleBookmarkAtY = useCallback((clientY: number) => {
     if (!workspace || !path || !file) return
-    const touch = e.touches[0]
+    const container = codeContainerRef.current
+    if (!container) return
+    const lineEls = container.querySelectorAll('.line')
+    let lineNum = 0
+    for (let i = 0; i < lineEls.length; i++) {
+      const rect = lineEls[i].getBoundingClientRect()
+      if (clientY >= rect.top && clientY <= rect.bottom) {
+        const dataLine = lineEls[i].getAttribute('data-line')
+        if (dataLine) lineNum = parseInt(dataLine, 10)
+        break
+      }
+    }
+    if (!lineNum) return
 
+    const contentLines = file.content.split('\n')
+    const preview = contentLines[lineNum - 1] ?? ''
+
+    if (bookmarkedLines.has(lineNum)) {
+      removeBookmark(workspace.extensionId, path, lineNum)
+      setBookmarkedLines(prev => { const next = new Set(prev); next.delete(lineNum); return next })
+      showToast(`Bookmark removed (line ${lineNum})`)
+    } else {
+      addBookmark(workspace.extensionId, path, lineNum, preview)
+      setBookmarkedLines(prev => new Set(prev).add(lineNum))
+      showToast(`Bookmarked line ${lineNum}`)
+    }
+    if (navigator.vibrate) navigator.vibrate(50)
+  }, [workspace, path, file, bookmarkedLines])
+
+  // Long-press: start timer (touch + mouse)
+  const startLongPress = useCallback((clientY: number) => {
     longPressTriggeredRef.current = false
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true
-      // Find which line was pressed using .line element bounding rects
-      const container = codeContainerRef.current
-      if (!container) return
-      const lineEls = container.querySelectorAll('.line')
-      let lineNum = 0
-      for (let i = 0; i < lineEls.length; i++) {
-        const rect = lineEls[i].getBoundingClientRect()
-        if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-          const dataLine = lineEls[i].getAttribute('data-line')
-          if (dataLine) lineNum = parseInt(dataLine, 10)
-          break
-        }
-      }
-      if (!lineNum) return
-
-      const contentLines = file.content.split('\n')
-      const preview = contentLines[lineNum - 1] ?? ''
-
-      if (bookmarkedLines.has(lineNum)) {
-        removeBookmark(workspace.extensionId, path, lineNum)
-        setBookmarkedLines(prev => { const next = new Set(prev); next.delete(lineNum); return next })
-        showToast(`Bookmark removed (line ${lineNum})`)
-      } else {
-        addBookmark(workspace.extensionId, path, lineNum, preview)
-        setBookmarkedLines(prev => new Set(prev).add(lineNum))
-        showToast(`Bookmarked line ${lineNum}`)
-      }
-
-      // Haptic feedback
-      if (navigator.vibrate) navigator.vibrate(50)
+      toggleBookmarkAtY(clientY)
     }, 400)
-  }, [workspace, path, file, bookmarkedLines])
+  }, [toggleBookmarkAtY])
 
-  const handleContentTouchEnd = useCallback(() => {
+  const cancelLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current)
       longPressTimerRef.current = null
     }
   }, [])
 
-  const handleContentTouchMove = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-  }, [])
+  // Touch handlers
+  const handleContentTouchStart = useCallback((e: React.TouchEvent) => {
+    startLongPress(e.touches[0].clientY)
+  }, [startLongPress])
+
+  const handleContentTouchEnd = useCallback(() => cancelLongPress(), [cancelLongPress])
+  const handleContentTouchMove = useCallback(() => cancelLongPress(), [cancelLongPress])
+
+  // Mouse handlers (desktop)
+  const handleContentMouseDown = useCallback((e: React.MouseEvent) => {
+    startLongPress(e.clientY)
+  }, [startLongPress])
+
+  const handleContentMouseUp = useCallback(() => cancelLongPress(), [cancelLongPress])
+  const handleContentMouseLeave = useCallback(() => cancelLongPress(), [cancelLongPress])
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -534,39 +543,34 @@ export function CodeViewerPage() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <div
-        style={{
-          padding: '8px 12px',
-          borderBottom: '1px solid #333',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flexShrink: 0,
-        }}
-      >
-        <span style={{ fontSize: 13, color: '#d4d4d4' }}>{fileName}</span>
-        <span style={{ fontSize: 11, color: '#888' }}>{file.languageId}</span>
-        {file.isDirty && (
-          <span
-            style={{
-              fontSize: 10,
-              color: '#e2b93d',
-              background: '#3c3c00',
-              padding: '1px 6px',
-              borderRadius: 4,
-            }}
-          >
-            unsaved
-          </span>
-        )}
-        {bookmarkedLines.size > 0 && (
-          <span style={{ fontSize: 11, color: '#e2b93d' }}>
-            &#x2605;{bookmarkedLines.size}
-          </span>
-        )}
-        {/* Header buttons */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+      {/* Header — two rows: filename on top, buttons below */}
+      <div style={{ padding: '6px 12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
+        {/* Row 1: filename */}
+        <div style={{ fontSize: 13, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+          {fileName}
+        </div>
+        {/* Row 2: metadata + buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: '#888' }}>{file.languageId}</span>
+          {file.isDirty && (
+            <span
+              style={{
+                fontSize: 10,
+                color: '#e2b93d',
+                background: '#3c3c00',
+                padding: '1px 6px',
+                borderRadius: 4,
+              }}
+            >
+              unsaved
+            </span>
+          )}
+          {bookmarkedLines.size > 0 && (
+            <span style={{ fontSize: 11, color: '#e2b93d' }}>
+              &#x2605;{bookmarkedLines.size}
+            </span>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           {isMarkdown && (
             <button
               onClick={() => setMdRendered((v) => {
@@ -640,6 +644,7 @@ export function CodeViewerPage() {
           >
             &#x1F50D;
           </button>
+          </div>
         </div>
       </div>
 
@@ -666,6 +671,9 @@ export function CodeViewerPage() {
         onTouchStart={handleContentTouchStart}
         onTouchEnd={handleContentTouchEnd}
         onTouchMove={handleContentTouchMove}
+        onMouseDown={handleContentMouseDown}
+        onMouseUp={handleContentMouseUp}
+        onMouseLeave={handleContentMouseLeave}
       >
         {isMarkdown && mdRendered ? (
           <MarkdownRenderer content={file.content} />
