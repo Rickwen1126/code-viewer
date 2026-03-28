@@ -3,6 +3,13 @@ import type { WsMessage } from '@code-viewer/shared'
 type MessageListener = (message: WsMessage) => void
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
 
+function isDebug(): boolean {
+  try { return localStorage.getItem('code-viewer:debug') === 'true' } catch { return false }
+}
+function dbg(...args: unknown[]): void {
+  if (isDebug()) console.log('[ws]', ...args)
+}
+
 // crypto.randomUUID() is only available in secure contexts (HTTPS or localhost).
 // Fallback for HTTP on LAN (e.g. http://192.168.x.x)
 export function generateId(): string {
@@ -94,6 +101,9 @@ class WsClientService {
     }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message))
+      dbg('→', type, id.slice(0, 8))
+    } else {
+      dbg('→ DROPPED (not connected)', type, id.slice(0, 8))
     }
     return id
   }
@@ -125,9 +135,11 @@ class WsClientService {
 
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify(message))
+        dbg('⇒', type, id.slice(0, 8))
       } else {
         clearTimeout(timer)
         this.pendingRequests.delete(id)
+        dbg('⇒ FAILED (not connected)', type, id.slice(0, 8))
         reject(new Error('WebSocket is not connected'))
       }
     })
@@ -222,12 +234,20 @@ class WsClientService {
       if (pending) {
         clearTimeout(pending.timer)
         this.pendingRequests.delete(message.replyTo)
+        const rt = Date.now() - message.timestamp
+        if (message.type.endsWith('.error')) {
+          const errPayload = message.payload as { code?: string; message?: string }
+          dbg('⇐ ERROR', message.type, message.replyTo.slice(0, 8), `${rt}ms`, errPayload?.code, errPayload?.message)
+        } else {
+          dbg('⇐', message.type, message.replyTo.slice(0, 8), `${rt}ms`)
+        }
         pending.resolve(message)
         return
       }
     }
 
-    // Dispatch to type listeners
+    // Dispatch to type listeners (push messages)
+    dbg('←', message.type, message.id.slice(0, 8))
     const set = this.listeners.get(message.type)
     if (set) {
       set.forEach((listener) => listener(message))
@@ -244,6 +264,7 @@ class WsClientService {
 
   private setState(state: ConnectionState): void {
     if (this.state === state) return
+    dbg('state:', this.state, '→', state)
     this.state = state
     this.stateListeners.forEach((listener) => listener(state))
   }

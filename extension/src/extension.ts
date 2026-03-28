@@ -30,6 +30,13 @@ import {
 
 let wsClient: WsClient | undefined
 
+function isDebug(): boolean {
+  return vscode.workspace.getConfiguration('codeViewer').get<boolean>('debug', false)
+}
+function dbg(...args: unknown[]): void {
+  if (isDebug()) console.log('[CodeViewer]', ...args)
+}
+
 // Handler type: takes message + sendResponse, optionally the WsClient for streaming
 type Handler = (msg: WsMessage, send: (m: WsMessage) => void, client?: WsClient) => Promise<void>
 
@@ -101,7 +108,12 @@ export function setupMessageRouting(client: WsClient): void {
     // Dispatch to handler with unified error fallback
     const handler = handlers[message.type]
     if (handler) {
-      handler(message, sendResponse, client).catch((err) => {
+      dbg('⇒', message.type, message.id.slice(0, 8))
+      const start = Date.now()
+      handler(message, (resp) => {
+        dbg('⇐', resp.type, message.id.slice(0, 8), `${Date.now() - start}ms`)
+        sendResponse(resp)
+      }, client).catch((err) => {
         console.error(`[CodeViewer] ${message.type} error:`, err)
         sendResponse(
           createMessage(message.type + '.error', {

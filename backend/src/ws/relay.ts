@@ -1,6 +1,9 @@
 import type { WsMessage, ErrorPayload } from '@code-viewer/shared'
 import { manager } from './manager.js'
 
+const DEBUG = process.env.CODE_VIEWER_DEBUG === 'true'
+function dbg(...args: unknown[]): void { if (DEBUG) console.log('[relay]', ...args) }
+
 interface PendingRequest {
   frontendId: string
   timeoutHandle: ReturnType<typeof setTimeout>
@@ -63,7 +66,7 @@ export function relayFrontendToExtension(frontendId: string, msg: WsMessage): vo
 
   pendingRequests.set(msg.id, { frontendId, timeoutHandle })
 
-  console.log(`[relay] ${msg.type} ${msg.id} → extension (age: ${Date.now() - msg.timestamp}ms)`)
+  dbg(`${msg.type} ${msg.id} → extension (age: ${Date.now() - msg.timestamp}ms)`)
   sendToWs(extension.ws, msg)
 }
 
@@ -81,7 +84,7 @@ export function relayExtensionResponseToFrontend(msg: WsMessage): boolean {
   clearTimeout(pending.timeoutHandle)
   pendingRequests.delete(replyTo)
 
-  console.log(`[relay] ${msg.type} ${msg.id} ← extension (round-trip: ${Date.now() - msg.timestamp}ms)`)
+  dbg(`${msg.type} ${msg.id} ← extension (round-trip: ${Date.now() - msg.timestamp}ms)`)
 
   const frontend = manager.getFrontend(pending.frontendId)
   if (frontend) {
