@@ -272,7 +272,7 @@ export function CodeViewerPage() {
       if (res.payload.content && res.payload.content.length > MAX_FILE_SIZE) {
         setTooLarge(true)
         setFile(null)
-      } else {
+      } else if (res.payload.content) {
         setFile(res.payload)
         addRecentFile(path)
         if (workspace) {
