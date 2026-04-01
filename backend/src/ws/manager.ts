@@ -4,6 +4,7 @@ import type { Workspace } from '@code-viewer/shared'
 interface ExtensionEntry {
   ws: WSContext
   workspace: Workspace
+  connectedAt: number
   lastHeartbeat: number
   status: 'connected' | 'stale'
   staleAt: number | null
@@ -73,10 +74,12 @@ class ConnectionManager {
   }
 
   addExtension(id: string, ws: WSContext, workspace: Workspace): void {
+    const now = Date.now()
     this.extensions.set(id, {
       ws,
       workspace,
-      lastHeartbeat: Date.now(),
+      connectedAt: now,
+      lastHeartbeat: now,
       status: 'connected',
       staleAt: null,
     })
@@ -118,6 +121,7 @@ class ConnectionManager {
     displayName: string
     rootPath: string
     gitBranch: string | null
+    extensionVersion: string
     status: 'connected' | 'stale'
   }> {
     const result: Array<{
@@ -125,6 +129,7 @@ class ConnectionManager {
       displayName: string
       rootPath: string
       gitBranch: string | null
+      extensionVersion: string
       status: 'connected' | 'stale'
     }> = []
 
@@ -134,6 +139,7 @@ class ConnectionManager {
         displayName: entry.workspace.name,
         rootPath: entry.workspace.rootPath,
         gitBranch: entry.workspace.gitBranch,
+        extensionVersion: entry.workspace.extensionVersion ?? 'unknown',
         status: entry.status,
       })
     }
@@ -158,6 +164,46 @@ class ConnectionManager {
       entry.status = 'connected'
       entry.staleAt = null
     }
+  }
+
+  getAdminWorkspaces(): Array<{
+    extensionId: string
+    displayName: string
+    rootPath: string
+    gitBranch: string | null
+    vscodeVersion: string
+    extensionVersion: string
+    connectedAt: number
+    lastHeartbeat: number
+    status: 'connected' | 'stale'
+  }> {
+    const result: Array<{
+      extensionId: string
+      displayName: string
+      rootPath: string
+      gitBranch: string | null
+      vscodeVersion: string
+      extensionVersion: string
+      connectedAt: number
+      lastHeartbeat: number
+      status: 'connected' | 'stale'
+    }> = []
+
+    for (const [extensionId, entry] of this.extensions) {
+      result.push({
+        extensionId,
+        displayName: entry.workspace.name,
+        rootPath: entry.workspace.rootPath,
+        gitBranch: entry.workspace.gitBranch,
+        vscodeVersion: entry.workspace.vscodeVersion,
+        extensionVersion: entry.workspace.extensionVersion ?? 'unknown',
+        connectedAt: entry.connectedAt,
+        lastHeartbeat: entry.lastHeartbeat,
+        status: entry.status,
+      })
+    }
+
+    return result
   }
 }
 

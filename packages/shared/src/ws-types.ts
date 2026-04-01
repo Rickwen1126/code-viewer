@@ -135,6 +135,7 @@ export interface ListWorkspacesResultPayload {
     displayName: string
     rootPath: string
     gitBranch: string | null
+    extensionVersion: string
     status: 'connected' | 'stale'
   }>
 }
@@ -150,6 +151,7 @@ export interface SelectWorkspaceResultPayload {
     rootPath: string
     gitBranch: string | null
     vscodeVersion: string
+    extensionVersion: string
   }
 }
 
@@ -157,6 +159,7 @@ export interface ExtensionConnectedPayload {
   extensionId: string
   displayName: string
   rootPath: string
+  extensionVersion: string
 }
 
 export interface ExtensionDisconnectedPayload {
@@ -170,6 +173,7 @@ export interface WorkspaceRegisterPayload {
   rootPath: string
   gitBranch: string | null
   vscodeVersion: string
+  extensionVersion: string
 }
 
 // File

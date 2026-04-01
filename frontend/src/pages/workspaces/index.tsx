@@ -45,6 +45,7 @@ export function WorkspacesPage() {
           displayName: p.displayName,
           rootPath: p.rootPath,
           gitBranch: null,
+          extensionVersion: p.extensionVersion,
           status: 'connected' as const,
         })
         cacheService.setWorkspaceList(next)

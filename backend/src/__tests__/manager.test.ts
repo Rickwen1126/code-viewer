@@ -18,6 +18,7 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     rootPath: '/home/user/project',
     gitBranch: 'main',
     vscodeVersion: '1.85.0',
+    extensionVersion: '0.0.3',
     ...overrides,
   }
 }
@@ -157,6 +158,7 @@ describe('ConnectionManager', () => {
         displayName: 'Project Alpha',
         rootPath: '/alpha',
         gitBranch: 'dev',
+        extensionVersion: '0.0.3',
         status: 'connected',
       })
     })
@@ -187,6 +189,46 @@ describe('ConnectionManager', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mgr.addExtension('ext-1', ws as any, makeWorkspace({ gitBranch: null }))
       expect(mgr.listWorkspaces()[0].gitBranch).toBeNull()
+    })
+  })
+
+  // ── getAdminWorkspaces ────────────────────────────────────────────
+
+  describe('getAdminWorkspaces', () => {
+    it('returns runtime metadata for connected extensions', () => {
+      const { ws } = createMockWs()
+      const connectedAtBefore = Date.now()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addExtension('ext-1', ws as any, makeWorkspace({ name: 'Project Alpha', rootPath: '/alpha' }))
+      const connectedAtAfter = Date.now()
+
+      const result = mgr.getAdminWorkspaces()
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        extensionId: 'ext-1',
+        displayName: 'Project Alpha',
+        rootPath: '/alpha',
+        gitBranch: 'main',
+        vscodeVersion: '1.85.0',
+        extensionVersion: '0.0.3',
+        status: 'connected',
+      })
+      expect(result[0].connectedAt).toBeGreaterThanOrEqual(connectedAtBefore)
+      expect(result[0].connectedAt).toBeLessThanOrEqual(connectedAtAfter)
+      expect(result[0].lastHeartbeat).toBeGreaterThanOrEqual(result[0].connectedAt)
+    })
+
+    it('reflects stale status and updated heartbeat', () => {
+      const { ws } = createMockWs()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addExtension('ext-1', ws as any, makeWorkspace())
+      const entry = mgr.getExtension('ext-1')!
+      entry.status = 'stale'
+      entry.lastHeartbeat = 12345
+
+      const result = mgr.getAdminWorkspaces()
+      expect(result[0].status).toBe('stale')
+      expect(result[0].lastHeartbeat).toBe(12345)
     })
   })
 

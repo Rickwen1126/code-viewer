@@ -77,6 +77,7 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
           rootPath: '',
           gitBranch: null,
           vscodeVersion: 'unknown',
+          extensionVersion: 'unknown',
         })
 
         sendJson(ws, makeMessage<ConnectionWelcomePayload>(MSG_CONNECTION_WELCOME, {
@@ -106,6 +107,7 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
               rootPath: payload.rootPath,
               gitBranch: payload.gitBranch,
               vscodeVersion: payload.vscodeVersion,
+              extensionVersion: payload.extensionVersion ?? 'unknown',
             }
           }
 
@@ -115,7 +117,12 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
           // Broadcast extensionConnected to ALL frontends so workspace list updates
           const connectMsg = makeMessage<ExtensionConnectedPayload>(
             MSG_CONNECTION_EXTENSION_CONNECTED,
-            { extensionId, displayName: payload.name, rootPath: payload.rootPath },
+            {
+              extensionId,
+              displayName: payload.name,
+              rootPath: payload.rootPath,
+              extensionVersion: payload.extensionVersion ?? 'unknown',
+            },
           )
           for (const [, frontend] of manager.frontends) {
             sendJson(frontend.ws, connectMsg)
@@ -243,6 +250,7 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
                 rootPath: extension.workspace.rootPath,
                 gitBranch: extension.workspace.gitBranch,
                 vscodeVersion: extension.workspace.vscodeVersion,
+                extensionVersion: extension.workspace.extensionVersion ?? 'unknown',
               },
             },
             msg.id,

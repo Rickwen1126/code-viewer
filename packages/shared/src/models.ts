@@ -128,6 +128,7 @@ export interface Workspace {
   rootPath: string
   gitBranch: string | null
   vscodeVersion: string
+  extensionVersion: string
 }
 
 export interface ExtensionConnection {

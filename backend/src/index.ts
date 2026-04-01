@@ -11,9 +11,29 @@ const wsHelper = createNodeWebSocket({ app })
 const injectWebSocket = wsHelper.injectWebSocket
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const upgradeWebSocket = wsHelper.upgradeWebSocket as UpgradeWebSocket<any, any>
+const backendVersion = '0.0.1'
+
+function isAuthorized(secret: string | undefined | null): boolean {
+  const expected = process.env.CODE_VIEWER_SECRET
+  if (!expected) return true
+  return secret === expected
+}
 
 // Health check
-app.get('/health', (c) => c.json({ status: 'ok', version: '0.0.1' }))
+app.get('/health', (c) => c.json({ status: 'ok', version: backendVersion }))
+
+app.get('/admin/workspaces', (c) => {
+  if (!isAuthorized(c.req.query('secret'))) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  return c.json({
+    status: 'ok',
+    backendVersion,
+    generatedAt: Date.now(),
+    workspaces: manager.getAdminWorkspaces(),
+  })
+})
 
 // WS routes
 app.get('/ws/extension', createExtensionHandler(upgradeWebSocket))

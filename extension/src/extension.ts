@@ -29,6 +29,7 @@ import {
 } from './providers/tour-provider'
 
 let wsClient: WsClient | undefined
+let currentExtensionVersion = 'unknown'
 
 function isDebug(): boolean {
   return vscode.workspace.getConfiguration('codeViewer').get<boolean>('debug', false)
@@ -86,6 +87,7 @@ export function setupMessageRouting(client: WsClient): void {
           rootPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
           gitBranch: null as string | null,
           vscodeVersion: vscode.version,
+          extensionVersion: currentExtensionVersion,
         }
         client.send(createMessage('workspace.register', ws))
       }
@@ -130,6 +132,7 @@ export function setupMessageRouting(client: WsClient): void {
 
 export function activate(context: vscode.ExtensionContext) {
   wsClient = new WsClient()
+  currentExtensionVersion = String(context.extension.packageJSON.version ?? 'unknown')
 
   // Generate extensionId: machineName-pid
   // eslint-disable-next-line @typescript-eslint/no-var-requires

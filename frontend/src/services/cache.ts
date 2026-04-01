@@ -8,6 +8,7 @@ export interface WorkspaceEntry {
   displayName: string
   rootPath: string
   gitBranch: string | null
+  extensionVersion: string
   status: 'connected' | 'stale'
 }
 
