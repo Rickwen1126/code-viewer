@@ -119,9 +119,21 @@ async function readDirectoryRecursive(
   return nodes
 }
 
-function shouldSkipDirectory(name: string): boolean {
-  const skip = new Set(['.git', 'node_modules', '.next', 'dist', 'build', '.cache', '.turbo', 'coverage', '__pycache__', '.venv'])
-  return skip.has(name) || name.startsWith('.')
+const SKIPPED_DIRECTORIES = new Set([
+  '.git',
+  'node_modules',
+  '.next',
+  'dist',
+  'build',
+  '.cache',
+  '.turbo',
+  'coverage',
+  '__pycache__',
+  '.venv',
+])
+
+export function shouldSkipDirectory(name: string): boolean {
+  return SKIPPED_DIRECTORIES.has(name)
 }
 
 function getLanguageIdFromPath(filename: string): string | undefined {
