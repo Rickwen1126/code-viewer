@@ -2,13 +2,31 @@
 // Does NOT intercept WebSocket or API calls
 
 const CACHE_NAME = 'code-viewer-v1'
+const APP_SHELL_URL = '/'
+
+async function getAppShell() {
+  const cached = await caches.match(APP_SHELL_URL)
+  if (cached) return cached
+
+  return fetch(APP_SHELL_URL)
+}
+
+function offlineResponse() {
+  return new Response('Offline', {
+    status: 503,
+    statusText: 'Offline',
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  })
+}
 
 // Cache app shell on install
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       cache.addAll([
-        '/',
+        APP_SHELL_URL,
         '/manifest.json',
         '/icon.svg',
       ])
@@ -38,7 +56,7 @@ self.addEventListener('fetch', (event) => {
   // Navigation requests: network-first (fall back to cached index.html)
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/'))
+      fetch(request).catch(() => getAppShell())
     )
     return
   }
@@ -59,6 +77,9 @@ self.addEventListener('fetch', (event) => {
 
   // Everything else: network-first
   event.respondWith(
-    fetch(request).catch(() => caches.match(request))
+    fetch(request).catch(async () => {
+      const cached = await caches.match(request)
+      return cached ?? offlineResponse()
+    })
   )
 })

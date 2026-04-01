@@ -15,9 +15,18 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {
-    // SW registration failed — app still works without it
-  })
+  if (import.meta.env.PROD) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // SW registration failed — app still works without it
+    })
+  } else {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        void registration.unregister()
+      }
+    }).catch(() => {
+      // Ignore dev cleanup failure
+    })
+  }
 }
