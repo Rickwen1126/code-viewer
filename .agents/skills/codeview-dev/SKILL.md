@@ -35,11 +35,11 @@ Start code-viewer's 3 services in development mode for working on code-viewer it
 
 3. **Start backend + frontend** (background, must disable sandbox):
    ```bash
-   pnpm --filter @code-viewer/backend dev > /private/tmp/claude-501/codeview-backend.log 2>&1 &
-   pnpm --filter @code-viewer/frontend dev > /private/tmp/claude-501/codeview-frontend.log 2>&1 &
+   node scripts/start-dev-service.mjs backend
+   node scripts/start-dev-service.mjs frontend
    ```
 
-4. **Wait for ports** — poll `lsof -i :4800 -i :4801` until both LISTEN (timeout 15s).
+4. **Wait for ports** — the helper already waits for readiness, then poll `lsof -i :4800 -i :4801` to double-check both LISTEN (timeout 15s).
 
 5. **Launch test-electron** with `--real` mode:
    ```bash
@@ -65,5 +65,6 @@ Start code-viewer's 3 services in development mode for working on code-viewer it
 - After extension code changes: rebuild with step 2, then reload VS Code window
 - Before trusting any E2E result, confirm the running extension host was launched **after** the latest `dist/extension.js` build
 - `tsx watch` auto-reloads backend, but sometimes needs manual restart
+- Do not start dev services with raw shell `&`; under agent runners the parent command can exit while the child process gets reaped, especially for the frontend Vite server.
 - test-electron `--real` has 30min timeout
 - `--copilot` mode requires closing your own VS Code first
