@@ -9,7 +9,7 @@ vi.mock('vscode', () => ({
   },
 }))
 
-import { shouldSkipDirectory } from '../providers/file-provider'
+import { shouldSkipDirectory, escapeGlobPattern } from '../providers/file-provider'
 
 describe('shouldSkipDirectory', () => {
   it('skips known noisy or generated directories', () => {
@@ -24,5 +24,15 @@ describe('shouldSkipDirectory', () => {
     expect(shouldSkipDirectory('.agents')).toBe(false)
     expect(shouldSkipDirectory('.vscode')).toBe(false)
     expect(shouldSkipDirectory('.progress')).toBe(false)
+  })
+})
+
+describe('escapeGlobPattern', () => {
+  it('escapes glob metacharacters so a file path stays file-scoped', () => {
+    expect(escapeGlobPattern('src/foo[bar]*?.ts')).toBe('src/foo\\[bar\\]\\*\\?.ts')
+  })
+
+  it('keeps ordinary relative paths unchanged', () => {
+    expect(escapeGlobPattern('src/index.ts')).toBe('src/index.ts')
   })
 })

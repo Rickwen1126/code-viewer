@@ -229,22 +229,24 @@ describe('broadcastExtensionEvent', () => {
     vi.clearAllMocks()
   })
 
-  it('sends the message to all frontends watching the extension', () => {
+  it('sends git status events only to frontends that requested git status', () => {
     const { ws: ws1, sent: sent1 } = createMockWs()
     const { ws: ws2, sent: sent2 } = createMockWs()
+    const { ws: ws3, sent: sent3 } = createMockWs()
 
     ;(manager.getFrontendsForExtension as Mock).mockReturnValue([
-      { ws: ws1, selectedExtensionId: 'ext-1' },
-      { ws: ws2, selectedExtensionId: 'ext-1' },
+      { ws: ws1, selectedExtensionId: 'ext-1', desiredWatchSet: [{ topic: 'git.status', scope: 'workspace' }] },
+      { ws: ws2, selectedExtensionId: 'ext-1', desiredWatchSet: [] },
+      { ws: ws3, selectedExtensionId: 'ext-1', desiredWatchSet: [{ topic: 'file.content', path: 'src/a.ts' }] },
     ])
 
     const event = makeMsg({ type: 'git.statusChanged' })
     broadcastExtensionEvent('ext-1', event)
 
     expect(sent1).toHaveLength(1)
-    expect(sent2).toHaveLength(1)
+    expect(sent2).toHaveLength(0)
+    expect(sent3).toHaveLength(0)
     expect(JSON.parse(sent1[0])).toMatchObject({ id: event.id, type: event.type })
-    expect(JSON.parse(sent2[0])).toMatchObject({ id: event.id, type: event.type })
   })
 
   it('sends nothing when no frontends are watching', () => {
@@ -254,17 +256,36 @@ describe('broadcastExtensionEvent', () => {
     expect(() => broadcastExtensionEvent('ext-1', makeMsg())).not.toThrow()
   })
 
-  it('sends to only one frontend when only one is watching', () => {
-    const { ws, sent } = createMockWs()
+  it('sends file content events only to frontends that requested the same path', () => {
+    const { ws: ws1, sent: sent1 } = createMockWs()
+    const { ws: ws2, sent: sent2 } = createMockWs()
 
     ;(manager.getFrontendsForExtension as Mock).mockReturnValue([
-      { ws, selectedExtensionId: 'ext-1' },
+      { ws: ws1, selectedExtensionId: 'ext-1', desiredWatchSet: [{ topic: 'file.content', path: 'src/a.ts' }] },
+      { ws: ws2, selectedExtensionId: 'ext-1', desiredWatchSet: [{ topic: 'file.content', path: 'src/b.ts' }] },
+    ])
+
+    const event = makeMsg({ type: 'file.contentChanged', payload: { path: 'src/a.ts' } })
+    broadcastExtensionEvent('ext-1', event)
+
+    expect(sent1).toHaveLength(1)
+    expect(sent2).toHaveLength(0)
+  })
+
+  it('still broadcasts non-watch-controlled events to all frontends on the extension', () => {
+    const { ws: ws1, sent: sent1 } = createMockWs()
+    const { ws: ws2, sent: sent2 } = createMockWs()
+
+    ;(manager.getFrontendsForExtension as Mock).mockReturnValue([
+      { ws: ws1, selectedExtensionId: 'ext-1', desiredWatchSet: [] },
+      { ws: ws2, selectedExtensionId: 'ext-1', desiredWatchSet: [] },
     ])
 
     const event = makeMsg({ type: 'file.treeChanged' })
     broadcastExtensionEvent('ext-1', event)
 
-    expect(sent).toHaveLength(1)
+    expect(sent1).toHaveLength(1)
+    expect(sent2).toHaveLength(1)
   })
 })
 

@@ -1,4 +1,4 @@
-import type { WsMessage, ErrorPayload } from '@code-viewer/shared'
+import type { WsMessage, ErrorPayload, WatchDescriptor } from '@code-viewer/shared'
 import { manager } from './manager.js'
 
 const DEBUG = process.env.CODE_VIEWER_DEBUG === 'true'
@@ -26,6 +26,25 @@ function makeErrorMessage(replyTo: string, code: ErrorPayload['code'], message: 
     payload: { code, message },
     timestamp: Date.now(),
   }
+}
+
+function frontendWantsEvent(
+  frontend: { desiredWatchSet?: WatchDescriptor[] },
+  msg: WsMessage,
+): boolean {
+  const desiredWatchSet = frontend.desiredWatchSet ?? []
+
+  if (msg.type === 'git.statusChanged') {
+    return desiredWatchSet.some((watch) => watch.topic === 'git.status')
+  }
+
+  if (msg.type === 'file.contentChanged') {
+    const path = (msg.payload as { path?: string } | undefined)?.path
+    if (!path) return false
+    return desiredWatchSet.some((watch) => watch.topic === 'file.content' && watch.path === path)
+  }
+
+  return true
 }
 
 /**
@@ -117,6 +136,7 @@ export function broadcastExtensionEvent(extensionId: string, msg: WsMessage): vo
   // Normal broadcast for all other events
   const frontends = manager.getFrontendsForExtension(extensionId)
   for (const frontend of frontends) {
+    if (!frontendWantsEvent(frontend, msg)) continue
     sendToWs(frontend.ws, msg)
   }
 }

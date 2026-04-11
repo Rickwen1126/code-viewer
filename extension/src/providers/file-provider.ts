@@ -148,6 +148,10 @@ function getLanguageIdFromPath(filename: string): string | undefined {
   return ext ? map[ext] : undefined
 }
 
+export function escapeGlobPattern(path: string): string {
+  return path.replace(/[\\*?{}[\]!]/g, '\\$&')
+}
+
 function toRelativeWorkspacePath(uri: vscode.Uri): string {
   return vscode.workspace.asRelativePath(uri).replace(/\\/g, '/')
 }
@@ -228,7 +232,7 @@ export function startFileContentWatch(
   if (!workspaceFolder) return []
 
   const watcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(workspaceFolder, path),
+    new vscode.RelativePattern(workspaceFolder, escapeGlobPattern(path)),
   )
 
   const notify = () => {
