@@ -1,5 +1,8 @@
 .vscode/**
 src/**
 tsconfig.json
+vitest.config.ts
 node_modules/**
-!node_modules/ws/**
+dist/**
+!dist/extension.js
+!dist/extension.js.map

@@ -47,10 +47,10 @@
     }
   },
   "scripts": {
-    "build": "tsc && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
-    "watch": "tsc -w",
+    "build": "rm -rf dist && tsc --emitDeclarationOnly && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "mkdir -p dist && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
     "typecheck": "tsc --noEmit",
-    "package": "vsce package --no-dependencies"
+    "package": "pnpm run build && vsce package --no-dependencies"
   },
   "dependencies": {
     "@code-viewer/shared": "workspace:*",
@@ -60,6 +60,7 @@
     "@types/vscode": "^1.100.0",
     "@types/ws": "^8.18.0",
     "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.28.0",
     "typescript": "^5.7.0",
     "vitest": "^3.2.0"
   }
