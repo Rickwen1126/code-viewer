@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
-import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { PullToRefresh } from '../../components/pull-to-refresh'
@@ -231,8 +230,6 @@ export function FileBrowserPage() {
   useEffect(() => {
     if (connectionState !== 'connected' || !workspace) return
     loadTreeBackground()
-    const unsub = wsClient.subscribe('file.treeChanged', () => loadTreeBackground())
-    return unsub
   }, [connectionState, workspace])
 
   // Background load: silently update, no spinner

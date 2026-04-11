@@ -92,6 +92,7 @@ describe('ConnectionManager', () => {
       const entry = mgr.getFrontend('fe-1')
       expect(entry).toBeDefined()
       expect(entry?.selectedExtensionId).toBeNull()
+      expect(entry?.desiredWatchSet).toEqual([])
     })
 
     it('returns undefined for an unknown frontend', () => {
@@ -108,6 +109,96 @@ describe('ConnectionManager', () => {
 
     it('removeFrontend is a no-op for unknown id', () => {
       expect(() => mgr.removeFrontend('ghost')).not.toThrow()
+    })
+  })
+
+  // ── desired watch set / effective watch set ───────────────────────
+
+  describe('desired watch set aggregation', () => {
+    it('stores desired watch set per frontend', () => {
+      const { ws } = createMockWs()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-1', ws as any)
+
+      mgr.setFrontendDesiredWatchSet('fe-1', [{ topic: 'git.status', scope: 'workspace' }])
+
+      expect(mgr.getFrontend('fe-1')?.desiredWatchSet).toEqual([
+        { topic: 'git.status', scope: 'workspace' },
+      ])
+    })
+
+    it('returns empty effective watch set when no frontend selected the extension', () => {
+      expect(mgr.getEffectiveWatchSet('ext-1')).toEqual([])
+    })
+
+    it('returns union of watch sets for frontends targeting the same extension', () => {
+      const { ws: ws1 } = createMockWs()
+      const { ws: ws2 } = createMockWs()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-1', ws1 as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-2', ws2 as any)
+
+      mgr.selectWorkspace('fe-1', 'ext-1')
+      mgr.selectWorkspace('fe-2', 'ext-1')
+      mgr.setFrontendDesiredWatchSet('fe-1', [{ topic: 'file.content', path: 'src/a.ts' }])
+      mgr.setFrontendDesiredWatchSet('fe-2', [{ topic: 'git.status', scope: 'workspace' }])
+
+      expect(mgr.getEffectiveWatchSet('ext-1')).toEqual([
+        { topic: 'file.content', path: 'src/a.ts' },
+        { topic: 'git.status', scope: 'workspace' },
+      ])
+    })
+
+    it('dedupes identical watches for frontends targeting the same extension', () => {
+      const { ws: ws1 } = createMockWs()
+      const { ws: ws2 } = createMockWs()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-1', ws1 as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-2', ws2 as any)
+
+      mgr.selectWorkspace('fe-1', 'ext-1')
+      mgr.selectWorkspace('fe-2', 'ext-1')
+      mgr.setFrontendDesiredWatchSet('fe-1', [{ topic: 'git.status', scope: 'workspace' }])
+      mgr.setFrontendDesiredWatchSet('fe-2', [{ topic: 'git.status', scope: 'workspace' }])
+
+      expect(mgr.getEffectiveWatchSet('ext-1')).toEqual([
+        { topic: 'git.status', scope: 'workspace' },
+      ])
+    })
+
+    it('keeps different extensions isolated', () => {
+      const { ws: ws1 } = createMockWs()
+      const { ws: ws2 } = createMockWs()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-1', ws1 as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-2', ws2 as any)
+
+      mgr.selectWorkspace('fe-1', 'ext-1')
+      mgr.selectWorkspace('fe-2', 'ext-2')
+      mgr.setFrontendDesiredWatchSet('fe-1', [{ topic: 'file.content', path: 'src/a.ts' }])
+      mgr.setFrontendDesiredWatchSet('fe-2', [{ topic: 'git.status', scope: 'workspace' }])
+
+      expect(mgr.getEffectiveWatchSet('ext-1')).toEqual([
+        { topic: 'file.content', path: 'src/a.ts' },
+      ])
+      expect(mgr.getEffectiveWatchSet('ext-2')).toEqual([
+        { topic: 'git.status', scope: 'workspace' },
+      ])
+    })
+
+    it('clears desired watch set for a frontend', () => {
+      const { ws } = createMockWs()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mgr.addFrontend('fe-1', ws as any)
+      mgr.selectWorkspace('fe-1', 'ext-1')
+      mgr.setFrontendDesiredWatchSet('fe-1', [{ topic: 'file.content', path: 'src/a.ts' }])
+
+      mgr.clearFrontendDesiredWatchSet('fe-1')
+
+      expect(mgr.getEffectiveWatchSet('ext-1')).toEqual([])
     })
   })
 

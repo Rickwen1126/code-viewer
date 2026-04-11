@@ -45,6 +45,11 @@ export const MSG_CONNECTION_EXTENSION_DISCONNECTED = 'connection.extensionDiscon
 export const MSG_WORKSPACE_REGISTER = 'workspace.register' as const
 export const MSG_WORKSPACE_REGISTER_RESULT = 'workspace.register.result' as const
 
+// Watch domain
+export const MSG_WATCH_SYNC = 'watch.sync' as const
+export const MSG_WATCH_SYNC_RESULT = 'watch.sync.result' as const
+export const MSG_WATCH_SET = 'watch.set' as const
+
 // File domain
 export const MSG_FILE_TREE = 'file.tree' as const
 export const MSG_FILE_TREE_RESULT = 'file.tree.result' as const
@@ -174,6 +179,29 @@ export interface WorkspaceRegisterPayload {
   gitBranch: string | null
   vscodeVersion: string
   extensionVersion: string
+}
+
+// Watch
+export type WatchDescriptor =
+  | {
+      topic: 'file.content'
+      path: string
+    }
+  | {
+      topic: 'git.status'
+      scope: 'workspace'
+    }
+
+export interface WatchSyncPayload {
+  watches: WatchDescriptor[]
+}
+
+export interface WatchSyncResultPayload {
+  watches: WatchDescriptor[]
+}
+
+export interface WatchSetPayload {
+  watches: WatchDescriptor[]
 }
 
 // File

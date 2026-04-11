@@ -9,6 +9,9 @@ import type {
   ExtensionConnectedPayload,
   ExtensionDisconnectedPayload,
   FileTreeNode,
+  WatchSyncPayload,
+  WatchSyncResultPayload,
+  WatchSetPayload,
 } from '@code-viewer/shared'
 import {
   MSG_CONNECTION_WELCOME,
@@ -20,6 +23,9 @@ import {
   MSG_CONNECTION_EXTENSION_DISCONNECTED,
   MSG_WORKSPACE_REGISTER,
   MSG_WORKSPACE_REGISTER_RESULT,
+  MSG_WATCH_SYNC,
+  MSG_WATCH_SYNC_RESULT,
+  MSG_WATCH_SET,
 } from '@code-viewer/shared'
 import { manager } from './manager.js'
 import {
@@ -47,6 +53,19 @@ function makeMessage<T>(type: string, payload: T, replyTo?: string): WsMessage<T
 
 function sendJson(ws: { send: (data: string) => void }, msg: WsMessage): void {
   ws.send(JSON.stringify(msg))
+}
+
+function syncEffectiveWatchSet(extensionId: string | null | undefined): void {
+  if (!extensionId) return
+  const extension = manager.getExtension(extensionId)
+  if (!extension) return
+
+  sendJson(
+    extension.ws,
+    makeMessage<WatchSetPayload>(MSG_WATCH_SET, {
+      watches: manager.getEffectiveWatchSet(extensionId),
+    }),
+  )
 }
 
 // Extension-initiated events have types that end with ".result", "Changed", or "chunk"
@@ -127,6 +146,8 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
           for (const [, frontend] of manager.frontends) {
             sendJson(frontend.ws, connectMsg)
           }
+
+          syncEffectiveWatchSet(extensionId)
           return
         }
 
@@ -226,6 +247,7 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
         // Handle connection.selectWorkspace locally
         if (msg.type === MSG_CONNECTION_SELECT_WORKSPACE) {
           const payload = msg.payload as SelectWorkspacePayload
+          const previousExtensionId = manager.getFrontend(frontendId)?.selectedExtensionId ?? null
           const extension = manager.getExtension(payload.extensionId)
 
           if (!extension) {
@@ -240,6 +262,9 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
           }
 
           manager.selectWorkspace(frontendId, payload.extensionId)
+          if (previousExtensionId !== null && previousExtensionId !== payload.extensionId) {
+            manager.clearFrontendDesiredWatchSet(frontendId)
+          }
 
           sendJson(ws, makeMessage<SelectWorkspaceResultPayload>(
             MSG_CONNECTION_SELECT_WORKSPACE_RESULT,
@@ -255,6 +280,25 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
             },
             msg.id,
           ))
+
+          if (previousExtensionId !== null && previousExtensionId !== payload.extensionId) {
+            syncEffectiveWatchSet(previousExtensionId)
+          }
+          syncEffectiveWatchSet(payload.extensionId)
+          return
+        }
+
+        if (msg.type === MSG_WATCH_SYNC) {
+          const payload = msg.payload as WatchSyncPayload
+          manager.setFrontendDesiredWatchSet(frontendId, Array.isArray(payload.watches) ? payload.watches : [])
+
+          sendJson(ws, makeMessage<WatchSyncResultPayload>(
+            MSG_WATCH_SYNC_RESULT,
+            { watches: Array.isArray(payload.watches) ? payload.watches : [] },
+            msg.id,
+          ))
+
+          syncEffectiveWatchSet(manager.getFrontend(frontendId)?.selectedExtensionId)
           return
         }
 
@@ -263,7 +307,9 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
       },
 
       onClose(_evt: Event, _ws: { send: (data: string) => void }) {
+        const selectedExtensionId = manager.getFrontend(frontendId)?.selectedExtensionId ?? null
         manager.removeFrontend(frontendId)
+        syncEffectiveWatchSet(selectedExtensionId)
         console.log(`Frontend disconnected: ${frontendId}`)
       },
     }

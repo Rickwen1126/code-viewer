@@ -1,0 +1,52 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "03 - Module Overview: Code Viewer Demand-Driven Sync Drift",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 白話導讀\n\n這條 tour 其實是在看：Code Viewer 原本應該是「前端要什麼才 request 什麼」，但現在怎麼一路滑成「extension 一 activate 就先開始 watch 整個 workspace」。\n\n如果先記不住細節，先抓住每個 step 只是在回答「需求訊號到底停在哪一層，為什麼 extension 會自己動起來」。\n\n## Code Viewer 是什麼\n\n一個把 Desktop VS Code 能力 relay 到手機 PWA 的內部專案，目前不是 npm library，所以沒有公開 npm download 數字。\n\n## 錨定已知\n\n如果你熟悉 GraphQL 或 typed RPC：正確模型應該像 query/subscription 由 client 顯式宣告；現在的 code 比較像 server 在沒有 subscription 的情況下自己先開 background poll/watch。問題不是 transport 壞掉，而是 demand signal 沒有穿透邊界。\n\n## 這條路徑在解決什麼問題\n\n多個 VS Code workspace 同時開著時，`Code Helper (Plugin)` 會間歇性高 CPU。backend 幾乎 idle，表示熱區比較像 extension host 本地被檔案與 git 事件持續喚醒，而不是前端點擊或 relay 本身在燒。\n\n## 這條路徑展示什麼 mental model\n\n**routing signal 不等於 demand signal。** 如果系統只有「我要把 request 送去哪」的資訊，卻沒有「我現在真的需要哪些 live data」的資訊，producer 端就很容易自己腦補需求，最後變成 eager push。\n\n## 為什麼值得讀\n\n走完這條 tour，你可以快速判斷這類效能問題到底是 debounce 不夠、network loop，還是更根本的 sync model 漂移。這個判斷方式不只適用於 code-viewer，也適用於任何跨 process 的 event-driven 系統。\n\n## DeepWiki 延伸閱讀\n\n目前沒有 public DeepWiki。建議先搭配 `.tours/01-architecture-skyeye-code-viewer.tour` 看三層 WS relay，再回來看這條 demand-driven 漂移路徑。"
+    },
+    {
+      "file": "packages/shared/src/ws-types.ts",
+      "line": 48,
+      "ref": "be1d2f0b12f6515937cc9066333edc1c23ecc694",
+      "title": "Step 1: Shared protocol 只有 push event，沒有 consumer-driven watch contract",
+      "description": "## Insight\n\n**機制**：shared layer 目前定義了 `file.tree` / `file.read` / `git.status` 這類 request-response，也定義了 `file.treeChanged` / `file.contentChanged` / `git.statusChanged` 這類 extension 主動推播 event；但沒有 `watch.start` / `watch.stop` 之類的顯式需求協定。\n\n**故障模式**：一旦 protocol 沒有「誰在看什麼」這個概念，extension 若想提供 live update，就只能靠 activate-time global watcher 去猜需求。這會讓 demand-driven 架構在 contract 層就失去表達能力。\n\n**設計取捨**：只用 request + push event，短期上手很快；但代價是 subscription lifecycle 只能藏在各端私有邏輯裡，最後很難證明系統真的只在有需求時才做事。\n\n### 白話解析\n\n這一層像 API spec。現在 spec 裡有「你可以查資料」和「我可能會推更新給你」，但沒有「我現在開始需要這種更新」的正式說法。少了這句，後面每一層都只能自己猜。\n\n### Code Detail\n\n**這段在幹嘛**：列出 file / git 相關的 message type，能看到 request-response 與 push event 都已存在。\n\n**為什麼這樣寫**：\n- 好處：最小可用產品很快就能跑起來\n- 好處：frontend 頁面要 refresh 時，直接 request 就能拿到結果\n- 壞處：live update 沒有 owner，容易退化成任何一端都能偷開 background watch\n\n**思考問題**：\n1. 哪些資料真的值得升級成 explicit subscription，而不是留在 request-response？\n2. 如果 shared contract 不表達 demand，哪一層最容易偷偷變成 eager？"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 148,
+      "ref": "be1d2f0b12f6515937cc9066333edc1c23ecc694",
+      "title": "Step 2: Frontend 的 subscribe 只停在本地 listener，沒有跨邊界送出需求",
+      "description": "## Insight\n\n**機制**：`subscribe()` 只是把 listener 放進 frontend 端的 `Map<string, Set<MessageListener>>`。它只影響瀏覽器收到某個 message type 後要不要執行 callback，完全不會往 backend 或 extension 回傳「我現在需要這個 topic」。\n\n**故障模式**：UI code 看起來像是在做 subscription，但系統層其實沒有真正建立 subscription。這會產生一種假象：frontend 以為自己在『訂閱』，extension 端卻完全不知道 demand 是否存在。\n\n**設計取捨**：把 `subscribe()` 做成純本地事件匯流排很輕巧，也很適合 React cleanup；但如果不再往外延伸成 protocol，這個 API 名稱就會讓人誤以為整個系統是 demand-driven。\n\n### 白話解析\n\n這裡其實只是前端自己的收音機，不是跨系統的訂閱機制。它能決定『收到廣播後我要不要聽』，但不能決定『後端現在要不要開始廣播』。\n\n### Code Detail\n\n**這段在幹嘛**：新增/移除本地 listener，等 `handleMessage()` 收到 push event 時再 dispatch 給頁面。\n\n**為什麼這樣寫**：\n- 好處：配 React `useEffect` 很自然，unsub 成本低\n- 好處：不需要額外 round-trip 就能處理已存在的 push event\n- 壞處：API 名稱帶有 subscription 語意，但實際上沒有把 demand 穿透到 backend/extension\n\n**思考問題**：\n1. 如果未來加 `watch.start/watch.stop`，這個 `subscribe()` 應該包掉 network protocol，還是維持純本地？\n2. local listener 和 cross-boundary subscription 最容易在哪裡被混為一談？"
+    },
+    {
+      "file": "backend/src/ws/handler.ts",
+      "line": 226,
+      "ref": "be1d2f0b12f6515937cc9066333edc1c23ecc694",
+      "title": "Step 3: selected workspace 只是 routing，不是 demand",
+      "description": "## Insight\n\n**機制**：`connection.selectWorkspace` 只是在 backend 裡把某個 frontend 綁到某個 extension，之後其餘 request 才知道要 relay 給誰。這個 state 解的是 routing 問題，不是資料熱區問題。\n\n**故障模式**：如果把 `selected workspace` 誤當成 watcher 開關，9 個 frontend 各自選 9 個 workspace 時，系統仍然會在沒人看 files/git 的情況下啟動 9 份監控。看起來有 gating，實際上只是把 eager 的粒度換了一個名字。\n\n**設計取捨**：把 routing state 保持在 backend 很合理，因為 relay 本來就要知道 request 要送去哪；但讓這個 state 同時承擔 demand 語意，會把兩種不同問題纏在一起，之後很難再拆。\n\n### 白話解析\n\n這一層只是導航，不是需求本身。它回答的是『接下來這個 request 該送到哪個 workspace』，不是『這個 workspace 現在應不應該開始監控檔案變化』。\n\n### Code Detail\n\n**這段在幹嘛**：處理 `connection.selectWorkspace`，查 extension 是否存在，然後把 frontend 的 `selectedExtensionId` 記下來。\n\n**為什麼這樣寫**：\n- 好處：frontend 後續 request 不必每次都重帶 workspace metadata\n- 好處：backend 可以穩定做 routing 與 offline 檢查\n- 壞處：如果設計討論不夠精準，很容易把這個狀態誤用成『目前有人在看』\n\n**思考問題**：\n1. routing state 跟 demand state 應該分別存在 backend、frontend，還是 extension？\n2. 哪種資料值得用 workspace-level routing，哪種一定要更細到 topic/path scope？"
+    },
+    {
+      "file": "extension/src/extension.ts",
+      "line": 161,
+      "ref": "be1d2f0b12f6515937cc9066333edc1c23ecc694",
+      "title": "Step 4: 問題的真正轉折點在 activate 時就先啟動 watchers",
+      "description": "## Insight\n\n**機制**：extension 在 `activate()` 內先建立 `WsClient`、註冊 command，然後不管 `codeViewer.enabled` 是否為真，都直接呼叫 `startFileWatchers(sendEvent)` 與 `startGitWatchers(sendEvent)`。也就是說，watcher lifecycle 跟 demand、甚至跟 connection lifecycle 都是脫鉤的。\n\n**故障模式**：只要 VS Code 視窗開著，extension host 就可能因為 workspace 本地事件被喚醒，即使 frontend 沒連、workspace 沒被選、也沒有任何頁面在看 files/git。這正是『沒有 user action 也發熱』最像的根因。\n\n**設計取捨**：把 watcher 啟動塞在 activate 最簡單，因為不用處理之後的 start/stop；但代價是把所有 workspace 都當成永遠有 live consumer，這和行動端按需讀取的原始原則完全相反。\n\n### 白話解析\n\n真正讓系統偏掉的不是某個 debounce，而是這裡的生命週期綁錯了。它把『extension 被載入』等同於『檔案與 git 監控應該永遠啟動』，所以一開 VS Code 就開始做 background work。\n\n### Code Detail\n\n**這段在幹嘛**：在 activate 階段初始化 ws、綁 command、設定 message routing，接著直接啟動 file/git watchers；`handleEnabledChange()` 則只控制 websocket connect/disconnect。\n\n**為什麼這樣寫**：\n- 好處：實作直覺，不必維護 watcher state machine\n- 好處：一旦前端存在，push event 立刻就有資料可送\n- 壞處：`enabled=false` 也無法真正做到零背景成本，因為 watcher 早就掛上了\n\n**思考問題**：\n1. 如果 v1 先回到 pure request-response，這裡最小的改動是不是直接拔掉 watcher start？\n2. 若未來真的要 live update，watcher lifecycle 最晚應該綁到哪個事件，而不是 activate？"
+    },
+    {
+      "file": "extension/src/providers/file-provider.ts",
+      "line": 217,
+      "ref": "be1d2f0b12f6515937cc9066333edc1c23ecc694",
+      "title": "Step 5: `**/*` file watcher 把成本放在 callback 之前",
+      "description": "## Insight\n\n**機制**：`startFileWatchers()` 用 `createFileSystemWatcher('**/*')` 監看整個 workspace，然後在 callback 裡才用 `shouldSkipEvent()` 跳過 `.git/` 與 `node_modules/`。這代表事件喚醒成本已經先發生了，skip 只是不再做後續 send。\n\n**故障模式**：高變動資料夾例如 `.claude`、log、jsonl、generated assets 會把這個 broad watcher 放大成 event storm。就算 callback 很快 return，extension host 仍然要被頻繁叫醒，sample 裡的 `uv_fs -> FSReqCallback` 熱點就很像這種情況。\n\n**設計取捨**：一個 `**/*` watcher 最省心，rename/create/delete/change 都能統一處理；但代價是 scope 完全失控，系統無法只為當前頁面或路徑付費。\n\n### 白話解析\n\n這裡的關鍵不是 callback 裡有沒有 `return`，而是你已經先答應『整個 workspace 任何檔案一動我都想知道』。所以成本不是從 send event 才開始，而是從 watcher 被喚醒那一刻就開始了。\n\n### Code Detail\n\n**這段在幹嘛**：建立單一檔案系統 watcher，將 create/delete/change 都轉成 `file.treeChanged`，另外用 `onDidChangeTextDocument` 送 `file.contentChanged`。\n\n**為什麼這樣寫**：\n- 好處：可以快速得到 file tree 與 content dirty 的即時感知\n- 好處：frontend file browser / code viewer 很容易接上這些 push event\n- 壞處：scope 太大，skip 發生得太晚，沒有任何 consumer-based gating\n\n**思考問題**：\n1. `file.treeChanged` 跟 `file.contentChanged` 應不應該拆成不同 demand policy？\n2. 如果不做 explicit watch，這一整段能不能先完全刪掉而不傷主要瀏覽流程？"
+    },
+    {
+      "file": "extension/src/providers/git-provider.ts",
+      "line": 212,
+      "ref": "be1d2f0b12f6515937cc9066333edc1c23ecc694",
+      "title": "Step 6: Git watcher 也跟同一個 eager model 綁在一起",
+      "description": "## Insight\n\n**機制**：`startGitWatchers()` 直接綁 `repo.state.onDidChange()`，任何 git state 變化都會立刻 push `git.statusChanged`。和 file watcher 一樣，它不檢查當前有沒有 frontend 正在看 Git page。\n\n**故障模式**：repo 只要有背景 git activity，extension 就會主動送 event；多 workspace 並行時，這個成本會按 repo 數量疊加。即使 git 相對 file system 安靜，模型上仍然是同一個 eager push 問題。\n\n**設計取捨**：對 Git page 來說，自動更新 branch 與 change count 的體驗很好；但若沒有顯式 demand，這個便利其實是拿整個 extension host 的常駐監控去換來的。\n\n### 白話解析\n\nGit 這條不是最熱的來源，但它證明問題不是單一 file watcher 寫壞，而是整個 sync model 都預設『只要 extension 活著，就應該主動推資料』。\n\n### Code Detail\n\n**這段在幹嘛**：找到 workspace 對應 repo，監聽 `repo.state.onDidChange()`，把 branch 與變更數量包成 `git.statusChanged` 發出去。\n\n**為什麼這樣寫**：\n- 好處：Git 畫面會自動更新，不必手動 refresh 才看到最新狀態\n- 好處：實作非常短，直接吃 VS Code Git API\n- 壞處：仍然沒有 consumer gating，延續了 activate-time eager watch 的架構傾向\n\n**思考問題**：\n1. Git page 如果退回 request-response + pull-to-refresh，體感真的會差到需要常駐 watch 嗎？\n2. 若未來重加 live update，git 與 file 應共用一套 watch protocol，還是各自獨立？"
+    }
+  ]
+}

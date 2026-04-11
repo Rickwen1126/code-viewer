@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { PullToRefresh } from '../../components/pull-to-refresh'
 import type { GitStatusResultPayload, GitStatusChangedPayload } from '@code-viewer/shared'
 
@@ -75,6 +76,7 @@ function SectionHeader({ title, count, color }: { title: string; count: number; 
 export function GitChangesPage() {
   const { request, connectionState } = useWebSocket()
   const { workspace } = useWorkspace()
+  const visibility = useDocumentVisibility()
   const navigate = useNavigate()
   const [gitStatus, setGitStatus] = useState<GitStatusWithGroups | null>(null)
   const [commits, setCommits] = useState<Commit[]>([])
@@ -119,6 +121,19 @@ export function GitChangesPage() {
     await loadStatusBackground()
     await loadCommits()
   }, [loadStatusBackground, loadCommits, gitStatus])
+
+  const [wasHidden, setWasHidden] = useState(visibility !== 'visible')
+  useEffect(() => {
+    if (visibility !== 'visible') {
+      if (!wasHidden) setWasHidden(true)
+      return
+    }
+
+    if (!wasHidden || connectionState !== 'connected' || !workspace) return
+    setWasHidden(false)
+    void loadStatusBackground()
+    void loadCommits()
+  }, [visibility, wasHidden, connectionState, workspace, loadStatusBackground, loadCommits])
 
   async function handleExpandCommit(hash: string) {
     if (expandedCommit === hash) { setExpandedCommit(null); return }

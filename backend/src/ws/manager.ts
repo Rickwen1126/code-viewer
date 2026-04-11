@@ -1,5 +1,5 @@
 import type { WSContext } from 'hono/ws'
-import type { Workspace } from '@code-viewer/shared'
+import type { Workspace, WatchDescriptor } from '@code-viewer/shared'
 
 interface ExtensionEntry {
   ws: WSContext
@@ -13,7 +13,17 @@ interface ExtensionEntry {
 interface FrontendEntry {
   ws: WSContext
   selectedExtensionId: string | null
+  desiredWatchSet: WatchDescriptor[]
   connectedAt: number
+}
+
+function getWatchDescriptorKey(descriptor: WatchDescriptor): string {
+  switch (descriptor.topic) {
+    case 'file.content':
+      return `file.content:${descriptor.path}`
+    case 'git.status':
+      return 'git.status:workspace'
+  }
 }
 
 class ConnectionManager {
@@ -97,6 +107,7 @@ class ConnectionManager {
     this.frontends.set(id, {
       ws,
       selectedExtensionId: null,
+      desiredWatchSet: [],
       connectedAt: Date.now(),
     })
   }
@@ -114,6 +125,33 @@ class ConnectionManager {
     if (frontend) {
       frontend.selectedExtensionId = extensionId
     }
+  }
+
+  setFrontendDesiredWatchSet(frontendId: string, watches: WatchDescriptor[]): void {
+    const frontend = this.frontends.get(frontendId)
+    if (!frontend) return
+    frontend.desiredWatchSet = watches
+  }
+
+  clearFrontendDesiredWatchSet(frontendId: string): void {
+    const frontend = this.frontends.get(frontendId)
+    if (!frontend) return
+    frontend.desiredWatchSet = []
+  }
+
+  getEffectiveWatchSet(extensionId: string): WatchDescriptor[] {
+    const deduped = new Map<string, WatchDescriptor>()
+
+    for (const frontend of this.frontends.values()) {
+      if (frontend.selectedExtensionId !== extensionId) continue
+      for (const watch of frontend.desiredWatchSet) {
+        deduped.set(getWatchDescriptorKey(watch), watch)
+      }
+    }
+
+    return [...deduped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, watch]) => watch)
   }
 
   listWorkspaces(): Array<{

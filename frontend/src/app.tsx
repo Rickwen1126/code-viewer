@@ -1,11 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router'
 import { useSwipeable } from 'react-swipeable'
-import { useContext, useCallback, Component, type ReactNode } from 'react'
+import { useContext, useCallback, Component, type ReactNode, useEffect, useMemo } from 'react'
 import { TabBar } from './components/tab-bar'
 import { ConnectionStatus } from './components/connection-status'
-import { WorkspaceProvider } from './hooks/use-workspace'
+import { WorkspaceProvider, useWorkspace } from './hooks/use-workspace'
 import { TourEditProvider } from './hooks/use-tour-edit'
 import { ReviewProvider, ReviewContext } from './hooks/use-review'
+import { useWebSocket } from './hooks/use-websocket'
+import { useDocumentVisibility } from './hooks/use-visibility'
+import type { WatchDescriptor, WatchSyncPayload, WatchSyncResultPayload } from '@code-viewer/shared'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
 import { CodeViewerPage } from './pages/files/code-viewer'
@@ -54,6 +57,44 @@ function isTabRoot(pathname: string): boolean {
   // Matches exactly '/segment' — no further path parts
   const parts = pathname.split('/').filter(Boolean)
   return parts.length <= 1 && TAB_ROOTS.has('/' + (parts[0] ?? ''))
+}
+
+function decodeFileRoutePath(pathname: string): string | null {
+  if (!pathname.startsWith('/files/')) return null
+  const encoded = pathname.slice('/files/'.length)
+  if (!encoded) return null
+  return encoded.split('/').map(decodeURIComponent).join('/')
+}
+
+function WatchSyncController() {
+  const location = useLocation()
+  const { workspace } = useWorkspace()
+  const { connectionState, request } = useWebSocket()
+  const visibility = useDocumentVisibility()
+
+  const watches = useMemo<WatchDescriptor[]>(() => {
+    if (!workspace || visibility !== 'visible') return []
+
+    const filePath = decodeFileRoutePath(location.pathname)
+    if (filePath) {
+      return [{ topic: 'file.content', path: filePath }]
+    }
+
+    if (location.pathname === '/git') {
+      return [{ topic: 'git.status', scope: 'workspace' }]
+    }
+
+    return []
+  }, [location.pathname, visibility, workspace])
+
+  useEffect(() => {
+    if (connectionState !== 'connected') return
+    request<WatchSyncPayload, WatchSyncResultPayload>('watch.sync', { watches }).catch(() => {
+      // Route/workspace/visibility changes or reconnect will retry.
+    })
+  }, [connectionState, request, watches, workspace])
+
+  return null
 }
 
 function TabLayout() {
@@ -108,6 +149,7 @@ function TabLayout() {
 
   return (
     <div {...swipeHandlers} style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
+      <WatchSyncController />
       <ConnectionStatus />
       <main style={{ flex: 1, overflow: 'auto' }}>
         <Routes>

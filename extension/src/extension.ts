@@ -1,9 +1,9 @@
 import * as vscode from 'vscode'
-import type { WsMessage } from '@code-viewer/shared'
+import type { WsMessage, WatchSetPayload } from '@code-viewer/shared'
 import { WsClient, createMessage } from './ws/client'
-import { handleFileTree, handleFileRead, startFileWatchers } from './providers/file-provider'
+import { handleFileTree, handleFileRead } from './providers/file-provider'
 import { handleLspHover, handleLspDefinition, handleLspReferences, handleLspDocumentSymbol } from './providers/lsp-provider'
-import { handleGitStatus, handleGitDiff, handleGitLog, handleGitCommitFiles, startGitWatchers } from './providers/git-provider'
+import { handleGitStatus, handleGitDiff, handleGitLog, handleGitCommitFiles } from './providers/git-provider'
 import {
   handleChatListSessions,
   handleChatGetHistory,
@@ -27,8 +27,10 @@ import {
   handleTourDelete,
   handleTourGetFileAtRef,
 } from './providers/tour-provider'
+import { WatchRegistry } from './watch-registry'
 
 let wsClient: WsClient | undefined
+let watchRegistry: WatchRegistry | undefined
 let currentExtensionVersion = 'unknown'
 
 function isDebug(): boolean {
@@ -72,6 +74,10 @@ const handlers: Record<string, Handler> = {
   'tour.finalize': handleTourFinalize,
   'tour.delete': handleTourDelete,
   'tour.getFileAtRef': handleTourGetFileAtRef,
+  'watch.set': async (msg) => {
+    const payload = msg.payload as WatchSetPayload
+    watchRegistry?.apply(Array.isArray(payload.watches) ? payload.watches : [])
+  },
 }
 
 // T017: Message routing — dispatches incoming messages to providers
@@ -155,17 +161,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(connectCmd, disconnectCmd)
 
+  const sendEvent = (msg: WsMessage) => wsClient!.send(msg)
+  watchRegistry = new WatchRegistry(sendEvent)
+  wsClient.onDisconnect(() => watchRegistry?.clear())
+
   // Set up message routing (T017)
   setupMessageRouting(wsClient)
-
-  // Start file watchers (T027)
-  const sendEvent = (msg: WsMessage) => wsClient!.send(msg)
-  const fileWatcherDisposables = startFileWatchers(sendEvent)
-  context.subscriptions.push(...fileWatcherDisposables)
-
-  // Start git watchers (T043)
-  const gitWatcherDisposables = startGitWatchers(sendEvent)
-  context.subscriptions.push(...gitWatcherDisposables)
 
   // Setting-driven connection: codeViewer.enabled controls whether to connect.
   // Default: false (zero interference). CLI or AI sets it to true in workspace settings.
@@ -178,6 +179,7 @@ export function activate(context: vscode.ExtensionContext) {
       console.log('[CodeViewer] Enabled — connecting to', backendUrl)
       wsClient!.connect(backendUrl, extensionId, getDisplayName())
     } else {
+      watchRegistry?.clear()
       wsClient!.disconnect()
     }
   }
@@ -196,5 +198,6 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+  watchRegistry?.clear()
   wsClient?.disconnect()
 }

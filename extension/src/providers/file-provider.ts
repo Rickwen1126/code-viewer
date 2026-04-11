@@ -148,6 +148,18 @@ function getLanguageIdFromPath(filename: string): string | undefined {
   return ext ? map[ext] : undefined
 }
 
+function toRelativeWorkspacePath(uri: vscode.Uri): string {
+  return vscode.workspace.asRelativePath(uri).replace(/\\/g, '/')
+}
+
+function emitFileContentChanged(
+  sendEvent: (msg: WsMessage) => void,
+  path: string,
+  isDirty: boolean,
+): void {
+  sendEvent(createMessage('file.contentChanged', { path, isDirty }))
+}
+
 // Handle file.read request: read file content (prefer dirty buffer)
 export async function handleFileRead(
   msg: WsMessage,
@@ -208,53 +220,57 @@ export async function handleFileRead(
   }
 }
 
-// Skip events from noisy directories
-function shouldSkipEvent(rel: string): boolean {
-  return rel.startsWith('node_modules/') || rel.startsWith('.git/')
-}
-
-// Watch for file tree changes (create/delete/rename)
-export function startFileWatchers(
+export function startFileContentWatch(
+  path: string,
   sendEvent: (msg: WsMessage) => void,
 ): vscode.Disposable[] {
-  const watcher = vscode.workspace.createFileSystemWatcher('**/*')
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) return []
 
-  const onCreated = watcher.onDidCreate((uri) => {
-    const rel = vscode.workspace.asRelativePath(uri)
-    if (shouldSkipEvent(rel)) return
-    sendEvent(createMessage('file.treeChanged', {
-      changes: [{ type: 'created', path: rel }],
-    }))
-  })
+  const watcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(workspaceFolder, path),
+  )
 
-  const onDeleted = watcher.onDidDelete((uri) => {
-    const rel = vscode.workspace.asRelativePath(uri)
-    if (shouldSkipEvent(rel)) return
-    sendEvent(createMessage('file.treeChanged', {
-      changes: [{ type: 'deleted', path: rel }],
-    }))
-  })
+  const notify = () => {
+    emitFileContentChanged(sendEvent, path, false)
+  }
 
-  const onChanged = watcher.onDidChange((uri) => {
-    const rel = vscode.workspace.asRelativePath(uri)
-    if (shouldSkipEvent(rel)) return
-    sendEvent(createMessage('file.treeChanged', {
-      changes: [{ type: 'changed', path: rel }],
-    }))
-  })
+  const onCreated = watcher.onDidCreate(() => notify())
+  const onDeleted = watcher.onDidDelete(() => notify())
+  const onChanged = watcher.onDidChange(() => notify())
 
-  // Watch for dirty buffer changes (debounced to avoid per-keystroke floods)
-  let contentChangeTimer: ReturnType<typeof setTimeout> | undefined
-  const onDocChanged = vscode.workspace.onDidChangeTextDocument((e) => {
-    clearTimeout(contentChangeTimer)
-    contentChangeTimer = setTimeout(() => {
-      const rel = vscode.workspace.asRelativePath(e.document.uri)
-      sendEvent(createMessage('file.contentChanged', {
-        path: rel,
-        isDirty: e.document.isDirty,
-      }))
+  return [watcher, onCreated, onDeleted, onChanged]
+}
+
+export function startFileContentDocumentWatch(
+  getWatchedPaths: () => ReadonlySet<string>,
+  sendEvent: (msg: WsMessage) => void,
+): vscode.Disposable {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>()
+  const listener = vscode.workspace.onDidChangeTextDocument((e) => {
+    const path = toRelativeWorkspacePath(e.document.uri)
+    if (!getWatchedPaths().has(path)) return
+
+    const existingTimer = timers.get(path)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+
+    const timer = setTimeout(() => {
+      timers.delete(path)
+      emitFileContentChanged(sendEvent, path, e.document.isDirty)
     }, 300)
+
+    timers.set(path, timer)
   })
 
-  return [watcher, onCreated, onDeleted, onChanged, onDocChanged]
+  return {
+    dispose() {
+      listener.dispose()
+      for (const timer of timers.values()) {
+        clearTimeout(timer)
+      }
+      timers.clear()
+    },
+  }
 }

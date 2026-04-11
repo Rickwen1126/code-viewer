@@ -209,7 +209,7 @@ export function parseUnifiedDiff(diffText: string): Array<{
 }
 
 // Watch for git status changes
-export function startGitWatchers(sendEvent: (msg: WsMessage) => void): vscode.Disposable[] {
+export function startGitStatusWatch(sendEvent: (msg: WsMessage) => void): vscode.Disposable[] {
   const repo = getWorkspaceRepo()
   if (!repo) return []
   const disposable = repo.state.onDidChange(() => {

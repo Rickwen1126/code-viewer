@@ -22,6 +22,7 @@ export class WsClient {
   private maxReconnectDelay = 60000
   private shouldReconnect = true
   private messageHandler: MessageHandler | null = null
+  private disconnectHandler: (() => void) | null = null
   private pendingResponses = new Map<string, (msg: WsMessage) => void>()
 
   connect(url: string, extensionId: string, displayName: string): void {
@@ -69,6 +70,7 @@ export class WsClient {
 
     this.ws.on('close', () => {
       console.log('[CodeViewer] Disconnected from backend')
+      this.disconnectHandler?.()
       this.reconnect()
     })
 
@@ -108,6 +110,10 @@ export class WsClient {
 
   onMessage(handler: MessageHandler): void {
     this.messageHandler = handler
+  }
+
+  onDisconnect(handler: () => void): void {
+    this.disconnectHandler = handler
   }
 
   private reconnect(): void {

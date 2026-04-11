@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { InFileSearch, type SearchMatch } from '../../components/in-file-search'
@@ -35,6 +36,7 @@ export function CodeViewerPage() {
   const location = useLocation()
   const { request, connectionState } = useWebSocket()
   const { workspace } = useWorkspace()
+  const visibility = useDocumentVisibility()
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [tooLarge, setTooLarge] = useState(false)
@@ -180,7 +182,19 @@ export function CodeViewerPage() {
       if (payload.path === path) loadFileBackground()
     })
     return unsub
-  }, [path, connectionState])
+  }, [path, workspace, connectionState])
+
+  const wasHiddenRef = useRef(visibility !== 'visible')
+  useEffect(() => {
+    if (visibility !== 'visible') {
+      wasHiddenRef.current = true
+      return
+    }
+
+    if (!wasHiddenRef.current || !path || !workspace || connectionState !== 'connected') return
+    wasHiddenRef.current = false
+    void loadFileBackground()
+  }, [visibility, path, workspace, connectionState])
 
   // Scroll position: debounced save
   useEffect(() => {

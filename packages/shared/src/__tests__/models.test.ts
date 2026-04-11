@@ -23,6 +23,9 @@ import {
   MSG_CONNECTION_EXTENSION_DISCONNECTED,
   MSG_WORKSPACE_REGISTER,
   MSG_WORKSPACE_REGISTER_RESULT,
+  MSG_WATCH_SYNC,
+  MSG_WATCH_SYNC_RESULT,
+  MSG_WATCH_SET,
   MSG_GIT_STATUS,
   MSG_GIT_STATUS_RESULT,
   MSG_GIT_DIFF,
@@ -183,6 +186,14 @@ describe('message type constants — workspace domain', () => {
   it('should have correct string values', () => {
     expect(MSG_WORKSPACE_REGISTER).toBe('workspace.register')
     expect(MSG_WORKSPACE_REGISTER_RESULT).toBe('workspace.register.result')
+  })
+})
+
+describe('message type constants — watch domain', () => {
+  it('should have correct string values', () => {
+    expect(MSG_WATCH_SYNC).toBe('watch.sync')
+    expect(MSG_WATCH_SYNC_RESULT).toBe('watch.sync.result')
+    expect(MSG_WATCH_SET).toBe('watch.set')
   })
 })
 
