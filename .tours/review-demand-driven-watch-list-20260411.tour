@@ -1,0 +1,38 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: demand-driven-watch-list 2026-04-11",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 1\n🟡 Suggestions: 1\n✅ Good Practices: 2\n\n### Scope\nReviewed commit `3c52aaf` implementing the demand-driven watch-list control plane across `packages/shared`, `backend`, `extension`, and `frontend`.\n\n### Focus\nDemand isolation across multiple frontends, hidden-tab behavior, watcher lifecycle correctness, and whether the new contract actually reduces unnecessary work."
+    },
+    {
+      "file": "backend/src/ws/relay.ts",
+      "line": 117,
+      "endLine": 121,
+      "title": "🔴 Push events still fan out to every selected frontend on the workspace",
+      "description": "## Problem\n\n`effectiveWatchSet` is correctly computed per extension, but extension events are still broadcast to **all** frontends whose `selectedExtensionId` matches that workspace. That means a hidden tab or an unrelated page can still receive `file.contentChanged` / `git.statusChanged` as long as another frontend on the same workspace keeps the union alive.\n\nIn the current frontend code, those hidden pages still keep active subscriptions and may issue reload requests on receipt. So `watch.sync([])` does not fully suppress background work once another frontend keeps the same workspace hot.\n\n## Fix\n\nRoute extension events through the per-frontend desired watch set instead of only `selectedExtensionId`. A minimal shape would be:\n\n```ts\nfunction frontendWantsEvent(frontend: FrontendEntry, msg: WsMessage): boolean {\n  if (msg.type === 'git.statusChanged') {\n    return frontend.desiredWatchSet.some((w) => w.topic === 'git.status')\n  }\n\n  if (msg.type === 'file.contentChanged') {\n    const path = (msg.payload as { path?: string }).path\n    return frontend.desiredWatchSet.some((w) => w.topic === 'file.content' && w.path === path)\n  }\n\n  return true\n}\n```\n\nThen only send the push event to matching frontends.\n\n## Rationale\n\nThis is the main invariant of the new design: demand should control work. Without per-frontend event filtering, hidden tabs and non-matching pages can still wake up and reload, which leaves a meaningful part of the multi-frontend overhead in place."
+    },
+    {
+      "file": "extension/src/providers/file-provider.ts",
+      "line": 230,
+      "endLine": 232,
+      "title": "🟡 Raw file paths are used as glob patterns for `RelativePattern`",
+      "description": "## Problem\n\n`new vscode.RelativePattern(workspaceFolder, path)` treats `path` as a glob pattern, not as a guaranteed literal file path. If a watched filename contains glob metacharacters such as `[` or `*`, the watcher can expand beyond the intended file and silently broaden the watch scope.\n\n## Fix\n\nEscape glob-sensitive characters before constructing the pattern, or switch to a watcher strategy that compares exact URIs after a narrower parent-scope watch. For example:\n\n```ts\nfunction escapeGlob(path: string): string {\n  return path.replace(/[\\\\*?{}\\[\\]!]/g, '\\\\$&')\n}\n\nconst watcher = vscode.workspace.createFileSystemWatcher(\n  new vscode.RelativePattern(workspaceFolder, escapeGlob(path)),\n)\n```\n\n## Rationale\n\nThe whole point of this change is to shrink watch scope from workspace-wide to file-scoped. Treating arbitrary repo paths as globs weakens that guarantee and can accidentally reintroduce broader-than-expected filesystem activity."
+    },
+    {
+      "file": "backend/src/ws/manager.ts",
+      "line": 142,
+      "endLine": 155,
+      "title": "✅ Effective watch aggregation is correctly scoped per extension",
+      "description": "## Problem\n\nA demand-driven design can collapse quickly if backend state is modeled as one global watch list.\n\n## Fix\n\nThe manager keeps `desiredWatchSet` per frontend and computes `effectiveWatchSet` by selecting only frontends bound to the target extension, then applying `union + dedupe`.\n\n## Rationale\n\nThis is the correct boundary. Same-workspace frontends can share one watcher set, while different workspaces stay isolated. It directly matches the product model and avoids the cross-workspace leakage risk discussed during design."
+    },
+    {
+      "file": "extension/src/watch-registry.ts",
+      "line": 50,
+      "endLine": 105,
+      "title": "✅ Watcher lifecycle is now explicit and disposable",
+      "description": "## Problem\n\nThe old design started file/git watchers at activation time and left their lifecycle implicit.\n\n## Fix\n\n`WatchRegistry` centralizes start/stop behavior, disposes removed file watchers, tears down the shared document listener when no file watches remain, and clears git watch state on demand loss.\n\n## Rationale\n\nThis is the structural improvement that makes the new protocol meaningful. The watch list is no longer a label on top of always-on watchers; it now governs whether the underlying watchers exist at all."
+    }
+  ]
+}

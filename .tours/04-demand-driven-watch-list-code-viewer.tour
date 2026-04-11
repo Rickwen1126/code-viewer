@@ -1,0 +1,66 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "04 - Module Overview: Code Viewer Demand-Driven Watch List",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 白話導讀\n\n這條 tour 其實是在看：Code Viewer 怎麼把原本 activation-time 的 eager watcher，收斂成由前端需求驅動的 watch list control plane。\n\n如果先記不住細節，先抓住每個 step 只是在回答「需求是怎麼從 frontend 一路傳到 extension，最後真的決定 watcher 要不要存在」。\n\n## Code Viewer 是什麼\n\n一個把 Desktop VS Code 能力 relay 到手機 PWA 的內部專案，目前不是 npm library，所以沒有公開 npm download 數字。\n\n## 錨定已知\n\n如果你熟悉 GraphQL subscription 或 typed RPC：這次修改等於補上了真正的 subscription contract。frontend 不再只是本地 `subscribe()`，而是會明確宣告目前需要哪些 live data；backend 做 routing 與 aggregation；extension 只對被 demand 的 topic 建 watcher。\n\n## 這條路徑在解決什麼問題\n\n之前 extension 在 activate 後就先掛 file/git watcher，多個 workspace 同時開著時，`Code Helper (Plugin)` 會被 filesystem 與 git 事件持續喚醒。backend 幾乎 idle，表示熱區不在 relay，而在 extension host 本地的 eager watch 模型。\n\n## 這條路徑展示什麼 mental model\n\n**watch list 不是 callback 裡的 filter，而是 watcher existence 的 control plane。** 真正的 demand-driven 設計，不是先把整個 workspace 監控起來再決定要不要忽略，而是沒有 demand 就根本不建立 watcher。\n\n## 為什麼值得讀\n\n走完這條 tour，你可以快速看懂一個跨 process 系統怎麼把「需求訊號」跟「routing 訊號」分開，並且知道哪裡該放 union、哪裡不能跨 workspace 洩漏狀態。\n\n## DeepWiki 延伸閱讀\n\n目前沒有 public DeepWiki。建議先搭配 `.tours/03-demand-driven-sync-code-viewer.tour` 看舊問題，再回來看這條修正後的 control plane。"
+    },
+    {
+      "file": "packages/shared/src/ws-types.ts",
+      "line": 184,
+      "endLine": 205,
+      "ref": "3c52aaf188b8b51657a750bb479c072728948299",
+      "title": "Step 1: Shared contract 正式把 watch list 變成協定的一部分",
+      "description": "## Code Range\n\nL184-L205\n\n## Insight\n\n**機制**：shared layer 新增 `WatchDescriptor`、`WatchSyncPayload`、`WatchSyncResultPayload`、`WatchSetPayload`，把 `file.content@path` 與 `git.status@workspace` 兩種 live demand 變成顯式 message contract。\n\n**故障模式**：如果這一層不先把 watch list 正名成協定，後面每一層都只能靠私有 state 猜需求，最後很容易又滑回 eager watch。\n\n**設計取捨**：先只納入兩種高價值 live watch，範圍小很多；代價是 `file.tree` 與 `tour` 暫時退回 request-only，不再有即時更新幻覺。\n\n### 白話解析\n\n這一步等於把「我現在在看哪個檔案／我現在在看 Git 頁」變成正式 API。從這裡開始，watch 不再是 extension 自己的背景行為，而是前端可以宣告、backend 可以轉送、extension 可以遵守的契約。\n\n### Code Detail\n\n**這段在幹嘛**：定義 watch topic 與 payload 形狀，限制 v1 只支援 `file.content` 和 `git.status`。\n\n**為什麼這樣寫**：\n- 好處：把需求邊界收斂到 shared contract，避免各端各說各話\n- 好處：之後要擴充 topic 時，有清楚的 schema 與型別訊號\n- 壞處：v1 需要明確接受「不是所有舊 push event 都保留 live semantics」\n\n**思考問題**：\n1. 下一個值得進 watch contract 的 topic 會是什麼？\n2. 哪些資料其實應該永遠停留在 request-response，而不是進 watch list？"
+    },
+    {
+      "file": "backend/src/ws/manager.ts",
+      "line": 130,
+      "endLine": 155,
+      "ref": "3c52aaf188b8b51657a750bb479c072728948299",
+      "title": "Step 2: Backend 把多 frontend 的需求收斂成 per-extension 的 union",
+      "description": "## Code Range\n\nL130-L155\n\n## Insight\n\n**機制**：manager 現在為每個 frontend 保存自己的 `desiredWatchSet`，再依 `selectedExtensionId` 計算某個 extension 的 `effectiveWatchSet`。同一個 extension 內做 `union + dedupe`，不同 extension 完全隔離。\n\n**故障模式**：如果這裡做成全局 union，某個 workspace 的 extension 會收到別的 workspace 的 watch descriptors；如果做成 intersection，又會把合法的 concurrent watch 全部吃掉。\n\n**設計取捨**：把 aggregation 集中在 backend 很合理，因為 routing 本來就在這裡；代價是 backend 必須清楚區分 per-frontend demand 與 per-extension effective state，不能偷懶只存一包全局 list。\n\n### 白話解析\n\n這一層是調度中心。它不是在存「整個系統現在想看什麼」，而是在存「每個前端各自想看什麼」，然後只對應到自己那個 workspace 的 extension 做合併。\n\n### Code Detail\n\n**這段在幹嘛**：提供 `setFrontendDesiredWatchSet()`、`clearFrontendDesiredWatchSet()`、`getEffectiveWatchSet()`，並用 key 做去重。\n\n**為什麼這樣寫**：\n- 好處：同 workspace 多 frontend 可以共享一份 watcher，而不是線性重複建立\n- 好處：不同 workspace 不會互相洩漏 watch state\n- 壞處：effective set 只代表 extension 端該 watch 什麼，不等於 frontend event delivery 已經完全隔離\n\n**思考問題**：\n1. 什麼時候應該 clear 某個 frontend 的 desired set，而不是保留等待下一次 sync？\n2. 如果未來有 path scope 更複雜的 topic，key 應該怎麼設計才不會誤 dedupe？"
+    },
+    {
+      "file": "backend/src/ws/handler.ts",
+      "line": 247,
+      "endLine": 302,
+      "ref": "3c52aaf188b8b51657a750bb479c072728948299",
+      "title": "Step 3: Handler 把 workspace selection 與 watch.sync 串成 control-plane 流程",
+      "description": "## Code Range\n\nL247-L302\n\n## Insight\n\n**機制**：`connection.selectWorkspace` 先更新 routing，再在 workspace 切換時清空舊的 desired watch；`watch.sync` 則只更新目前 frontend 的 demand，然後觸發 `syncEffectiveWatchSet()` 把結果送給對應 extension。\n\n**故障模式**：如果選 workspace 時不清舊 watch，新的 extension 可能暫時接到上一個 workspace 的 demand；如果 `watch.sync` 不回算 effective set，frontend 宣告需求後 extension 端根本不會跟著變。\n\n**設計取捨**：讓 backend 同時處理 routing 與 watch reconciliation，流程很集中；代價是 handler 變成真正的 control plane entry，不再只是單純 relay。\n\n### 白話解析\n\n這裡是整條鏈真正接起來的地方。前端先說「我要看哪個 workspace」，再說「我在這個 workspace 目前要哪些 live data」，backend 會把這兩件事合起來，算出 extension 現在應該維持哪些 watcher。\n\n### Code Detail\n\n**這段在幹嘛**：在 `connection.selectWorkspace` 時處理 workspace 切換的 watch reset；在 `watch.sync` 時保存 demand 並回傳 ack，最後推送新的 `watch.set`。\n\n**為什麼這樣寫**：\n- 好處：workspace 切換與 watch lifecycle 的交界點清楚可見\n- 好處：extension reconnect 後也能重新收到當前 effective set\n- 壞處：如果未來 control plane topic 變多，這裡的 handler 分支會持續長大\n\n**思考問題**：\n1. `watch.sync` 應該永遠送完整集合，還是值得改成差量更新？\n2. workspace switch 與 visibility change 同時發生時，哪個狀態應該是 source of truth？"
+    },
+    {
+      "file": "extension/src/watch-registry.ts",
+      "line": 21,
+      "endLine": 107,
+      "ref": "3c52aaf188b8b51657a750bb479c072728948299",
+      "title": "Step 4: Extension registry 把 watch list 轉成真正存在的 watchers",
+      "description": "## Code Range\n\nL21-L107\n\n## Insight\n\n**機制**：`WatchRegistry` 透過 `apply()` 接收最新 watch list，拆成 `file.content` 路徑集合與 `git.status` 布林需求，再用 reconcile 方式新增或 dispose 對應 watcher。\n\n**故障模式**：如果 extension 只是把 watch list 當 callback filter，而不是拿來控制 watcher existence，那 CPU 問題只會換個名字存在。真正關鍵是這裡的 `clear()` 與 diff-reconcile。\n\n**設計取捨**：集中 registry 讓 lifecycle 很清楚，也方便之後補更多 topic；代價是 extension 內要維護一個明確的 state machine，而不是 activate 一次就結束。\n\n### 白話解析\n\n這一層是把抽象需求翻成實體監控的地方。backend 說「現在這個 workspace 要看這些」，registry 就真的去開那些 watcher；backend 說「現在不用了」，registry 就真的把它們拆掉。\n\n### Code Detail\n\n**這段在幹嘛**：維護 `watchKey -> disposables` 的 registry，並在 `apply()` / `clear()` 中控制 file 與 git watcher 的生命週期。\n\n**為什麼這樣寫**：\n- 好處：watcher 的建立、去重、釋放都集中在同一處，debug 面很小\n- 好處：disconnect / disable / deactivate 都能走同一套清理邏輯\n- 壞處：registry 必須小心處理 shared watcher 與 per-path watcher 的混合關係\n\n**思考問題**：\n1. 如果未來加入 `file.tree@directory`，它應該是 shared watcher 還是 per-scope watcher？\n2. registry 應不應該同時承擔 event filtering，還是只負責 watcher lifecycle？"
+    },
+    {
+      "file": "extension/src/providers/file-provider.ts",
+      "line": 223,
+      "endLine": 276,
+      "ref": "3c52aaf188b8b51657a750bb479c072728948299",
+      "title": "Step 5: File provider 從全域 `**/*` 改成 path-scoped content watch",
+      "description": "## Code Range\n\nL223-L276\n\n## Insight\n\n**機制**：file provider 不再建立整個 workspace 的 broad watcher，而是針對單一 `path` 建 `RelativePattern` watcher，另加一個共享的 `onDidChangeTextDocument` 監聽 dirty buffer 變化。\n\n**故障模式**：如果這裡仍然保留 `**/*`，就算上面有 watch list，extension 還是會因為 callback 前的 filesystem 喚醒成本持續發熱。需求驅動的關鍵不是只發少一點 event，而是少看絕大多數不相關檔案。\n\n**設計取捨**：拆成 filesystem watcher + document listener，能同時顧到檔案落盤變化與未存 buffer；代價是實作比原本單一 broad watcher 複雜，而且要維護 per-path debounce。\n\n### 白話解析\n\n這一步才是真正把熱區縮小。以前是『整個 workspace 一有檔案變動我都要知道』，現在是『只有前端正在看的那個檔案我才關心，而且連 dirty buffer 都只在那個檔案上回報』。\n\n### Code Detail\n\n**這段在幹嘛**：為單一路徑建立 watcher；文字編輯變化則透過共享 listener 檢查該 path 是否正在 watch，再送 `file.contentChanged`。\n\n**為什麼這樣寫**：\n- 好處：把最肥的 workspace-wide file watcher 砍掉\n- 好處：保留 code viewer 最有感的 live update 能力\n- 壞處：path 相關的邊界條件與比對正確性變得更重要\n\n**思考問題**：\n1. `file.contentChanged` 應不應該再區分「dirty buffer 變了」與「檔案落盤了」兩種來源？\n2. 如果同一 workspace 有很多 frontend 各看不同檔案，path-scoped watch 的成本曲線會長成什麼樣子？"
+    },
+    {
+      "file": "frontend/src/app.tsx",
+      "line": 69,
+      "endLine": 98,
+      "ref": "3c52aaf188b8b51657a750bb479c072728948299",
+      "title": "Step 6: Frontend 用 route + visibility 導出目前的 watch demand",
+      "description": "## Code Range\n\nL69-L98\n\n## Insight\n\n**機制**：`WatchSyncController` 以 `workspace + pathname + visibility` 推導 `watches`，在 `/files/:path` 送 `file.content@path`，在 `/git` 送 `git.status@workspace`，hidden/background 則送空集合。\n\n**故障模式**：如果 demand 不是從當前可見頁面導出，而是從更粗的 UI state 或 activate 狀態猜測，系統很快又會回到『選了 workspace 就永遠 watch』的舊模型。\n\n**設計取捨**：用 declarative `watch.sync` 很乾淨，route 一變就重送完整集合；代價是 frontend 必須把 visibility、workspace、route 這三種 state 視為同一個 demand derivation 問題。\n\n### 白話解析\n\n前端現在不是只會接 event，還會主動說自己正在看什麼。這等於把 demand source 拉回最接近 user intent 的地方：你現在在哪個頁面、看哪個檔案、畫面是不是正在前景。\n\n### Code Detail\n\n**這段在幹嘛**：計算目前頁面應有的 watch descriptors，連線可用時發送 `watch.sync`。\n\n**為什麼這樣寫**：\n- 好處：把 demand source 放回 UI visibility 與 route，語意最接近使用者行為\n- 好處：hidden tab 可以主動清空 watch，而不是等瀏覽器自己斷線\n- 壞處：如果未來更多頁面也要 live watch，這裡會逐漸變成 route-to-demand mapping 表\n\n**思考問題**：\n1. `watch.sync` 應不應該包成 `useWebSocketSubscription()` 之類的更高層 hook？\n2. 哪些頁面值得在 hidden -> visible 時額外做 request reload，而不是只靠 event？"
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 171,
+      "endLine": 197,
+      "ref": "3c52aaf188b8b51657a750bb479c072728948299",
+      "title": "Step 7: 前景恢復時主動 reload，補上 hidden 期間不 replay 的事件",
+      "description": "## Code Range\n\nL171-L197\n\n## Insight\n\n**機制**：Code Viewer 頁在連線時仍會聽 `file.contentChanged`，但多補了一層 `visibility` 恢復檢查：tab 從 hidden 回來時，直接再做一次 `loadFileBackground()`，不依賴 background 期間是否有事件 replay。\n\n**故障模式**：如果只靠 event stream，hidden 期間漏掉的變化不會自己補回來，使用者回前景後仍可能看到舊內容。這會讓 watch list 雖然省電，但在 UX 上留下『回來還是 stale』的破口。\n\n**設計取捨**：resume 時主動 reload 很務實，也適合手機瀏覽器會斷線或凍結 tab 的現實；代價是前景恢復時多打一個 request。Git 頁面這次也採用了同樣策略。\n\n### 白話解析\n\n這一步是在收尾。前面的 watch list 解決的是『不要一直盯著看』，這裡解決的是『我剛剛沒盯著看的那段期間，如果真的有變，回來時要怎麼補』。\n\n### Code Detail\n\n**這段在幹嘛**：連線時訂閱 `file.contentChanged`，並在從 hidden 回到 visible 時強制做一次背景 reload。\n\n**為什麼這樣寫**：\n- 好處：hidden 期間漏事件不會直接變成 stale UI\n- 好處：保留現有 cache / scroll restore，不需要重寫 file page 狀態模型\n- 壞處：目前檔案頁與 Git 頁各自手寫 resume reload，還沒有抽成共用模式\n\n**思考問題**：\n1. hidden -> visible reload 應該是頁面自己決定，還是由更高層 hook 統一處理？\n2. 如果未來某些頁面資料量很大，resume reload 是否需要加入節流或 freshness 判斷？"
+    }
+  ]
+}
