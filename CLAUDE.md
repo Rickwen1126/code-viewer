@@ -34,6 +34,7 @@ pnpm -r build                   # build all packages
 | Skill | 用途 |
 |-------|------|
 | `/codeview-dev` | 開發模式：啟動 backend + frontend + test-electron，用於改 code-viewer 本身 |
+| `/codeview-build-extension` | 重新 build/package/install VSIX，並驗證 daily VS Code 視窗實際載入最新版 extension |
 | `/codeview-start <path>` | 部署模式：Docker + VSIX，用於瀏覽任意 repo |
 | `/e2e-test` | E2E checklist：40 項 Playwright 測試（iPhone 390x844），三層 log 驗證 |
 
@@ -64,6 +65,7 @@ TypeScript 5.x across all 3 packages. Follow existing conventions.
 - **CWD 問題**: 在 `extension/` 下跑 build 後，Bash CWD 會留在 `extension/`。後續指令必須加 `cd /Users/rickwen/code/code-viewer &&` 確保從 project root 執行。
 - **Extension build**: 改動 extension 後必須 `cd extension && pnpm build` rebuild（tsc + esbuild bundle）。
 - **Extension VSIX 打包**: 必須用 `--no-dependencies`。pnpm monorepo 跟 `vsce package` 不相容。esbuild bundle 含 `ws` 等 runtime deps。
+- **Extension VSIX 驗證**: 不可只看 `code --list-extensions`。要再用 backend `/admin/workspaces` 或 VS Code `exthost.log` 驗證 extension 真的成功 activation；曾發生 VSIX 安裝成功但 runtime 因 `Cannot find module 'ws'` 失敗。
 - **Backend restart**: `tsx watch` 通常自動 reload，但有時需手動 stop/start。
 - **Frontend HMR**: Vite HMR 自動更新，但跨 Tailscale 的手機可能收不到，需手動刷新。
 - **Safari iCloud 私密轉送**: 必須關閉，否則 WebSocket 連線失敗。
