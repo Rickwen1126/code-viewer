@@ -13,7 +13,7 @@ export function ToolApprovalPage() {
   const { requestId } = useParams<{ requestId: string }>()
   const navigate = useNavigate()
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const [toolRequest, setToolRequest] = useState<ToolRequestItem | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<'accept' | 'skip' | null>(null)
@@ -22,7 +22,7 @@ export function ToolApprovalPage() {
   const decodedRequestId = requestId ? decodeURIComponent(requestId) : ''
 
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace || !decodedRequestId) {
+    if (connectionState !== 'connected' || !workspace || !workspaceReady || !decodedRequestId) {
       setLoading(false)
       return
     }
@@ -49,7 +49,7 @@ export function ToolApprovalPage() {
     }
 
     void loadRequest()
-  }, [connectionState, workspace, decodedRequestId, request])
+  }, [connectionState, workspace, workspaceReady, decodedRequestId, request])
 
   async function handleAccept() {
     if (!decodedRequestId) return

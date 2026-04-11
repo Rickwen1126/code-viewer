@@ -5,6 +5,7 @@ import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useDocumentVisibility } from '../../hooks/use-visibility'
+import { debugLog } from '../../services/debug'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { InFileSearch, type SearchMatch } from '../../components/in-file-search'
@@ -35,7 +36,7 @@ export function CodeViewerPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const visibility = useDocumentVisibility()
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -170,7 +171,7 @@ export function CodeViewerPage() {
 
   // Background fetch on connect (no spinner if we have cached data)
   useEffect(() => {
-    if (!path || !workspace || connectionState !== 'connected') return
+    if (!path || !workspace || !workspaceReady || connectionState !== 'connected') return
     loadFileBackground().then(() => {
       const state = location.state as { scrollToLine?: number } | null
       if (state?.scrollToLine != null) {
@@ -179,10 +180,13 @@ export function CodeViewerPage() {
     })
     const unsub = wsClient.subscribe('file.contentChanged', (msg) => {
       const payload = msg.payload as { path: string }
-      if (payload.path === path) loadFileBackground()
+      if (payload.path === path) {
+        debugLog('watch:file', 'event', { source: 'push', path: payload.path })
+        loadFileBackground()
+      }
     })
     return unsub
-  }, [path, workspace, connectionState])
+  }, [path, workspace, workspaceReady, connectionState])
 
   const wasHiddenRef = useRef(visibility !== 'visible')
   useEffect(() => {
@@ -191,10 +195,11 @@ export function CodeViewerPage() {
       return
     }
 
-    if (!wasHiddenRef.current || !path || !workspace || connectionState !== 'connected') return
+    if (!wasHiddenRef.current || !path || !workspace || !workspaceReady || connectionState !== 'connected') return
     wasHiddenRef.current = false
+    debugLog('watch:file', 'resume-reload', { path, workspace: workspace.extensionId })
     void loadFileBackground()
-  }, [visibility, path, workspace, connectionState])
+  }, [visibility, path, workspace, workspaceReady, connectionState])
 
   // Scroll position: debounced save
   useEffect(() => {
@@ -259,6 +264,7 @@ export function CodeViewerPage() {
   async function loadFileBackground() {
     if (!path) return
     try {
+      debugLog('watch:file', 'request', { path, workspace: workspace?.extensionId ?? null })
       const res = await request<{ path: string }, FileReadResultPayload>('file.read', { path })
       if (res.payload.content && res.payload.content.length > MAX_FILE_SIZE) {
         setTooLarge(true)

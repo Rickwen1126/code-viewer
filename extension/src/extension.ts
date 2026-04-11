@@ -28,16 +28,17 @@ import {
   handleTourGetFileAtRef,
 } from './providers/tour-provider'
 import { WatchRegistry } from './watch-registry'
+import { debugLog, isDebugEnabled } from './utils/debug'
 
 let wsClient: WsClient | undefined
 let watchRegistry: WatchRegistry | undefined
 let currentExtensionVersion = 'unknown'
 
 function isDebug(): boolean {
-  return vscode.workspace.getConfiguration('codeViewer').get<boolean>('debug', false)
+  return isDebugEnabled()
 }
 function dbg(...args: unknown[]): void {
-  if (isDebug()) console.log('[CodeViewer]', ...args)
+  if (isDebug()) debugLog(...args)
 }
 
 // Handler type: takes message + sendResponse, optionally the WsClient for streaming
@@ -76,6 +77,7 @@ const handlers: Record<string, Handler> = {
   'tour.getFileAtRef': handleTourGetFileAtRef,
   'watch.set': async (msg) => {
     const payload = msg.payload as WatchSetPayload
+    dbg('watch.set', Array.isArray(payload.watches) ? payload.watches : [])
     watchRegistry?.apply(Array.isArray(payload.watches) ? payload.watches : [])
   },
 }
@@ -162,8 +164,11 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(connectCmd, disconnectCmd)
 
   const sendEvent = (msg: WsMessage) => wsClient!.send(msg)
-  watchRegistry = new WatchRegistry(sendEvent)
-  wsClient.onDisconnect(() => watchRegistry?.clear())
+  watchRegistry = new WatchRegistry(sendEvent, dbg)
+  wsClient.onDisconnect(() => {
+    dbg('ws.disconnect -> clear watch registry')
+    watchRegistry?.clear()
+  })
 
   // Set up message routing (T017)
   setupMessageRouting(wsClient)
@@ -176,9 +181,10 @@ export function activate(context: vscode.ExtensionContext) {
     const backendUrl = config.get<string>('backendUrl', 'ws://localhost:4800')
 
     if (enabled) {
-      console.log('[CodeViewer] Enabled — connecting to', backendUrl)
+      dbg('enabled -> connect', { backendUrl })
       wsClient!.connect(backendUrl, extensionId, getDisplayName())
     } else {
+      dbg('disabled -> clear + disconnect')
       watchRegistry?.clear()
       wsClient!.disconnect()
     }
@@ -198,6 +204,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+  dbg('deactivate -> clear + disconnect')
   watchRegistry?.clear()
   wsClient?.disconnect()
 }

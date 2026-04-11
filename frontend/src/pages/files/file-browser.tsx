@@ -137,7 +137,7 @@ function TreeNode({
 
 export function FileBrowserPage() {
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const navigate = useNavigate()
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -228,9 +228,9 @@ export function FileBrowserPage() {
 
   // Background fetch on connect (no spinner if we have cached data)
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace) return
+    if (connectionState !== 'connected' || !workspace || !workspaceReady) return
     loadTreeBackground()
-  }, [connectionState, workspace])
+  }, [connectionState, workspace, workspaceReady])
 
   // Background load: silently update, no spinner
   const loadTreeBackground = useCallback(async () => {

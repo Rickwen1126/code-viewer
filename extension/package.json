@@ -37,6 +37,11 @@
           "type": "string",
           "default": "ws://localhost:4800",
           "description": "Backend WebSocket URL"
+        },
+        "codeViewer.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose Code Viewer debug logging"
         }
       }
     }

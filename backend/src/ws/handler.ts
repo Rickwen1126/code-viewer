@@ -36,6 +36,8 @@ import {
 import { cache } from '../cache/session.js'
 
 const WS_SECRET = process.env.CODE_VIEWER_SECRET ?? ''
+const DEBUG = process.env.CODE_VIEWER_DEBUG === 'true'
+function dbg(...args: unknown[]): void { if (DEBUG) console.log('[handler]', ...args) }
 
 // Accept any UpgradeWebSocket compatible function
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,11 +61,13 @@ function syncEffectiveWatchSet(extensionId: string | null | undefined): void {
   if (!extensionId) return
   const extension = manager.getExtension(extensionId)
   if (!extension) return
+  const watches = manager.getEffectiveWatchSet(extensionId)
+  dbg('syncEffectiveWatchSet', { extensionId, watches })
 
   sendJson(
     extension.ws,
     makeMessage<WatchSetPayload>(MSG_WATCH_SET, {
-      watches: manager.getEffectiveWatchSet(extensionId),
+      watches,
     }),
   )
 }
@@ -147,6 +151,7 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
             sendJson(frontend.ws, connectMsg)
           }
 
+          dbg('workspace.register', { extensionId, workspace: payload.name, rootPath: payload.rootPath })
           syncEffectiveWatchSet(extensionId)
           return
         }
@@ -265,6 +270,7 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
           if (previousExtensionId !== null && previousExtensionId !== payload.extensionId) {
             manager.clearFrontendDesiredWatchSet(frontendId)
           }
+          dbg('selectWorkspace', { frontendId, previousExtensionId, nextExtensionId: payload.extensionId })
 
           sendJson(ws, makeMessage<SelectWorkspaceResultPayload>(
             MSG_CONNECTION_SELECT_WORKSPACE_RESULT,
@@ -291,6 +297,11 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
         if (msg.type === MSG_WATCH_SYNC) {
           const payload = msg.payload as WatchSyncPayload
           manager.setFrontendDesiredWatchSet(frontendId, Array.isArray(payload.watches) ? payload.watches : [])
+          dbg('watch.sync', {
+            frontendId,
+            selectedExtensionId: manager.getFrontend(frontendId)?.selectedExtensionId ?? null,
+            watches: Array.isArray(payload.watches) ? payload.watches : [],
+          })
 
           sendJson(ws, makeMessage<WatchSyncResultPayload>(
             MSG_WATCH_SYNC_RESULT,

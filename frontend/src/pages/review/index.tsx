@@ -149,14 +149,14 @@ function ToolRequestCard({
 
 export function PendingEditsListPage() {
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const navigate = useNavigate()
   const [edits, setEdits] = useState<PendingEditItem[]>([])
   const [toolRequests, setToolRequests] = useState<ToolRequestItem[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
-    if (connectionState !== 'connected' || !workspace) {
+    if (connectionState !== 'connected' || !workspace || !workspaceReady) {
       setLoading(false)
       return
     }
@@ -179,7 +179,7 @@ export function PendingEditsListPage() {
     } finally {
       setLoading(false)
     }
-  }, [connectionState, workspace, request])
+  }, [connectionState, workspace, workspaceReady, request])
 
   useEffect(() => {
     void load()

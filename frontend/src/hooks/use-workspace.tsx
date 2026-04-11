@@ -7,12 +7,14 @@ const STORAGE_KEY = 'code-viewer:selected-workspace'
 
 interface WorkspaceContextValue {
   workspace: Workspace | null
+  workspaceReady: boolean
   selectWorkspace: (ws: Workspace) => void
   clearWorkspace: () => void
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue>({
   workspace: null,
+  workspaceReady: false,
   selectWorkspace: () => {},
   clearWorkspace: () => {},
 })
@@ -27,6 +29,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       return null
     }
   })
+  const [workspaceReady, setWorkspaceReady] = useState(() => workspace === null)
 
   // Persist to localStorage on change
   useEffect(() => {
@@ -45,24 +48,42 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Without this, a page reload has workspace in localStorage but backend's
   // frontend entry has selectedExtensionId=null → requests go nowhere.
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace) return
+    if (connectionState !== 'connected') {
+      setWorkspaceReady(false)
+      return
+    }
+
+    if (!workspace) {
+      setWorkspaceReady(true)
+      return
+    }
+
+    setWorkspaceReady(false)
     request<{ extensionId: string }, SelectWorkspaceResultPayload>(
       'connection.selectWorkspace',
       { extensionId: workspace.extensionId },
     ).then(res => {
       // Update workspace in case details changed (e.g. gitBranch)
       setWorkspace(res.payload.workspace)
+      setWorkspaceReady(true)
     }).catch(() => {
       // Extension no longer exists — clear stale workspace
       setWorkspace(null)
+      setWorkspaceReady(true)
     })
   }, [connectionState]) // only on connection change, not workspace change
 
-  const selectWorkspace = useCallback((ws: Workspace) => setWorkspace(ws), [])
-  const clearWorkspace = useCallback(() => setWorkspace(null), [])
+  const selectWorkspace = useCallback((ws: Workspace) => {
+    setWorkspace(ws)
+    setWorkspaceReady(true)
+  }, [])
+  const clearWorkspace = useCallback(() => {
+    setWorkspace(null)
+    setWorkspaceReady(connectionState === 'connected')
+  }, [connectionState])
 
   return (
-    <WorkspaceContext.Provider value={{ workspace, selectWorkspace, clearWorkspace }}>
+    <WorkspaceContext.Provider value={{ workspace, workspaceReady, selectWorkspace, clearWorkspace }}>
       {children}
     </WorkspaceContext.Provider>
   )

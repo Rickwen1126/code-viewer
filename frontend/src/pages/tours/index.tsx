@@ -39,7 +39,7 @@ async function copyText(text: string): Promise<void> {
 
 export function TourListPage() {
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const { tourEdit, setTourEdit } = useTourEdit()
   const navigate = useNavigate()
   const [tours, setTours] = useState<TourSummary[]>([])
@@ -58,9 +58,9 @@ export function TourListPage() {
   }
 
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace) return
+    if (connectionState !== 'connected' || !workspace || !workspaceReady) return
     loadTours()
-  }, [connectionState, workspace])
+  }, [connectionState, workspace, workspaceReady])
 
   const loadTours = useCallback(async () => {
     try {

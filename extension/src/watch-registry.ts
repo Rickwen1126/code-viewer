@@ -24,9 +24,13 @@ export class WatchRegistry {
   private fileContentDocumentWatch: vscode.Disposable | undefined
   private gitStatusWatch: vscode.Disposable[] | undefined
 
-  constructor(private readonly sendEvent: (msg: WsMessage) => void) {}
+  constructor(
+    private readonly sendEvent: (msg: WsMessage) => void,
+    private readonly log: (...args: unknown[]) => void = () => {},
+  ) {}
 
   apply(watches: WatchDescriptor[]): void {
+    this.log('watchRegistry.apply', watches)
     const nextByKey = new Map<string, WatchDescriptor>()
     for (const watch of watches) {
       nextByKey.set(getWatchDescriptorKey(watch), watch)
@@ -48,6 +52,10 @@ export class WatchRegistry {
   }
 
   clear(): void {
+    this.log('watchRegistry.clear', {
+      fileContentPaths: [...this.fileContentPaths],
+      hasGitStatusWatch: Boolean(this.gitStatusWatch),
+    })
     for (const disposables of this.fileContentWatches.values()) {
       disposeAll(disposables)
     }
@@ -68,6 +76,7 @@ export class WatchRegistry {
   private reconcileFileContent(nextFilePaths: Set<string>): void {
     for (const [path, disposables] of this.fileContentWatches.entries()) {
       if (nextFilePaths.has(path)) continue
+      this.log('watchRegistry.disposeFileContentWatch', path)
       disposeAll(disposables)
       this.fileContentWatches.delete(path)
       this.fileContentPaths.delete(path)
@@ -75,12 +84,14 @@ export class WatchRegistry {
 
     for (const path of nextFilePaths) {
       if (this.fileContentWatches.has(path)) continue
+      this.log('watchRegistry.startFileContentWatch', path)
       const disposables = startFileContentWatch(path, this.sendEvent)
       this.fileContentWatches.set(path, disposables)
       this.fileContentPaths.add(path)
     }
 
     if (this.fileContentPaths.size > 0 && !this.fileContentDocumentWatch) {
+      this.log('watchRegistry.startFileContentDocumentWatch', [...this.fileContentPaths])
       this.fileContentDocumentWatch = startFileContentDocumentWatch(
         () => this.fileContentPaths,
         this.sendEvent,
@@ -88,6 +99,7 @@ export class WatchRegistry {
     }
 
     if (this.fileContentPaths.size === 0 && this.fileContentDocumentWatch) {
+      this.log('watchRegistry.disposeFileContentDocumentWatch')
       this.fileContentDocumentWatch.dispose()
       this.fileContentDocumentWatch = undefined
     }
@@ -95,11 +107,13 @@ export class WatchRegistry {
 
   private reconcileGitStatus(needsGitStatusWatch: boolean): void {
     if (needsGitStatusWatch && !this.gitStatusWatch) {
+      this.log('watchRegistry.startGitStatusWatch')
       this.gitStatusWatch = startGitStatusWatch(this.sendEvent)
       return
     }
 
     if (!needsGitStatusWatch && this.gitStatusWatch) {
+      this.log('watchRegistry.disposeGitStatusWatch')
       disposeAll(this.gitStatusWatch)
       this.gitStatusWatch = undefined
     }

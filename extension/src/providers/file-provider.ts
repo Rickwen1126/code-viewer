@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import type { WsMessage } from '@code-viewer/shared'
 import type { FileTreeNode } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
+import { debugLog } from '../utils/debug'
 import { validatePath } from '../utils/validate-path'
 
 // Handle file.tree request: recursively read workspace directory
@@ -161,6 +162,7 @@ function emitFileContentChanged(
   path: string,
   isDirty: boolean,
 ): void {
+  debugLog('file.contentChanged', { path, isDirty })
   sendEvent(createMessage('file.contentChanged', { path, isDirty }))
 }
 
@@ -234,8 +236,10 @@ export function startFileContentWatch(
   const watcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(workspaceFolder, escapeGlobPattern(path)),
   )
+  debugLog('startFileContentWatch', { path, workspace: workspaceFolder.uri.fsPath })
 
   const notify = () => {
+    debugLog('fileContentFsEvent', { path, source: 'fs' })
     emitFileContentChanged(sendEvent, path, false)
   }
 
@@ -251,6 +255,7 @@ export function startFileContentDocumentWatch(
   sendEvent: (msg: WsMessage) => void,
 ): vscode.Disposable {
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
+  debugLog('startFileContentDocumentWatch')
   const listener = vscode.workspace.onDidChangeTextDocument((e) => {
     const path = toRelativeWorkspacePath(e.document.uri)
     if (!getWatchedPaths().has(path)) return
@@ -262,6 +267,7 @@ export function startFileContentDocumentWatch(
 
     const timer = setTimeout(() => {
       timers.delete(path)
+      debugLog('fileContentDocumentEvent', { path, isDirty: e.document.isDirty, source: 'textDocument' })
       emitFileContentChanged(sendEvent, path, e.document.isDirty)
     }, 300)
 
@@ -270,6 +276,7 @@ export function startFileContentDocumentWatch(
 
   return {
     dispose() {
+      debugLog('disposeFileContentDocumentWatch')
       listener.dispose()
       for (const timer of timers.values()) {
         clearTimeout(timer)

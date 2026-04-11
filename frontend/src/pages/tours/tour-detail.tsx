@@ -75,7 +75,7 @@ export function TourDetailPage() {
   const tourId = rawTourId ? decodeURIComponent(rawTourId) : ''
   const navigate = useNavigate()
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
 
   const [tourData, setTourData] = useState<TourData | null>(null)
   const [currentStep, setCurrentStep] = useState(0)
@@ -103,9 +103,9 @@ export function TourDetailPage() {
 
   // Load tour steps
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace || !tourId) return
+    if (connectionState !== 'connected' || !workspace || !workspaceReady || !tourId) return
     loadTour()
-  }, [connectionState, workspace, tourId])
+  }, [connectionState, workspace, workspaceReady, tourId])
 
   async function loadTour() {
     try {

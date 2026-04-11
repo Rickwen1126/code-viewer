@@ -135,8 +135,11 @@ export function broadcastExtensionEvent(extensionId: string, msg: WsMessage): vo
 
   // Normal broadcast for all other events
   const frontends = manager.getFrontendsForExtension(extensionId)
+  dbg('event', msg.type, 'extension', extensionId, 'frontends', frontends.length)
   for (const frontend of frontends) {
-    if (!frontendWantsEvent(frontend, msg)) continue
+    const wanted = frontendWantsEvent(frontend, msg)
+    dbg('event-recipient', msg.type, 'wanted', wanted, 'selectedExtensionId', frontend.selectedExtensionId, 'desiredWatchSet', frontend.desiredWatchSet ?? [])
+    if (!wanted) continue
     sendToWs(frontend.ws, msg)
   }
 }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
+import { debugLog } from '../../services/debug'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { PullToRefresh } from '../../components/pull-to-refresh'
@@ -75,7 +76,7 @@ function SectionHeader({ title, count, color }: { title: string; count: number; 
 
 export function GitChangesPage() {
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const visibility = useDocumentVisibility()
   const navigate = useNavigate()
   const [gitStatus, setGitStatus] = useState<GitStatusWithGroups | null>(null)
@@ -94,15 +95,19 @@ export function GitChangesPage() {
 
   // Background fetch
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace) return
+    if (connectionState !== 'connected' || !workspace || !workspaceReady) return
     loadStatusBackground()
     loadCommits()
-    const unsub = wsClient.subscribe('git.statusChanged', () => loadStatusBackground())
+    const unsub = wsClient.subscribe('git.statusChanged', () => {
+      debugLog('watch:git', 'event', { workspace: workspace.extensionId })
+      loadStatusBackground()
+    })
     return unsub
-  }, [connectionState, workspace])
+  }, [connectionState, workspace, workspaceReady])
 
   const loadStatusBackground = useCallback(async () => {
     try {
+      debugLog('watch:git', 'request-status', { workspace: workspace?.extensionId ?? null })
       const res = await request<Record<string, never>, GitStatusWithGroups>('git.status', {})
       setGitStatus(res.payload)
       if (workspace) cacheService.setGitStatus(workspace.extensionId, res.payload)
@@ -111,6 +116,7 @@ export function GitChangesPage() {
 
   const loadCommits = useCallback(async () => {
     try {
+      debugLog('watch:git', 'request-log', { workspace: workspace?.extensionId ?? null })
       const res = await request<{ maxCount: number }, { commits: Commit[] }>('git.log', { maxCount: 30 })
       setCommits(res.payload.commits ?? [])
     } catch { /* ignore */ }
@@ -129,11 +135,12 @@ export function GitChangesPage() {
       return
     }
 
-    if (!wasHidden || connectionState !== 'connected' || !workspace) return
+    if (!wasHidden || connectionState !== 'connected' || !workspace || !workspaceReady) return
     setWasHidden(false)
+    debugLog('watch:git', 'resume-reload', { workspace: workspace.extensionId })
     void loadStatusBackground()
     void loadCommits()
-  }, [visibility, wasHidden, connectionState, workspace, loadStatusBackground, loadCommits])
+  }, [visibility, wasHidden, connectionState, workspace, workspaceReady, loadStatusBackground, loadCommits])
 
   async function handleExpandCommit(hash: string) {
     if (expandedCommit === hash) { setExpandedCommit(null); return }

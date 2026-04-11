@@ -8,6 +8,7 @@ import { TourEditProvider } from './hooks/use-tour-edit'
 import { ReviewProvider, ReviewContext } from './hooks/use-review'
 import { useWebSocket } from './hooks/use-websocket'
 import { useDocumentVisibility } from './hooks/use-visibility'
+import { debugLog } from './services/debug'
 import type { WatchDescriptor, WatchSyncPayload, WatchSyncResultPayload } from '@code-viewer/shared'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
@@ -68,12 +69,12 @@ function decodeFileRoutePath(pathname: string): string | null {
 
 function WatchSyncController() {
   const location = useLocation()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const { connectionState, request } = useWebSocket()
   const visibility = useDocumentVisibility()
 
   const watches = useMemo<WatchDescriptor[]>(() => {
-    if (!workspace || visibility !== 'visible') return []
+    if (!workspace || !workspaceReady || visibility !== 'visible') return []
 
     const filePath = decodeFileRoutePath(location.pathname)
     if (filePath) {
@@ -85,14 +86,20 @@ function WatchSyncController() {
     }
 
     return []
-  }, [location.pathname, visibility, workspace])
+  }, [location.pathname, visibility, workspace, workspaceReady])
 
   useEffect(() => {
-    if (connectionState !== 'connected') return
+    if (connectionState !== 'connected' || !workspaceReady) return
+    debugLog('watch', 'sync', {
+      workspace: workspace?.extensionId ?? null,
+      pathname: location.pathname,
+      visibility,
+      watches,
+    })
     request<WatchSyncPayload, WatchSyncResultPayload>('watch.sync', { watches }).catch(() => {
       // Route/workspace/visibility changes or reconnect will retry.
     })
-  }, [connectionState, request, watches, workspace])
+  }, [connectionState, request, watches, workspace, workspaceReady])
 
   return null
 }

@@ -66,7 +66,7 @@ export function EditDiffReviewPage() {
   const { editId } = useParams<{ editId: string }>()
   const navigate = useNavigate()
   const { request, connectionState } = useWebSocket()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceReady } = useWorkspace()
   const [diffResult, setDiffResult] = useState<ReviewGetEditDiffResultPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<'approve' | 'reject' | null>(null)
@@ -75,7 +75,7 @@ export function EditDiffReviewPage() {
   const decodedEditId = editId ? decodeURIComponent(editId) : ''
 
   useEffect(() => {
-    if (connectionState !== 'connected' || !workspace || !decodedEditId) {
+    if (connectionState !== 'connected' || !workspace || !workspaceReady || !decodedEditId) {
       setLoading(false)
       return
     }
@@ -97,7 +97,7 @@ export function EditDiffReviewPage() {
     }
 
     void loadDiff()
-  }, [connectionState, workspace, decodedEditId, request])
+  }, [connectionState, workspace, workspaceReady, decodedEditId, request])
 
   async function handleApprove() {
     if (!decodedEditId) return

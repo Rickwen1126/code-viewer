@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import type { WsMessage } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
+import { debugLog } from '../utils/debug'
 
 // Get the Git extension API
 function getGitApi() {
@@ -212,9 +213,11 @@ export function parseUnifiedDiff(diffText: string): Array<{
 export function startGitStatusWatch(sendEvent: (msg: WsMessage) => void): vscode.Disposable[] {
   const repo = getWorkspaceRepo()
   if (!repo) return []
+  debugLog('startGitStatusWatch', { root: repo.rootUri.fsPath })
   const disposable = repo.state.onDidChange(() => {
     const branch = repo.state.HEAD?.name ?? ''
     const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length
+    debugLog('git.statusChanged', { branch, changedFileCount, root: repo.rootUri.fsPath })
     sendEvent(createMessage('git.statusChanged', { branch, changedFileCount }))
   })
 
