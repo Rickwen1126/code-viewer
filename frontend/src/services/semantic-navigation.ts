@@ -1,4 +1,5 @@
 import type { NavigateFunction } from 'react-router'
+import { buildOpenFileUrl as buildSharedOpenFileUrl } from '@code-viewer/shared'
 
 function encodePathSegments(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
@@ -20,21 +21,7 @@ export function buildOpenFileUrl(
   path: string,
   query: { line?: number; endLine?: number } = {},
 ): string {
-  const searchParams = new URLSearchParams()
-  searchParams.set('workspace', workspaceRef)
-  searchParams.set('path', path)
-  if (Number.isFinite(query.line) && query.line != null && query.line >= 1) {
-    searchParams.set('line', String(Math.trunc(query.line)))
-  }
-  if (
-    Number.isFinite(query.endLine) &&
-    query.endLine != null &&
-    query.line != null &&
-    query.endLine >= query.line
-  ) {
-    searchParams.set('endLine', String(Math.trunc(query.endLine)))
-  }
-  return `/open/file?${searchParams.toString()}`
+  return buildSharedOpenFileUrl(workspaceRef, path, query)
 }
 
 export function buildGitDiffUrl(

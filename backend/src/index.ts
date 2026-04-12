@@ -2,42 +2,15 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { createNodeWebSocket } from '@hono/node-ws'
 import type { UpgradeWebSocket } from 'hono/ws'
-import { createExtensionHandler, createFrontendHandler } from './ws/handler.js'
+import { backendVersion, registerRoutes } from './app.js'
 import { manager } from './ws/manager.js'
 
-// Create app + WS
 const app = new Hono()
 const wsHelper = createNodeWebSocket({ app })
 const injectWebSocket = wsHelper.injectWebSocket
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const upgradeWebSocket = wsHelper.upgradeWebSocket as UpgradeWebSocket<any, any>
-const backendVersion = '0.0.1'
-
-function isAuthorized(secret: string | undefined | null): boolean {
-  const expected = process.env.CODE_VIEWER_SECRET
-  if (!expected) return true
-  return secret === expected
-}
-
-// Health check
-app.get('/health', (c) => c.json({ status: 'ok', version: backendVersion }))
-
-app.get('/admin/workspaces', (c) => {
-  if (!isAuthorized(c.req.query('secret'))) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-
-  return c.json({
-    status: 'ok',
-    backendVersion,
-    generatedAt: Date.now(),
-    workspaces: manager.getAdminWorkspaces(),
-  })
-})
-
-// WS routes
-app.get('/ws/extension', createExtensionHandler(upgradeWebSocket))
-app.get('/ws/frontend', createFrontendHandler(upgradeWebSocket))
+registerRoutes(app, upgradeWebSocket)
 
 const port = Number(process.env.PORT) || 4800
 const hostname = process.env.HOST || '0.0.0.0'

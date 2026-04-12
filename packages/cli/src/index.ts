@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { resolve, dirname } from 'path'
+import { resolve, dirname, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn, execSync } from 'child_process'
 import { existsSync } from 'fs'
@@ -8,6 +8,30 @@ import { networkInterfaces } from 'os'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(__dirname, '../..')
+const defaultBackendBase = 'http://127.0.0.1:4800'
+
+interface WorkspaceStatusEntry {
+  extensionId: string
+  displayName: string
+  rootPath: string
+  gitBranch: string | null
+  extensionVersion: string
+  status: 'connected' | 'stale'
+}
+
+interface AdminWorkspacesResponse {
+  status: 'ok'
+  workspaces: WorkspaceStatusEntry[]
+}
+
+interface FileLinkResponse {
+  status: 'ok'
+  generatedAt: number
+  workspace: WorkspaceStatusEntry
+  resolverPath: string
+  localUrl: string
+  lanUrl: string | null
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -42,6 +66,133 @@ function printBanner(workspacePath: string, lanIp: string | null) {
   if (lanIp) {
     console.log('')
     console.log(`  📱 Mobile: http://${lanIp}:4801`)
+  }
+  console.log('')
+}
+
+function normalizeBackendBase(raw?: string): string {
+  if (!raw) return defaultBackendBase
+  return raw.replace(/\/+$/, '').replace(/^ws:/, 'http:').replace(/^wss:/, 'https:')
+}
+
+async function fetchJson<T>(url: URL): Promise<T> {
+  const res = await fetch(url)
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`
+    try {
+      const payload = await res.json() as { error?: string }
+      if (payload.error) message = payload.error
+    } catch { /* ignore json parse failure */ }
+    throw new Error(message)
+  }
+  return res.json() as Promise<T>
+}
+
+function parsePositiveInt(raw: string | undefined): number | undefined {
+  if (!raw) return undefined
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return undefined
+  const normalized = Math.trunc(value)
+  return normalized >= 1 ? normalized : undefined
+}
+
+function parseLinkTarget(raw: string): { filePath: string; line?: number; endLine?: number } {
+  const match = raw.match(/^(.*?)(?::(\d+)(?::(\d+))?)?$/)
+  if (!match) {
+    return { filePath: raw }
+  }
+
+  const [, filePath, lineRaw, endLineRaw] = match
+  const line = parsePositiveInt(lineRaw)
+  const endLine = parsePositiveInt(endLineRaw)
+
+  if (line == null) {
+    return { filePath: raw }
+  }
+
+  if (endLine != null && endLine >= line) {
+    return { filePath, line, endLine }
+  }
+
+  return { filePath, line }
+}
+
+function normalizeRepoRelativePath(raw: string): string {
+  return raw.replaceAll('\\', '/').replace(/^\.\//, '')
+}
+
+function isFileInsideWorkspace(absFilePath: string, workspaceRoot: string): boolean {
+  const rel = relative(workspaceRoot, absFilePath)
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+function findBestWorkspaceForFile(
+  absFilePath: string,
+  workspaces: WorkspaceStatusEntry[],
+): WorkspaceStatusEntry | null {
+  const connected = workspaces
+    .filter((workspace) => workspace.status === 'connected')
+    .filter((workspace) => isFileInsideWorkspace(absFilePath, workspace.rootPath))
+    .sort((a, b) => b.rootPath.length - a.rootPath.length)
+  return connected[0] ?? null
+}
+
+async function listWorkspaces(backendBase: string, secret: string | undefined): Promise<WorkspaceStatusEntry[]> {
+  const url = new URL('/admin/workspaces', backendBase)
+  if (secret) url.searchParams.set('secret', secret)
+  const response = await fetchJson<AdminWorkspacesResponse>(url)
+  return response.workspaces
+}
+
+interface LinkFileOptions {
+  workspace?: string
+  json?: boolean
+  backend?: string
+}
+
+async function linkFile(targetArg: string, options: LinkFileOptions) {
+  const backendBase = normalizeBackendBase(options.backend ?? process.env.CODE_VIEWER_BACKEND_URL)
+  const secret = process.env.CODE_VIEWER_SECRET
+  const target = parseLinkTarget(targetArg)
+  const absFilePath = resolve(target.filePath)
+
+  let workspaceRoot = options.workspace ? resolve(options.workspace) : null
+  if (!workspaceRoot) {
+    const workspaces = await listWorkspaces(backendBase, secret)
+    const matched = findBestWorkspaceForFile(absFilePath, workspaces)
+    if (!matched) {
+      throw new Error(`No connected workspace matches ${absFilePath}. Use --workspace <rootPath>.`)
+    }
+    workspaceRoot = matched.rootPath
+  }
+
+  const relativePath = normalizeRepoRelativePath(relative(workspaceRoot, absFilePath))
+  if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) {
+    throw new Error(`File is outside workspace: ${absFilePath}`)
+  }
+
+  const url = new URL('/api/links/file', backendBase)
+  url.searchParams.set('workspace', workspaceRoot)
+  url.searchParams.set('path', relativePath)
+  if (target.line != null) url.searchParams.set('line', String(target.line))
+  if (target.endLine != null) url.searchParams.set('endLine', String(target.endLine))
+  if (secret) url.searchParams.set('secret', secret)
+
+  const response = await fetchJson<FileLinkResponse>(url)
+
+  if (options.json) {
+    console.log(JSON.stringify(response, null, 2))
+    return
+  }
+
+  console.log('')
+  console.log('File link ready')
+  console.log(`  Workspace: ${response.workspace.displayName}`)
+  console.log(`  Root:      ${response.workspace.rootPath}`)
+  console.log(`  Path:      ${relativePath}`)
+  console.log(`  Local:     ${response.localUrl}`)
+  if (response.lanUrl) {
+    console.log(`  Mobile:    ${response.lanUrl}`)
   }
   console.log('')
 }
@@ -160,12 +311,51 @@ Commands:
   start <path>   Start Code Viewer for a workspace
   stop           Stop all services
   status         Show service status
+  link file <target> [--workspace <path>] [--json]
+                 Generate a deep link for a file or range
 
 Examples:
   code-viewer start ~/code/my-project
   code-viewer stop
   code-viewer status
+  code-viewer link file frontend/src/app.tsx --workspace ~/code/code-viewer
+  code-viewer link file ~/code/code-viewer/frontend/src/app.tsx:120:140 --json
 `)
+}
+
+function parseLinkFileArgs(args: string[]): { target: string; options: LinkFileOptions } {
+  const [target, ...rest] = args
+  if (!target) {
+    throw new Error('Usage: code-viewer link file <target> [--workspace <path>] [--json]')
+  }
+
+  const options: LinkFileOptions = {}
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index]
+    switch (arg) {
+      case '--workspace':
+        options.workspace = rest[index + 1]
+        if (!options.workspace) {
+          throw new Error('--workspace requires a path')
+        }
+        index += 1
+        break
+      case '--backend':
+        options.backend = rest[index + 1]
+        if (!options.backend) {
+          throw new Error('--backend requires a URL')
+        }
+        index += 1
+        break
+      case '--json':
+        options.json = true
+        break
+      default:
+        throw new Error(`Unknown option: ${arg}`)
+    }
+  }
+
+  return { target, options }
 }
 
 // ── Main ────────────────────────────────────────────────────────────
@@ -186,6 +376,19 @@ switch (command) {
     break
   case 'status':
     status()
+    break
+  case 'link':
+    if (args[0] !== 'file') {
+      console.error('Usage: code-viewer link file <target> [--workspace <path>] [--json]')
+      process.exit(1)
+    }
+    try {
+      const { target, options } = parseLinkFileArgs(args.slice(1))
+      await linkFile(target, options)
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
     break
   default:
     printHelp()
