@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildFileRestoreKey,
   buildFileLocationUrl,
   buildFileRoutePath,
   oneBasedToZeroBasedLine,
@@ -40,5 +41,17 @@ describe('file-location helpers', () => {
     expect(oneBasedToZeroBasedLine(1)).toBe(0)
     expect(oneBasedToZeroBasedLine(42)).toBe(41)
     expect(oneBasedToZeroBasedLine(0)).toBeNull()
+  })
+
+  it('includes workspace identity in file restore keys', () => {
+    expect(buildFileRestoreKey('/repo-a', 'src/app.tsx', { line: 12 })).toBe(
+      '/repo-a:src/app.tsx:line:12',
+    )
+    expect(buildFileRestoreKey('/repo-b', 'src/app.tsx', { line: 12 })).toBe(
+      '/repo-b:src/app.tsx:line:12',
+    )
+    expect(buildFileRestoreKey('/repo-a', 'src/app.tsx')).toBe(
+      '/repo-a:src/app.tsx:saved-scroll',
+    )
   })
 })

@@ -54,3 +54,14 @@ export function parseFileLocationQuery(searchParams: URLSearchParams): FileLocat
 
   return { line, endLine }
 }
+
+export function buildFileRestoreKey(
+  workspaceRef: string,
+  path: string,
+  query: FileLocationQuery = {},
+): string {
+  const line = normalizeOneBasedLine(query.line)
+  return line != null
+    ? `${workspaceRef}:${path}:line:${line}`
+    : `${workspaceRef}:${path}:saved-scroll`
+}

@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import {
+  buildFileRestoreKey,
   buildFileLocationUrl,
   oneBasedToZeroBasedLine,
   parseFileLocationQuery,
@@ -230,9 +231,9 @@ export function CodeViewerPage() {
   // Restore semantic target location first, then fall back to saved scroll.
   useEffect(() => {
     if (!file || !workspace || !scrollContainerRef.current) return
-    const restoreKey = targetLine != null
-      ? `${path}:line:${targetLine}`
-      : `${path}:saved-scroll`
+    const restoreKey = buildFileRestoreKey(workspace.rootPath, path, {
+      line: queryLocation.line,
+    })
     if (restoreStateRef.current === restoreKey) return
     restoreStateRef.current = restoreKey
 
