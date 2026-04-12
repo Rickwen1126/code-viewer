@@ -1,7 +1,7 @@
 # Semantic Location History Contract
 
 **Created**: 2026-04-12  
-**Last Updated**: 2026-04-12  
+**Last Updated**: 2026-04-13  
 **Status**: Proposed  
 **Scope**: Frontend navigation contract first; Phase 1 focuses on browser-history-correct semantic navigation. This spec supersedes `docs/git-tour-origin-context/spec.md` as the canonical navigation design.
 
@@ -189,16 +189,75 @@ The exact route set can evolve, but the contract should be equivalent to:
 
 ### External link / resolver shape
 
-For external entry from agent workflows, CLI, or copied links, the system will eventually also need a stable workspace resolver layer, for example:
+For external entry from agent workflows, CLI, or copied links, the system needs a stable workspace resolver layer, for example:
 
-- `/open/file?workspace=<workspaceRef>&path=<path>&line=120`
-- `/open/tour?workspace=<workspaceRef>&tourId=<tourId>&step=3`
-- `/open/git-diff?workspace=<workspaceRef>&path=<path>&commit=<hash>`
+- `/open/file?workspace=<workspaceKey>&path=<path>&line=120`
+- `/open/tour?workspace=<workspaceKey>&tourId=<tourId>&step=3`
+- `/open/git-diff?workspace=<workspaceKey>&path=<path>&commit=<hash>`
 
 Important:
 
 - `extensionId` is runtime identity and must not be the canonical public workspace identifier.
-- `workspaceRef` should use a stable identity such as `rootPath`.
+- `rootPath` is an internal machine-local implementation detail and must not be the canonical public workspace identifier.
+- `workspaceKey` is the canonical public identifier for deep links.
+
+### Workspace public identity contract
+
+This contract exists to keep deep links shareable inside the product workflow without leaking absolute local filesystem paths.
+
+#### Public vs internal identity
+
+- `workspaceKey`
+  - opaque
+  - safe to place in browser URLs, copied links, screenshots, and logs
+  - the only workspace identifier allowed in public deep-link URLs
+- `rootPath`
+  - internal resolver target
+  - may appear in admin/debug/control-plane responses
+  - must not appear in canonical public deep links
+- `extensionId`
+  - runtime transport identity
+  - never a public link identifier
+
+#### Resolution model
+
+The backend is the authority for resolving public workspace identity.
+
+It must maintain a live key map:
+
+- `workspaceKey -> rootPath`
+
+And, operationally, also the inverse association needed to reuse keys when possible:
+
+- `rootPath -> workspaceKey`
+
+This means:
+
+1. Extension register/connect events provide `rootPath` to backend as internal metadata.
+2. Backend resolves or creates the corresponding `workspaceKey`.
+3. Backend returns `workspaceKey` in workspace-list / link-generation surfaces used by frontend, CLI, and agents.
+4. Resolver routes such as `/open/file` consume `workspaceKey`, not `rootPath`.
+5. Frontend uses that `workspaceKey` to bind to the correct live workspace before navigating to the in-app canonical route.
+
+#### Stability requirements
+
+1. The same live workspace should keep the same `workspaceKey` across reconnects whenever practical.
+2. A copied link should not churn just because the extension process restarted.
+3. The exact generation strategy is implementation-defined, but the public contract is not:
+   - persisted local key map
+   - deterministic machine-local keyed derivation
+   - equivalent approaches
+4. Whichever strategy is chosen, it must avoid exposing raw `rootPath` in public URLs.
+
+#### Current branch status
+
+The current branch already ships external deep-link support, but the present `workspace=<rootPath>` form is an **interim implementation**, not the final contract.
+
+The final contract defined by this spec is:
+
+- external URLs use `workspaceKey`
+- backend resolves `workspaceKey` to `rootPath`
+- `rootPath` stays internal to the control plane
 
 ### Ephemeral detour metadata
 
@@ -422,15 +481,23 @@ Principle:
 - URL becomes location truth
 - localStorage falls back to preferences and convenience restore
 
-### Phase 3: External deep-link generation
+### Phase 3: External deep-link hardening
 
 Build on the same contract for:
 
 - backend link API
 - CLI link generation
 - future agent workflow helpers
+- public workspace identity that does not leak `rootPath`
 
-This phase requires stable workspace resolution based on `workspaceRef`, not runtime `extensionId`.
+Requirements:
+
+- deep links use `workspaceKey`, not `rootPath`
+- backend owns the `workspaceKey -> rootPath` resolution map
+- frontend resolver routes consume `workspaceKey`
+- CLI may accept local `rootPath` as input, but must resolve it to `workspaceKey` before emitting links
+
+This phase hardens the already-started deep-link stack. It does **not** reinvent the resolver flow; it replaces the interim public identifier.
 
 ---
 
@@ -443,6 +510,7 @@ This phase requires stable workspace resolution based on `workspaceRef`, not run
 5. Git diff -> Code Viewer -> `Back to Diff` unwinds to the original diff without creating a history loop.
 6. Refreshing a canonical file/tour/diff URL restores the same semantic location.
 7. Forward navigation after an unwind can re-enter the detour and show the named return affordance again.
+8. External deep links do not expose absolute local workspace paths in canonical public URLs.
 
 ---
 
@@ -454,6 +522,7 @@ The core decision is now fixed:
 - semantic location becomes URL-addressable
 - `push`, `replace`, and `unwind` have distinct semantics
 - named return actions are session-local detour unwinds, not fake new page visits
+- public deep links use opaque `workspaceKey`, while `rootPath` remains internal
 
 This gives the app one consistent model for:
 

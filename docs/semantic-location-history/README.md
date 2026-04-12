@@ -6,11 +6,12 @@ This folder is the active-topic home for the broader navigation contract that no
 - Git diff -> Code Viewer -> return
 - CodeTour -> Code Viewer -> return
 - browser-history-first deep linking for semantic locations
+- hardening public deep links so workspace identity uses opaque keys instead of absolute local paths
 
 ## Canonical doc
 
-- `spec.md`: canonical navigation contract for semantic URLs, browser history integration, and detour unwind behavior
-- `plan.md`: implementation plan with a required Phase 0 audit of current local cache / restore behaviors so high-value UX is preserved during migration
+- `spec.md`: canonical navigation contract for semantic URLs, browser history integration, detour unwind behavior, and opaque public workspace identity
+- `plan.md`: implementation plan with a required Phase 0 audit of current local cache / restore behaviors so high-value UX is preserved during migration, plus a dedicated phase for replacing `workspace=<rootPath>` with `workspaceKey`
 - `cache-audit.md`: current inventory of localStorage, IndexedDB, route-state, and restore behaviors that Phase 1 must not accidentally break
 
 ## Relationship to older docs

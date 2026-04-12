@@ -1,7 +1,7 @@
 # Semantic Location Cache Audit
 
 **Created**: 2026-04-12  
-**Last Updated**: 2026-04-12  
+**Last Updated**: 2026-04-13  
 **Status**: Draft
 
 This audit exists to preserve high-value UX while semantic location moves toward URL-backed navigation truth.
@@ -18,10 +18,10 @@ This audit exists to preserve high-value UX while semantic location moves toward
 
 | Surface | Storage / Key | Source | UX | Type | Phase 1 | Replacement path |
 |---|---|---|---|---|---|---|
-| Initial redirect | `code-viewer:selected-workspace` | `frontend/src/app.tsx` | App 進來時先回上次 workspace | convenience restore | keep | 後續可由 stable workspace resolver 補強，但當前先保留 |
+| Initial redirect | `code-viewer:selected-workspace` | `frontend/src/app.tsx` | App 進來時先回上次 workspace | convenience restore | keep | 後續可由 opaque `workspaceKey` resolver 補強，但當前先保留 |
 | Initial redirect | `code-viewer:current-file:${extensionId}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | App 進來時直接回上次檔案 | convenience restore | keep | 先保留；之後可改成從 canonical file URL / last-location snapshot 重建 |
 | Initial redirect fallback | `code-viewer:current-file` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | 沒有 per-workspace key 時仍能回檔案 | convenience restore | keep | Phase 2 再判斷是否還需要 global fallback |
-| Workspace rebind | `code-viewer:selected-workspace` | `frontend/src/hooks/use-workspace.tsx` | reload / reconnect 後自動重新 select workspace | convenience restore | keep | Phase 1 保留；未來可由 URL workspace resolver 補強 |
+| Workspace rebind | `code-viewer:selected-workspace` | `frontend/src/hooks/use-workspace.tsx` | reload / reconnect 後自動重新 select workspace | convenience restore | keep | Phase 1 保留；未來可由 `workspaceKey -> rootPath` resolver 補強 |
 | Recent files | `code-viewer:recent-files` | `frontend/src/pages/files/file-browser.tsx` | 最近檔案捷徑 | convenience restore | keep | 不被 URL 取代；屬高價值 convenience |
 | Current file marker | `code-viewer:current-file` | `frontend/src/pages/files/file-browser.tsx`, `frontend/src/pages/files/code-viewer.tsx` | File Browser 高亮目前檔案、展開路徑 | convenience restore | keep | 可由 canonical file URL 驅動 current file，但先保留 bridge |
 | Current file marker | `code-viewer:current-file:${extensionId}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | 每個 workspace 記住各自最後檔案 | convenience restore | keep | 未來可改為 last semantic location snapshot |

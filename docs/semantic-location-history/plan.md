@@ -1,7 +1,7 @@
 # Semantic Location History — Implementation Plan
 
 **Created**: 2026-04-12  
-**Last Updated**: 2026-04-12  
+**Last Updated**: 2026-04-13  
 **Status**: Draft  
 **Spec**: [spec.md](./spec.md)  
 **Audit**: [cache-audit.md](./cache-audit.md)
@@ -238,11 +238,60 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 
 ---
 
-## Phase 3: State Simplification After Stability
+## Phase 3: External Deep-Link Public Identity Hardening
 
 ### 目標
 
-在 Phase 1/2 穩定後，再清理哪些舊機制已不再是 location 真相。
+把目前已經可用的 deep-link stack，從 interim 的 `workspace=<rootPath>` 收斂成正式的 public contract：
+
+- public URL 使用 opaque `workspaceKey`
+- backend 維護 live key map 解析到 `rootPath`
+- `rootPath` 不再出現在 canonical public deep links
+
+### 為什麼這是一個獨立階段
+
+這不是單純 rename query param，而是 public contract hardening：
+
+- 牽涉 shared / backend / frontend resolver / CLI
+- 牽涉隱私面與連結穩定性
+- 目前 branch 已有可工作的 MVP，因此這一階段的目標是「替換 public identifier」，不是推翻整個 deep-link flow
+
+### 任務
+
+1. 定義 `workspaceKey` contract
+   - opaque
+   - public-safe
+   - 不可直接暴露 `rootPath`
+2. backend 維護 live key map
+   - `workspaceKey -> rootPath`
+   - `rootPath -> workspaceKey`
+3. workspace list / admin surfaces 補上 `workspaceKey`
+   - 給 frontend resolver 與 CLI 使用
+4. `/api/links/file` 改以 `workspaceKey` 作為 public output contract
+   - 若 migration 需要，可暫時接受 `rootPath` 作為輸入，但輸出不可再暴露它
+5. `/open/file` resolver 改消費 `workspaceKey`
+   - 不再拿 URL query 直接比對 `rootPath`
+6. CLI `link file`
+   - 本地可繼續接受 `--workspace <rootPath>`
+   - 但輸出 link 前必須先向 backend resolve 成 `workspaceKey`
+7. 規劃 migration / compatibility
+   - 已存在的 `workspace=<rootPath>` link 如何過渡
+   - 是否提供 backend 端兼容解析期
+
+### 完成標準
+
+- public deep link 不再包含 absolute local workspace path
+- 同一個 live workspace 在 reconnect 後，link identity 不會無謂變動
+- backend / frontend / CLI 共用同一套 `workspaceKey` contract
+- 使用者仍可從 agent / CLI / copied link 直接打開正確 workspace 與 file
+
+---
+
+## Phase 4: State Simplification After Stability
+
+### 目標
+
+在 Phase 1/2/3 穩定後，再清理哪些舊機制已不再是 location 真相。
 
 ### 任務
 
