@@ -9,6 +9,11 @@ import {
   parseFileLocationQuery,
   zeroBasedToOneBasedLine,
 } from '../../services/file-location'
+import {
+  getDetourAnchor,
+  mergeDetourState,
+  unwindToDetourAnchor,
+} from '../../services/semantic-navigation'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { debugLog } from '../../services/debug'
@@ -146,6 +151,7 @@ export function CodeViewerPage() {
   const restoreStateRef = useRef('')
   const queryLocation = parseFileLocationQuery(searchParams)
   const legacyState = location.state as { scrollToLine?: number } | null
+  const detourAnchor = getDetourAnchor(location.state)
   const targetLine = oneBasedToZeroBasedLine(queryLocation.line) ?? legacyState?.scrollToLine ?? null
 
   // Persist current file path immediately on navigation
@@ -378,7 +384,10 @@ export function CodeViewerPage() {
 
   // Navigate to a file at a given line
   function navigateToFile(targetPath: string, line: number) {
-    navigate(buildFileLocationUrl(targetPath, { line: zeroBasedToOneBasedLine(line) }))
+    navigate(
+      buildFileLocationUrl(targetPath, { line: zeroBasedToOneBasedLine(line) }),
+      { state: mergeDetourState(detourAnchor) },
+    )
   }
 
   // Scroll to a line and briefly highlight it
@@ -534,8 +543,27 @@ export function CodeViewerPage() {
       {/* Header — two rows: filename on top, buttons below */}
       <div style={{ padding: '6px 12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
         {/* Row 1: filename */}
-        <div style={{ fontSize: 13, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
-          {fileName}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          {detourAnchor && (
+            <button
+              onClick={() => unwindToDetourAnchor(navigate, detourAnchor)}
+              style={{
+                background: 'none',
+                border: '1px solid #444',
+                color: '#569cd6',
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {detourAnchor.label}
+            </button>
+          )}
+          <div style={{ fontSize: 13, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+            {fileName}
+          </div>
         </div>
         {/* Row 2: metadata + buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

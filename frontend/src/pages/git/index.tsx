@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import { debugLog } from '../../services/debug'
+import { buildGitDiffUrl } from '../../services/semantic-navigation'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { PullToRefresh } from '../../components/pull-to-refresh'
@@ -156,9 +157,7 @@ export function GitChangesPage() {
   }
 
   function handleFileClick(path: string, status?: string) {
-    const params = new URLSearchParams()
-    if (status) params.set('status', status)
-    navigate(`/git/diff/${encodeURIComponent(path)}${params.size > 0 ? `?${params.toString()}` : ''}`)
+    navigate(buildGitDiffUrl(path, { status }))
   }
 
   if (loading && !gitStatus) {
@@ -256,7 +255,7 @@ export function GitChangesPage() {
                         commitFiles[commit.hash].map(file => (
                           <button
                             key={file.path}
-                            onClick={() => navigate(`/git/diff/${encodeURIComponent(file.path)}?${new URLSearchParams({ commit: commit.hash, status: file.status }).toString()}`)}
+                            onClick={() => navigate(buildGitDiffUrl(file.path, { commit: commit.hash, status: file.status }))}
                             style={{
                               display: 'flex',
                               gap: 8,

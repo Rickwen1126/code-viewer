@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useParams, useNavigate, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useTourEdit } from '../../hooks/use-tour-edit'
 import { buildFileLocationUrl } from '../../services/file-location'
+import { buildTourStepUrl, createDetourAnchor, mergeDetourState, parsePositiveIntQuery } from '../../services/semantic-navigation'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { buildEditedStepAddPayload } from './tour-detail-utils'
@@ -75,6 +76,7 @@ export function TourDetailPage() {
   const { tourId: rawTourId } = useParams<{ tourId: string }>()
   const tourId = rawTourId ? decodeURIComponent(rawTourId) : ''
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
 
@@ -95,6 +97,7 @@ export function TourDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stepQuery = parsePositiveIntQuery(searchParams, 'step')
 
   function showToast(msg: string) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -120,10 +123,15 @@ export function TourDetailPage() {
       }
       setTourData(data)
 
-      // T063: restore progress from localStorage
-      const savedStep = loadProgress(workspace!.extensionId, tourId)
-      const clampedStep = Math.min(savedStep, data.steps.length - 1)
-      setCurrentStep(clampedStep >= 0 ? clampedStep : 0)
+      // URL step is primary truth; localStorage remains fallback.
+      const desiredIndex = stepQuery != null ? stepQuery - 1 : loadProgress(workspace!.extensionId, tourId)
+      const clampedStep = Math.max(0, Math.min(desiredIndex, data.steps.length - 1))
+      setCurrentStep(clampedStep)
+
+      const canonicalStep = clampedStep + 1
+      if (stepQuery !== canonicalStep) {
+        navigate(buildTourStepUrl(tourId, canonicalStep), { replace: true })
+      }
     } catch (err) {
       setError('Tour not found')
       console.error('[TourDetailPage] loadTour error:', err)
@@ -162,6 +170,14 @@ export function TourDetailPage() {
     const step = tourData.steps[currentStep]
     if (step) loadStepCode(step, tourData.tour.ref)
   }, [tourData, currentStep, loadStepCode])
+
+  useEffect(() => {
+    if (!tourData || stepQuery == null) return
+    const queryIndex = Math.max(0, Math.min(stepQuery - 1, tourData.steps.length - 1))
+    if (queryIndex !== currentStep) {
+      setCurrentStep(queryIndex)
+    }
+  }, [tourData, stepQuery, currentStep])
 
   // T063: save progress when step changes
   useEffect(() => {
@@ -272,6 +288,7 @@ export function TourDetailPage() {
   function goTo(index: number) {
     if (!tourData) return
     const clamped = Math.max(0, Math.min(index, tourData.steps.length - 1))
+    navigate(buildTourStepUrl(tourId, clamped + 1), { replace: true })
     setCurrentStep(clamped)
   }
 
@@ -391,7 +408,14 @@ export function TourDetailPage() {
               {step.endLine !== undefined && step.endLine !== step.line ? `–${step.endLine}` : ''}
             </span>
             <button
-              onClick={() => navigate(buildFileLocationUrl(step.file, { line: step.line, endLine: step.endLine }))}
+              onClick={() => navigate(
+                buildFileLocationUrl(step.file, { line: step.line, endLine: step.endLine }),
+                {
+                  state: mergeDetourState(
+                    createDetourAnchor('tour', buildTourStepUrl(tourId, currentStep + 1)),
+                  ),
+                },
+              )}
               style={{
                 background: 'none',
                 border: '1px solid #444',

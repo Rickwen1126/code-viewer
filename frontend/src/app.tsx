@@ -23,6 +23,7 @@ import { TourDetailPage } from './pages/tours/tour-detail'
 import { PendingEditsListPage } from './pages/review'
 import { EditDiffReviewPage } from './pages/review/edit-diff'
 import { ToolApprovalPage } from './pages/review/tool-approval'
+import { OpenFileResolverPage } from './pages/open/open-file'
 
 /** Smart redirect: restore last viewed file instead of always going to /workspaces */
 function InitialRedirect() {
@@ -161,6 +162,7 @@ function TabLayout() {
       <main style={{ flex: 1, overflow: 'auto' }}>
         <Routes>
           <Route index element={<InitialRedirect />} />
+          <Route path="open/file" element={<OpenFileResolverPage />} />
           <Route path="workspaces" element={<WorkspacesPage />} />
           <Route path="files" element={<FileBrowserPage />} />
           <Route path="files/*" element={<CodeViewerPage />} />

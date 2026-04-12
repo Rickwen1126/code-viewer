@@ -3,7 +3,25 @@ import { useParams, useNavigate, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { DiffView } from '../../components/diff-view'
 import { buildAddedFileHunks } from './diff-detail-utils'
+import { buildFileLocationUrl } from '../../services/file-location'
+import { buildGitDiffUrl, createDetourAnchor, mergeDetourState } from '../../services/semantic-navigation'
 import type { GitDiffResultPayload, FileReadResultPayload } from '@code-viewer/shared'
+
+function getPrimaryCodeLine(
+  hunks: GitDiffResultPayload['hunks'],
+): number | undefined {
+  for (const hunk of hunks) {
+    for (const change of hunk.changes) {
+      if (change.newLineNumber != null) {
+        return change.newLineNumber
+      }
+    }
+    if (hunk.newStart > 0) {
+      return hunk.newStart
+    }
+  }
+  return undefined
+}
 
 export function GitDiffDetailPage() {
   const { '*': rawPath } = useParams()
@@ -52,6 +70,9 @@ export function GitDiffDetailPage() {
   const fileName = path.split('/').pop() ?? path
   const hunks = diff?.hunks.length ? diff.hunks : addedFileContent ? buildAddedFileHunks(addedFileContent.content) : []
   const isEmptyAddedFile = status === 'added' && addedFileContent?.content === '' && diff?.hunks.length === 0
+  const canViewInCode = status !== 'deleted'
+  const viewInCodeUrl = buildFileLocationUrl(path, { line: getPrimaryCodeLine(hunks) })
+  const diffUrl = buildGitDiffUrl(path, { commit, status })
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -112,6 +133,25 @@ export function GitDiffDetailPage() {
             </div>
           )}
         </div>
+        {canViewInCode && (
+          <button
+            onClick={() => navigate(viewInCodeUrl, {
+              state: mergeDetourState(createDetourAnchor('git-diff', diffUrl)),
+            })}
+            style={{
+              background: 'none',
+              border: '1px solid #444',
+              color: '#569cd6',
+              fontSize: 11,
+              padding: '2px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            View in Code
+          </button>
+        )}
       </div>
 
       {/* Diff content */}
