@@ -1,0 +1,38 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: semantic-location-history 2026-04-13",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 1\n🟡 Suggestions: 1\n✅ Good Practices: 2\n\n### Scope\nReviewed commits `41dd640`, `fdbf155`, `f3b9f2c`, and `9e26b55` implementing semantic file URLs, detour unwind behavior, backend/CLI deep links, and targeted E2E coverage.\n\n### Focus\nSemantic location correctness across workspace switches, deep-link contract durability, named-return behavior, and whether the new URL model preserves existing user-friendly restore behavior."
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 230,
+      "endLine": 258,
+      "title": "🔴 Restore dedupe key omits workspace identity, so semantic re-entry can be skipped after workspace rebinding",
+      "description": "## Problem\n\n`restoreStateRef` only keys on `path` and `targetLine`. The new semantic location contract, however, is `{ workspaceRef, path, line/endLine }`.\n\nThat means a deep link can legitimately switch from workspace A to workspace B while keeping the same repo-relative `path` and `line`. In that case this effect sees the same restore key and returns early, so the viewer may stay at whatever scroll position workspace A left behind instead of re-applying the semantic target in workspace B.\n\nThis is not a theoretical edge case: `/open/file` was added specifically to rebind workspaces before resolving the file view.\n\n## Fix\n\nInclude workspace identity in the restore key, for example:\n\n```tsx\nconst restoreKey = targetLine != null\n  ? `${workspace.extensionId}:${path}:line:${targetLine}`\n  : `${workspace.extensionId}:${path}:saved-scroll`\n```\n\nIf you want stricter correctness, keying by `workspace.rootPath` would align even more directly with the public link contract.\n\n## Rationale\n\nThis branch introduces workspace-aware semantic locations. Skipping restore when the workspace changes breaks that contract and can land the user on the wrong code position even though the URL is correct."
+    },
+    {
+      "file": "packages/shared/src/links.ts",
+      "line": 12,
+      "endLine": 31,
+      "title": "🟡 Absolute workspace paths are now part of the public deep-link contract",
+      "description": "## Problem\n\nThe new resolver URL encodes `workspace=/Users/...` directly into every generated link. That value then propagates into browser history, screenshots, logs, shared URLs, and backend/CLI responses.\n\nThis is a privacy and durability trade-off that the code currently accepts silently:\n- it leaks the local filesystem layout into public-looking URLs;\n- links break if the repo is moved or opened through a different root path;\n- future sharing beyond the owner's own phone becomes harder because the identifier is machine-local.\n\n## Fix\n\nIntroduce an opaque workspace identifier for public links, and let backend/frontend resolve that ID to the live workspace root internally. A minimal shape would be:\n\n```ts\nsearchParams.set('workspace', workspace.publicId)\n```\n\nwith backend keeping a live `publicId -> rootPath` mapping derived from the connected workspace registry.\n\n## Rationale\n\nUsing `rootPath` is better than a runtime `extensionId`, but it is still a machine-specific private path. Once URLs become a first-class automation surface, the public identifier deserves its own design instead of inheriting a local implementation detail."
+    },
+    {
+      "file": "frontend/src/services/semantic-navigation.ts",
+      "line": 69,
+      "endLine": 107,
+      "title": "✅ Named returns are modeled as unwind, not as another forward navigation",
+      "description": "## Problem\n\nA lot of navigation systems get `Back to X` wrong by implementing it as `navigate('/x')`, which creates history loops and makes browser Back feel broken.\n\n## Fix\n\nThis implementation records an anchor URL plus the originating history index, then prefers `navigate(delta)` back to that anchor. Only when the index is unavailable does it fall back to `replace(url)`.\n\n## Rationale\n\nThis matches the product contract discussed in the spec: named return is a contextual unwind, not a new page visit. It preserves the natural Back/Forward model instead of fighting the browser."
+    },
+    {
+      "file": "frontend/src/pages/open/open-file.tsx",
+      "line": 49,
+      "endLine": 96,
+      "title": "✅ Resolver flow correctly separates stable link input from runtime workspace binding",
+      "description": "## Problem\n\nWithout a resolver layer, external file links would implicitly trust whichever workspace the app happened to have selected already.\n\n## Fix\n\n`/open/file` first validates `workspace` + `path`, waits for backend connectivity, selects the matching live workspace when needed, and only then `replace`s into the canonical file URL.\n\n## Rationale\n\nThis is the right architecture boundary. Stable URL input stays public and deterministic, while runtime binding stays inside the app where live workspace state actually exists."
+    }
+  ]
+}

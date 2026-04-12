@@ -1,0 +1,66 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "05 - Module Overview: Code Viewer Semantic Location History",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 白話導讀\n\n這條 tour 其實是在看：Code Viewer 怎麼把「看某個 file / line」升級成真正的 semantic location，讓 browser history、deep link、Git/Tour detour 都共享同一套導航契約。\n\n如果先記不住細節，先抓住每個 step 只是在回答「這個位置資訊是怎麼被表達、解析、回放，最後真的參與 Back/Forward」。\n\n## Code Viewer 是什麼\n\n一個把 Desktop VS Code 能力 relay 到手機 PWA 的內部專案，目前不是 npm library，所以沒有公開 npm download 數字。\n\n## 錨定已知\n\n如果你熟悉一般網頁網址：這次做的不是客製 jump stack，而是把每個值得返回的位置都變成可重建的 URL / history entry。Browser history 是 stack；semantic URL 是每一格 stack entry 的內容。\n\n## 這條路徑在解決什麼問題\n\n舊做法很多位置資訊只存在 `location.state` 或 localStorage。這讓 `Go to Definition`、`Tour -> Code`、`Git diff -> Code` 只有一部分像正常網頁：有些切換能 Back，有些不行；重整或外部開連結時也不夠穩定。\n\n## 這條路徑展示什麼 mental model\n\n**location model 是本體，deep link 只是其中一種 serialization。**\n\n真正的契約不是「按鈕怎麼跳」，而是：\n1. semantic location 要可被 URL 表示；\n2. `push / replace / unwind` 三種導航語義要分清楚；\n3. named return 不是新增歷史，而是回到既有 anchor。\n\n## 為什麼值得讀\n\n走完這條 tour，你會得到一個很可重用的前端架構模式：當產品同時要支援 browser Back/Forward、外部 deep link、以及跨模組 return-context 時，怎麼把這三件事收斂成同一套 location contract。\n\n## DeepWiki 延伸閱讀\n\n目前沒有 public DeepWiki。建議先搭配 `docs/semantic-location-history/spec.md` 與 `docs/semantic-location-history/plan.md` 一起看。"
+    },
+    {
+      "file": "packages/shared/src/links.ts",
+      "line": 1,
+      "endLine": 31,
+      "ref": "9e26b555b226c956988b677c852b9b30f25f4364",
+      "title": "Step 1: Shared link builder 先把 external deep link contract 定成一個 canonical form",
+      "description": "## Code Range\n\nL1-L31\n\n## Insight\n\n**機制**：shared layer 的 `buildOpenFileUrl()` 把 external deep link 固定成 `/open/file?workspace=...&path=...&line=...&endLine=...`。這讓 frontend、backend、CLI 不再各自拼自己的 query string。\n\n**故障模式**：如果每一層都自己組 link，就很容易出現 line numbering 不一致、遺漏 `endLine`、或不同入口生成出不同 canonical URL 的情況，最後 browser history 跟 agent automation 會分裂成兩套語義。\n\n**設計取捨**：把 builder 放在 shared，能把 contract 壓成單一真相；代價是 workspace identifier、URL 結構、line numbering 一旦選定，就會變成跨模組公共承諾。\n\n### 白話解析\n\n這一步是在定「外部世界認得的入口長什麼樣」。它其實就是把『某個 workspace 的某個檔案某幾行』翻成一個所有層都共用的網址格式。\n\n### Code Detail\n\n**這段在幹嘛**：\n- 正規化 `line` / `endLine`\n- 永遠輸出 `/open/file?...` resolver URL\n- 保證只有合法的 1-based line 會出現在 URL 裡\n\n**為什麼這樣寫**：\n- 好處：frontend / backend / CLI 共用一套 canonical URL\n- 好處：之後換 resolver 行為時，不用每層各自修字串組裝\n- 壞處：workspace identifier 一旦是 public query，就會牽動隱私與穩定性設計\n\n**思考問題**：\n1. 哪些 state 值得被 serialize 進 URL，哪些只該留在 runtime state？\n2. 一個 canonical link builder 應該偏向『輸入容錯』還是『輸出嚴格』？"
+    },
+    {
+      "file": "backend/src/http/file-links.ts",
+      "line": 60,
+      "endLine": 87,
+      "ref": "9e26b555b226c956988b677c852b9b30f25f4364",
+      "title": "Step 2: Backend 把 live workspace registry 變成 agent 可用的 link API",
+      "description": "## Code Range\n\nL60-L87\n\n## Insight\n\n**機制**：backend 不是自己發明新的導航規則，而是拿當前 live workspace registry 去 resolve `workspaceRef + relative path`，再回傳 local / LAN 都可用的 deep link。這讓 backend 成為 control-plane authority，而不是單純字串代工。\n\n**故障模式**：如果 link API 不對照 live workspace status，只靠 CLI 或 caller 自己猜 path，產出的 URL 很容易指向一個根本沒連上的 workspace，或者把 stale 狀態包裝成看似可用的 link。\n\n**設計取捨**：把 resolver 邏輯放在 backend 很務實，因為目前 workspace truth 本來就在這裡；代價是 HTTP surface 從單純 health/admin 擴大成真正的 automation API，需要開始思考 authorization 與 public contract。\n\n### 白話解析\n\n這一步是在把『現在真的有哪些 workspace 可用』這件事接到 agent workflow。它不是只回一條字串，而是先確認 workspace 活著，再給你可以拿去開的 link。\n\n### Code Detail\n\n**這段在幹嘛**：\n- 用 `rootPath` 找出對應 workspace\n- 拒絕 `stale` workspace\n- 組出 resolver path、`localUrl` 與 `lanUrl`\n\n**為什麼這樣寫**：\n- 好處：link API 直接依賴 live registry，跟真實服務狀態一致\n- 好處：CLI 與 agent 不需要各自重做 workspace 解析\n- 壞處：LAN URL 的可用性會依賴網卡選擇與部署環境\n\n**思考問題**：\n1. `workspaceRef` 應該是 human-readable path，還是 opaque id？\n2. 如果未來 frontend 不再固定綁 `4801`，這裡的 URL contract 該怎麼抽象？"
+    },
+    {
+      "file": "frontend/src/pages/open/open-file.tsx",
+      "line": 19,
+      "endLine": 96,
+      "ref": "9e26b555b226c956988b677c852b9b30f25f4364",
+      "title": "Step 3: `/open/file` resolver page 把 stable link 轉成當前 session 的實際 file view",
+      "description": "## Code Range\n\nL19-L96\n\n## Insight\n\n**機制**：resolver page 先讀 URL 裡的 `workspace`、`path`、`line/endLine`，再透過 backend 列出 live workspaces、必要時切換選取中的 workspace，最後用 `replace` 導到真正的 `/files/...?...` 位置。\n\n**故障模式**：如果外部 link 直接指 `/files/...`，但 app 當下還綁在另一個 workspace，就會出現『路由看起來對，資料來源其實錯』的隱性錯位。resolver 的存在，就是把 stable identifier 跟 runtime binding 解耦。\n\n**設計取捨**：多一個 resolver route 會讓 flow 多一跳，但能換來 workspace rebind、錯誤處理、以及 agent/CLI 共用的入口；代價是 app 需要接受 `/open/*` 這種不屬於 tab 本身的過渡頁。\n\n### 白話解析\n\n這一頁不是拿來看內容的，它是拿來「把正確的 workspace 先選好」。它其實就是 deep link 的接待處：先確認人帶到對的 workspace，再把人送進真正的 file page。\n\n### Code Detail\n\n**這段在幹嘛**：\n- 從 URL 解析 target location\n- 先用 cache 讀 workspace list，再向 backend 取 live list\n- 如果目前 workspace 已對上，直接 `replace` 進 file URL\n- 否則先送 `connection.selectWorkspace` 再導向 file URL\n\n**為什麼這樣寫**：\n- 好處：外部 deep link 不再依賴 app 目前的 workspace state\n- 好處：`replace` 讓 resolver 本身不污染主要 history\n- 壞處：如果 workspace list cache 過舊，這一頁需要處理短暫的中繼/重試狀態\n\n**思考問題**：\n1. resolver route 應該只做『選 workspace』，還是也該承擔更多 access control / validation？\n2. `replace` 與 `push` 在這裡如果選錯，使用者會感受到什麼差別？"
+    },
+    {
+      "file": "frontend/src/services/semantic-navigation.ts",
+      "line": 50,
+      "endLine": 107,
+      "ref": "9e26b555b226c956988b677c852b9b30f25f4364",
+      "title": "Step 4: Detour anchor 把 named return 定義成 unwind，而不是再 push 一頁",
+      "description": "## Code Range\n\nL50-L107\n\n## Insight\n\n**機制**：`DetourAnchor` 記錄的是『原本那一頁在哪個 URL、位於哪個 history index』。`Back to Tour` / `Back to Diff` 不是新增一筆新的 route，而是優先 `go(delta)` 回到當初的 anchor；只有沒有可用 index 時才退化成 `replace(url)`。\n\n**故障模式**：如果 named return 被實作成普通 `navigate('/tours/...')`，使用者按完再按 browser Back 時，會又掉回剛剛的 code 頁，形成 history loop，整體體感會像踩到 bug。\n\n**設計取捨**：依賴 browser history index 很貼近原生 Back/Forward 行為，也符合這次的設計原則；代價是 detour state 變成 entry-local metadata，而不是單純靠 URL 就能完整還原。\n\n### 白話解析\n\n這一步是在定義『回去』到底是什麼意思。這裡的答案不是「再開一次原頁面」，而是「真的回到剛剛出發的那一格歷史」。\n\n### Code Detail\n\n**這段在幹嘛**：\n- 定義 `tour` / `git-diff` 兩種 anchor\n- 從 `window.history.state.idx` 取當前 history index\n- `unwindToDetourAnchor()` 優先用 history delta 回到 anchor\n- 沒有 delta 時才用 `replace` fallback\n\n**為什麼這樣寫**：\n- 好處：`Back to Tour` / `Back to Diff` 不會把 history 汙染成來回震盪\n- 好處：browser Forward 仍然能回到 detour 裡的 code entry\n- 壞處：detour affordance 會依賴 entry-local state，而不是純 URL state\n\n**思考問題**：\n1. 哪些導航應該是 `push`，哪些應該是 `unwind`？\n2. 如果未來還有 `Back to Review`、`Back to Chat`，它們應不應該共用同一個 anchor model？"
+    },
+    {
+      "file": "frontend/src/pages/tours/tour-detail.tsx",
+      "line": 126,
+      "endLine": 133,
+      "ref": "9e26b555b226c956988b677c852b9b30f25f4364",
+      "title": "Step 5: Tour step 變成 URL-addressable，但 Next/Prev 仍然用 replace",
+      "description": "## Code Range\n\nL126-L133\n\n## Insight\n\n**機制**：Tour detail 現在把 `step` 搬進 URL，讓某一步可以被外部直接打開；但內部步驟切換只更新當前 entry，而不是為每一步都新增一格 browser history。\n\n**故障模式**：如果 tour step 仍只存在 localStorage，`Back to Tour` 只能回到整個 tour 而不是精準 step；如果每一步都 `push`，瀏覽器 Back 會變成一格一格退 step，破壞『離開 tour』的直覺。\n\n**設計取捨**：這裡選的是 `URL-addressable + history replace`。好處是可外部連入、可 refresh 還原；代價是 tour 自己要接受 browser history 跟內部 step state 不再一一對應。\n\n### 白話解析\n\n這裡不是在把 Tour 改成一堆分頁，而是在說：『某一步值得有自己的網址，但不值得每按一次 Next 就塞一格瀏覽器歷史。』\n\n### Code Detail\n\n**這段在幹嘛**：\n- 用 `stepQuery` 當 primary truth\n- fallback 到原本的 localStorage progress\n- 載入後立刻把 URL normalize 成 canonical step\n\n**為什麼這樣寫**：\n- 好處：可以分享或回到某個精準 step\n- 好處：保留 tour 本來連續翻頁的使用感\n- 壞處：URL、localStorage、component state 三者在 migration 期間要維持一致\n\n**思考問題**：\n1. 什麼樣的 page-internal state 值得進 URL，但不值得進 history？\n2. 如果一個 tour 有 100 個 steps，`replace` 對使用者心理模型有沒有副作用？"
+    },
+    {
+      "file": "frontend/src/pages/tours/tour-detail.tsx",
+      "line": 410,
+      "endLine": 418,
+      "ref": "9e26b555b226c956988b677c852b9b30f25f4364",
+      "title": "Step 6: Tour → Code 是 push 新 semantic location，同時附上 detour anchor",
+      "description": "## Code Range\n\nL410-L418\n\n## Insight\n\n**機制**：`View in Code Viewer` 不再只是把使用者導到 file page，而是同時做兩件事：\n1. 用 canonical file URL 表達目的地；\n2. 把『這次是從哪個 tour step 出發』塞進 detour state。\n\n**故障模式**：如果只有目的地 URL 沒有 anchor，Code page 雖然能被 external deep link 打開，但就無法提供正確的 named return；如果只帶 anchor 不改 file URL，browser history 對這次 code jump 也不夠誠實。\n\n**設計取捨**：把 semantic destination 與 detour metadata 一起帶上，能同時滿足 browser history 與 contextual return；代價是跳轉 helper 必須清楚分辨哪些 state 是 durable URL，哪些只是 entry-local metadata。\n\n### 白話解析\n\n這一步是在把『去看 code』變成一個完整的導航事件。它不只知道要去哪裡，也知道自己是從哪個上下文暫時岔出去的。\n\n### Code Detail\n\n**這段在幹嘛**：\n- 用 `buildFileLocationUrl()` 產生 code 目的地\n- 用 `createDetourAnchor('tour', ...)` 記錄原本的 tour step\n- 將兩者一起交給 `navigate()`\n\n**為什麼這樣寫**：\n- 好處：Tour → Code 後，browser Forward/Back 與 named return 都能成立\n- 好處：tour step 的 URL 與 code file 的 URL 各自保持 canonical\n- 壞處：如果之後再加更多 origin context，state shape 需要持續受控\n\n**思考問題**：\n1. 什麼資訊應該進 URL，什麼資訊應該只存在這個 history entry？\n2. 如果從 Tour 進 Code 後再 Definition 跳一次，原本的 detour 應該怎麼沿用？"
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 151,
+      "endLine": 258,
+      "ref": "9e26b555b226c956988b677c852b9b30f25f4364",
+      "title": "Step 7: Code Viewer 把 URL line 當 primary truth，舊 scroll restore 降成 fallback",
+      "description": "## Code Range\n\nL151-L258\n\n## Insight\n\n**機制**：Code Viewer 現在先從 URL 解析 semantic target line；只有當 URL 沒給 line 時，才回頭使用舊的 `location.state.scrollToLine` 與 localStorage scroll restore。這是 Phase 1 的核心遷移：保留舊 UX，但讓 location 真相先搬到 URL。\n\n**故障模式**：如果還是先信 local state / saved scroll，再去看 URL，deep link 和 browser history 會被舊 restore 邏輯覆蓋；但如果直接把舊 cache/restore 全刪掉，recent file、reopen 等原本好用的 UX 又會一起死掉。\n\n**設計取捨**：這裡採的是 migration-friendly 的雙軌策略。semantic URL 優先，舊 scroll restore 留著當 fallback；代價是短期內會同時存在新舊兩套路徑，需要很清楚地定義優先序。\n\n### 白話解析\n\n這一步是把『你現在在哪裡』從隱藏狀態搬到網址上，但又不粗暴砍掉舊的便利 UX。它其實就是在說：位置真相換新 contract，體驗補助先保留。\n\n### Code Detail\n\n**這段在幹嘛**：\n- 解析 `line/endLine` query\n- 先依 semantic target 做 line scroll/highlight\n- 沒有 target line 時才回退到 per-file saved scroll\n- 將目前 file path 繼續寫入 localStorage，維持原有 reopen UX\n\n**為什麼這樣寫**：\n- 好處：deep link、refresh、same-file jump 都開始依賴可見 URL\n- 好處：recent file / reopen 的體感暫時不會被這輪遷移破壞\n- 壞處：直到 Phase 2 做完 cache audit 前，仍需小心新舊 state 之間的互動\n\n**思考問題**：\n1. 哪些 localStorage key 還代表『位置真相』，哪些已經只剩 convenience fallback？\n2. 當 URL 與 cache restore 衝突時，優先序應該如何定義才符合使用者直覺？"
+    }
+  ]
+}
