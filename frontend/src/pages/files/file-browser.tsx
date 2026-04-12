@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { cacheService } from '../../services/cache'
+import { buildFileLocationUrl, buildFileRoutePath } from '../../services/file-location'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { PullToRefresh } from '../../components/pull-to-refresh'
 import { getBookmarks, type Bookmark } from '../../services/bookmarks'
@@ -260,7 +261,7 @@ export function FileBrowserPage() {
     addRecentFile(path)
     setSearchQuery('')
     setShowRecent(false)
-    navigate(`/files/${encodeURIComponent(path)}`)
+    navigate(buildFileRoutePath(path))
   }
 
   if (loading && nodes.length === 0) return <div style={{ padding: 16, color: '#888' }}>Loading file tree...</div>
@@ -323,8 +324,7 @@ export function FileBrowserPage() {
                 onClick={() => {
                   setSearchQuery('')
                   setShowRecent(false)
-                  const encoded = b.path.split('/').map(encodeURIComponent).join('/')
-                  navigate(`/files/${encoded}`, { state: { scrollToLine: b.line - 1 } })
+                  navigate(buildFileLocationUrl(b.path, { line: b.line }))
                 }}
                 style={{
                   display: 'block',

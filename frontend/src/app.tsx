@@ -9,6 +9,7 @@ import { ReviewProvider, ReviewContext } from './hooks/use-review'
 import { useWebSocket } from './hooks/use-websocket'
 import { useDocumentVisibility } from './hooks/use-visibility'
 import { debugLog } from './services/debug'
+import { buildFileRoutePath } from './services/file-location'
 import type { WatchDescriptor, WatchSyncPayload, WatchSyncResultPayload } from '@code-viewer/shared'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
@@ -37,8 +38,7 @@ function InitialRedirect() {
   if (!savedFile) savedFile = localStorage.getItem('code-viewer:current-file')
 
   if (savedFile) {
-    const encoded = savedFile.split('/').map(encodeURIComponent).join('/')
-    return <Navigate to={`/files/${encoded}`} replace />
+    return <Navigate to={buildFileRoutePath(savedFile)} replace />
   }
 
   return <Navigate to="/files" replace />

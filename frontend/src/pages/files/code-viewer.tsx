@@ -1,8 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router'
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
+import {
+  buildFileLocationUrl,
+  oneBasedToZeroBasedLine,
+  parseFileLocationQuery,
+  zeroBasedToOneBasedLine,
+} from '../../services/file-location'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { debugLog } from '../../services/debug'
@@ -35,6 +41,7 @@ export function CodeViewerPage() {
   const path = rawPath ? decodeURIComponent(rawPath) : ''
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
   const visibility = useDocumentVisibility()
@@ -136,7 +143,10 @@ export function CodeViewerPage() {
 
   const codeContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const scrollRestoredRef = useRef('')
+  const restoreStateRef = useRef('')
+  const queryLocation = parseFileLocationQuery(searchParams)
+  const legacyState = location.state as { scrollToLine?: number } | null
+  const targetLine = oneBasedToZeroBasedLine(queryLocation.line) ?? legacyState?.scrollToLine ?? null
 
   // Persist current file path immediately on navigation
   useEffect(() => {
@@ -160,11 +170,6 @@ export function CodeViewerPage() {
       if (cached) {
         setFile(cached)
         setLoading(false)
-        // Scroll to target line from cache too
-        const state = location.state as { scrollToLine?: number } | null
-        if (state?.scrollToLine != null) {
-          setTimeout(() => scrollToLine(state.scrollToLine!), 100)
-        }
       }
     })
   }, [path, workspace])
@@ -172,12 +177,7 @@ export function CodeViewerPage() {
   // Background fetch on connect (no spinner if we have cached data)
   useEffect(() => {
     if (!path || !workspace || !workspaceReady || connectionState !== 'connected') return
-    loadFileBackground().then(() => {
-      const state = location.state as { scrollToLine?: number } | null
-      if (state?.scrollToLine != null) {
-        setTimeout(() => scrollToLine(state.scrollToLine!), 100)
-      }
-    })
+    loadFileBackground()
     const unsub = wsClient.subscribe('file.contentChanged', (msg) => {
       const payload = msg.payload as { path: string }
       if (payload.path === path) {
@@ -221,15 +221,21 @@ export function CodeViewerPage() {
     return () => { clearTimeout(timer); container.removeEventListener('scroll', handler) }
   }, [path, workspace, file])
 
-  // Scroll position: restore once per path (after content renders)
+  // Restore semantic target location first, then fall back to saved scroll.
   useEffect(() => {
     if (!file || !workspace || !scrollContainerRef.current) return
-    if (scrollRestoredRef.current === path) return
-    scrollRestoredRef.current = path
+    const restoreKey = targetLine != null
+      ? `${path}:line:${targetLine}`
+      : `${path}:saved-scroll`
+    if (restoreStateRef.current === restoreKey) return
+    restoreStateRef.current = restoreKey
 
-    // scrollToLine from navigation takes priority
-    const state = location.state as { scrollToLine?: number } | null
-    if (state?.scrollToLine != null) return
+    if (targetLine != null) {
+      requestAnimationFrame(() => {
+        scrollToLine(targetLine)
+      })
+      return
+    }
 
     const key = `code-viewer:scroll:${workspace.extensionId}:${path}`
     const saved = localStorage.getItem(key)
@@ -243,7 +249,7 @@ export function CodeViewerPage() {
         scrollContainerRef.current?.scrollTo({ top: scrollTop })
       })
     } catch { /* ignore */ }
-  }, [file, path, workspace])
+  }, [file, path, workspace, targetLine])
 
   // Cleanup: purge scroll entries older than 7 days (once on mount)
   useEffect(() => {
@@ -372,9 +378,7 @@ export function CodeViewerPage() {
 
   // Navigate to a file at a given line
   function navigateToFile(targetPath: string, line: number) {
-    // Encode the path for the URL
-    const encoded = targetPath.split('/').map(encodeURIComponent).join('/')
-    navigate(`/files/${encoded}`, { state: { scrollToLine: line } })
+    navigate(buildFileLocationUrl(targetPath, { line: zeroBasedToOneBasedLine(line) }))
   }
 
   // Scroll to a line and briefly highlight it
@@ -402,11 +406,7 @@ export function CodeViewerPage() {
       if (locations.length === 0) return
 
       const loc = locations[0]
-      if (loc.path === path) {
-        scrollToLine(loc.range.start.line)
-      } else {
-        navigateToFile(loc.path, loc.range.start.line)
-      }
+      navigateToFile(loc.path, loc.range.start.line)
     } catch {
       // Ignore
     }
@@ -774,13 +774,7 @@ export function CodeViewerPage() {
         isOpen={referencesOpen}
         onClose={() => setReferencesOpen(false)}
         references={references}
-        onNavigate={(targetPath, line) => {
-          if (targetPath === path) {
-            scrollToLine(line)
-          } else {
-            navigateToFile(targetPath, line)
-          }
-        }}
+        onNavigate={navigateToFile}
       />
 
       {/* Symbol outline (T042) */}
@@ -788,7 +782,7 @@ export function CodeViewerPage() {
         isOpen={symbolsOpen}
         onClose={() => setSymbolsOpen(false)}
         symbols={symbols}
-        onNavigate={scrollToLine}
+        onNavigate={(line) => navigateToFile(path, line)}
       />
 
       {/* Add Step Overlay */}

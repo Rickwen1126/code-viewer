@@ -169,6 +169,12 @@ These fields define the current semantic location and belong in the URL:
 - `commit`
 - `status`
 
+Line numbers in canonical URLs are **1-based** because:
+
+- they match what users see in editors and tour steps
+- they are the natural form for copied links and manual inspection
+- internal 0-based editor/LSP positions can be converted at the boundary
+
 ### Route shapes
 
 The exact route set can evolve, but the contract should be equivalent to:

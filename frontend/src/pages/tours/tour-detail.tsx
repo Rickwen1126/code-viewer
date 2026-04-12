@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useTourEdit } from '../../hooks/use-tour-edit'
+import { buildFileLocationUrl } from '../../services/file-location'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { buildEditedStepAddPayload } from './tour-detail-utils'
@@ -390,7 +391,7 @@ export function TourDetailPage() {
               {step.endLine !== undefined && step.endLine !== step.line ? `–${step.endLine}` : ''}
             </span>
             <button
-              onClick={() => navigate(`/files/${encodeURIComponent(step.file)}`, { state: { scrollToLine: step.line - 1 } })}
+              onClick={() => navigate(buildFileLocationUrl(step.file, { line: step.line, endLine: step.endLine }))}
               style={{
                 background: 'none',
                 border: '1px solid #444',
