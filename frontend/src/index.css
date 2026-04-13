@@ -81,7 +81,7 @@ html {
 
 .code-line-numbers.code-wrap-mode .line {
   display: block;
-  padding-left: calc(var(--code-gutter-width, 3em) + 1em);
+  padding-left: var(--code-gutter-width, 3em);
   position: relative;
   min-height: 1.5em;
 }
@@ -89,8 +89,9 @@ html {
 .code-line-numbers.code-wrap-mode .line::before {
   content: attr(data-line);
   position: absolute;
-  left: 0;
-  width: var(--code-gutter-width, 3em);
+  left: -0.5em;
+  box-sizing: border-box;
+  width: calc(var(--code-gutter-width, 3em) + 0.5em);
   text-align: right;
   color: #858585;
   user-select: none;

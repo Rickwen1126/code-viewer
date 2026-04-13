@@ -176,7 +176,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           // In wrap mode, line numbers are CSS pseudo-elements — detect click in gutter area
           const target = e.currentTarget
           const rect = target.getBoundingClientRect()
-          const gutterClickWidth = (gutterWidth + 1) * fontSize
+          const gutterClickWidth = (gutterWidth + 0.5) * fontSize + 1
           if (e.clientX - rect.left > gutterClickWidth) return // not in gutter area
           // Find which .line element was clicked
           const lineEls = target.querySelectorAll('.line')
