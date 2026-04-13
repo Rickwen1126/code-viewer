@@ -5,6 +5,7 @@ tags: [ship, code-viewer, performance, extension-lifecycle, demand-driven]
 
 ## Relations
 - ship_plan_for [docs/demand-driven-watch-list/plan.md]
+- reference_for [docs/reference/signal-vs-settled-truth.md]
 
 ## 1. Problem Statement
 **問題**：目前 Code Viewer extension 在 VS Code activate 後就常駐啟動 file/git watchers，主動監控 workspace 並 push event，導致多個 workspace 同時開著時 `Code Helper (Plugin)` 出現高 CPU，即使前端沒有主動請求 file/git 資料
@@ -57,6 +58,24 @@ tags: [ship, code-viewer, performance, extension-lifecycle, demand-driven]
   對這個系統來說，idle baseline 應該是「workspace 開著、frontend 不一定在線、沒有 page-level file/git 需求」時，extension 不主動做 file/git 監控。
 - **Live update 是加值能力，不是預設權利。**
   只有當某個頁面或某種資料真的因為 stale 而明顯傷害 UX，才值得用 explicit watch 模型去換取額外複雜度。
+
+## 5.1 Signal 語義補充
+
+- **Signal 不等於 settled truth。**
+  watcher / websocket / invalidation event 常常只能代表「現在該重新檢查了」，不能代表「真相來源已經更新完成」。
+- **這次實際踩到的錯，是把 signal 語義看太重。**
+  在 Git demand-watch flow 中，filesystem event 先到，但真正驅動 UI 的 truth source 是 VS Code Git API `repo.state`。如果 frontend 只在第一個 signal 到達時 reload 一次，而 Git API 那一刻還沒更新，UI 就會永遠停在舊資料。
+- **正確 contract 應該是：**
+  - signal = invalidation
+  - snapshot fetch = 讀 truth source
+  - UI = 只信 settled snapshot
+  - 若 truth source 可能晚於 signal，系統必須有 settle strategy（follow-up、retry、或明確 stale state）
+- **這不是單純 flaky test。**
+  E2E 的價值正是在於把「signal 有到、reload 也有做，但 truth 還沒更新」這種跨層 timing gap 挖出來。
+
+延伸閱讀：
+
+- [Signal vs Settled Truth](/Users/rickwen/code/code-viewer/docs/reference/signal-vs-settled-truth.md)
 
 ## 6. 知識風險標記
 
