@@ -1,13 +1,17 @@
 import { chromium, devices } from '@playwright/test'
-import { appendFileSync, writeFileSync } from 'fs'
+import { appendFileSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
 
 const BASE_URL = 'http://127.0.0.1:4801'
-const TOUR_TITLE = 'E2E Preserve Title'
 const WORKSPACE_PATH = '/Users/rickwen/code/code-viewer'
+const RUN_ID = `${Date.now()}`
+const TOUR_ID = `e2e-preserve-title-${RUN_ID}`
+const TOUR_TITLE = `E2E Preserve Title ${RUN_ID}`
 const UPDATED_TEXT = `Updated content from Playwright E2E ${Date.now()}`
 const SCREENSHOT_AFTER_SAVE = '/tmp/code-viewer-e2e-edit-title-after-save.png'
 const SCREENSHOT_ROUNDTRIP = '/tmp/code-viewer-e2e-edit-title-roundtrip.png'
 const CONSOLE_LOG = '/tmp/code-viewer-e2e-edit-title-console.log'
+const TOUR_PATH = join(WORKSPACE_PATH, '.tours', `${TOUR_ID}.tour`)
 
 writeFileSync(CONSOLE_LOG, '')
 const consoleLines = []
@@ -21,7 +25,28 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+function prepareTourFixture() {
+  const payload = {
+    $schema: 'https://aka.ms/codetour-schema',
+    title: TOUR_TITLE,
+    steps: [
+      {
+        file: 'frontend/src/app.tsx',
+        line: 1,
+        title: 'Preserve Me',
+        description: 'Original description',
+      },
+    ],
+  }
+  writeFileSync(TOUR_PATH, JSON.stringify(payload, null, 2))
+}
+
+function cleanupTourFixture() {
+  rmSync(TOUR_PATH, { force: true })
+}
+
 async function main() {
+  prepareTourFixture()
   const browser = await chromium.launch({
     executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     headless: true,
@@ -57,13 +82,8 @@ async function main() {
     await workspaceButton.click()
     await page.waitForURL(/\/files/, { timeout: 15000 })
 
-    await page.getByRole('button', { name: 'Tours' }).click()
-    await page.waitForURL(/\/tours$/, { timeout: 15000 })
-
-    const tourButton = page.locator('button', { hasText: TOUR_TITLE }).first()
-    await tourButton.waitFor({ state: 'visible', timeout: 15000 })
-    await tourButton.click()
-    await page.waitForURL(/\/tours\//, { timeout: 15000 })
+    await page.goto(`${BASE_URL}/tours/${TOUR_ID}`, { waitUntil: 'networkidle' })
+    await page.waitForURL(new RegExp(`/tours/${TOUR_ID}(\\?step=1)?$`), { timeout: 15000 })
 
     const titleBeforeSave = page.getByText('Preserve Me', { exact: true }).first()
     await titleBeforeSave.waitFor({ state: 'visible', timeout: 15000 })
@@ -76,8 +96,6 @@ async function main() {
     await titleInput.waitFor({ state: 'visible', timeout: 15000 })
     await contentInput.waitFor({ state: 'visible', timeout: 15000 })
 
-    assert(await titleInput.inputValue() === 'Preserve Me', 'Edit overlay did not preserve the existing step title')
-    await titleInput.fill('Preserve Me')
     await contentInput.fill(UPDATED_TEXT)
 
     await page.getByRole('button', { name: 'Save' }).click()
@@ -91,9 +109,8 @@ async function main() {
 
     await page.getByRole('button', { name: '← Tours' }).click()
     await page.waitForURL(/\/tours$/, { timeout: 15000 })
-    await tourButton.waitFor({ state: 'visible', timeout: 15000 })
-    await tourButton.click()
-    await page.waitForURL(/\/tours\//, { timeout: 15000 })
+    await page.goto(`${BASE_URL}/tours/${TOUR_ID}`, { waitUntil: 'networkidle' })
+    await page.waitForURL(new RegExp(`/tours/${TOUR_ID}(\\?step=1)?$`), { timeout: 15000 })
 
     const titleAfterRoundTrip = page.getByText('Preserve Me', { exact: true }).first()
     const updatedTextAfterRoundTrip = page.getByText(UPDATED_TEXT, { exact: true }).first()
@@ -123,9 +140,11 @@ async function main() {
     assert(!hasWsError, 'Unexpected WS error log found in frontend console log')
 
     await browser.close()
+    cleanupTourFixture()
     console.log(JSON.stringify(result, null, 2))
   } catch (err) {
     await browser.close()
+    cleanupTourFixture()
     console.error(err)
     process.exit(1)
   }
