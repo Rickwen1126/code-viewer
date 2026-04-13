@@ -76,7 +76,14 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
   fontSizeRef.current = fontSize
 
   const lineCount = useMemo(() => safeCode.split('\n').length, [safeCode])
-  const gutterWidth = useMemo(() => Math.max(2, String(lineCount).length) * 0.6 + 1, [lineCount])
+  const maxLineNumber = useMemo(
+    () => Math.max(startLine, startLine + lineCount - 1),
+    [startLine, lineCount],
+  )
+  const gutterWidth = useMemo(
+    () => Math.max(2, String(maxLineNumber).length) * 0.6 + 1,
+    [maxLineNumber],
+  )
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const transformers = useMemo(
@@ -122,7 +129,13 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      style={{ fontSize, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.5, display: 'flex' }}
+      style={{
+        fontSize,
+        fontFamily: "'JetBrains Mono', monospace",
+        lineHeight: 1.5,
+        display: 'flex',
+        ['--code-gutter-width' as string]: `${gutterWidth}em`,
+      }}
     >
       {/* Separate gutter only in non-wrap mode (stays fixed during horizontal scroll) */}
       {showLineNumbers && !wordWrap && (
@@ -163,7 +176,8 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           // In wrap mode, line numbers are CSS pseudo-elements — detect click in gutter area
           const target = e.currentTarget
           const rect = target.getBoundingClientRect()
-          if (e.clientX - rect.left > 50) return // not in gutter area
+          const gutterClickWidth = (gutterWidth + 1) * fontSize
+          if (e.clientX - rect.left > gutterClickWidth) return // not in gutter area
           // Find which .line element was clicked
           const lineEls = target.querySelectorAll('.line')
           for (let i = 0; i < lineEls.length; i++) {
