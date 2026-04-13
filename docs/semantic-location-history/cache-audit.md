@@ -34,7 +34,7 @@ This audit exists to preserve high-value UX while semantic location moves toward
 | Git status cache | IndexedDB `git-status` | `frontend/src/services/cache.ts`, `frontend/src/pages/git/index.tsx` | cache-first 顯示 Git page | performance cache | keep | 與 semantic URL 並存，不衝突 |
 | Chat session cache | IndexedDB `chat-sessions` | `frontend/src/services/cache.ts`, `frontend/src/pages/chat/conversation.tsx` | chat 離線重開可看舊 session | performance cache | keep | 不在這次 location migration 範圍內 |
 | Chat file auto-attach | `code-viewer:current-file` | `frontend/src/pages/chat/conversation.tsx` | new chat 自動附上目前檔案 | convenience restore | keep | 之後可考慮改讀 current semantic location，而不是 localStorage |
-| Tour progress | `tour-progress:${extensionId}:${tourId}` | `frontend/src/pages/tours/tour-detail.tsx` | Tour reopen 回到上次 step | canonical location candidate | evaluate-in-phase-2 | 由 `/tours/:tourId?step=` 取代；localStorage 可降為 fallback |
+| Tour progress | `tour-progress:${extensionId}:${tourId}` | `frontend/src/pages/tours/tour-detail.tsx`, `frontend/src/pages/tours/index.tsx` | 從 Tour list reopen 時回到上次 step | convenience restore | keep-as-entry-fallback | `/tours/:tourId?step=` 已是 canonical；localStorage 只保留給列表入口 resume convenience |
 | Word wrap | `code-viewer:wrap-enabled` | `frontend/src/pages/files/code-viewer.tsx` | 保留閱讀偏好 | preference | keep | 不需 URL 化 |
 | Markdown mode | `code-viewer:md-view-mode` | `frontend/src/pages/files/code-viewer.tsx` | 保留 rendered/raw 偏好 | preference | keep | 不需 URL 化 |
 | Font size | `code-viewer:font-size` | `frontend/src/components/code-block.tsx` | 保留 pinch zoom 字級 | preference | keep | 不需 URL 化 |
@@ -120,3 +120,8 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
   - 已從 file location primary truth 移除
   - canonical file URL 現在是唯一的 semantic location 來源
   - reopen / scroll convenience restore 仍保留，不受這刀影響
+
+- `tour-progress:${extensionId}:${tourId}`
+  - 已不再作為 `TourDetailPage` route truth
+  - canonical tour URL 現在是唯一 step location 來源
+  - localStorage 只保留給 Tour list reopen convenience

@@ -108,6 +108,7 @@ async function main() {
       resolvedUrl: null,
       workspaceKey,
       workspaceRoot: null,
+      workspaceExtensionId: null,
       listWorkspacesResult: false,
       selectWorkspaceResult: false,
       highlightRuleFound: false,
@@ -142,17 +143,20 @@ async function main() {
     await page.waitForURL(new RegExp(`/files/frontend/src/app\\.tsx\\?line=${targetLine}$`), { timeout: 20000 })
     await page.getByText(APP_TARGET_TEXT, { exact: false }).waitFor({ state: 'visible', timeout: 15000 })
     result.openFile.resolvedUrl = page.url()
-    result.openFile.workspaceRoot = await page.evaluate(() => {
+    const selectedWorkspace = await page.evaluate(() => {
       const raw = localStorage.getItem('code-viewer:selected-workspace')
       if (!raw) return null
-      return JSON.parse(raw).rootPath ?? null
+      return JSON.parse(raw)
     })
+    result.openFile.workspaceRoot = selectedWorkspace?.rootPath ?? null
+    result.openFile.workspaceExtensionId = selectedWorkspace?.extensionId ?? null
     result.openFile.listWorkspacesResult = consoleLines.some((line) => line.includes('connection.listWorkspaces.result'))
     result.openFile.selectWorkspaceResult = consoleLines.some((line) => line.includes('connection.selectWorkspace.result'))
     result.openFile.highlightRuleFound = await page.evaluate((line) => {
       return [...document.querySelectorAll('style')].some((el) => el.textContent?.includes(`.line:nth-child(${line})`))
     }, targetLine)
     assert(result.openFile.workspaceRoot === WORKSPACE_PATH, 'Resolver did not bind to the expected workspace')
+    assert(result.openFile.workspaceExtensionId, 'Resolver did not persist selected workspace extensionId')
     assert(result.openFile.listWorkspacesResult, 'Missing connection.listWorkspaces.result during /open/file resolve')
     assert(result.openFile.selectWorkspaceResult, 'Missing connection.selectWorkspace.result during /open/file resolve')
     assert(result.openFile.highlightRuleFound, 'URL line did not produce a highlight rule in the code viewer')
@@ -180,20 +184,22 @@ async function main() {
       'Direct tour-step link did not resolve to canonical URL',
     )
 
+    await page.evaluate(({ extensionId, tourId }) => {
+      localStorage.setItem(
+        `tour-progress:${extensionId}:${tourId}`,
+        JSON.stringify({ currentStep: 1 }),
+      )
+    }, { extensionId: result.openFile.workspaceExtensionId, tourId: TOUR_ID })
+
     await page.getByRole('button', { name: 'Tours', exact: true }).click()
     await page.waitForURL(/\/tours$/, { timeout: 15000 })
     await page.locator('button', { hasText: TOUR_TITLE }).first().click()
-    await page.waitForURL(new RegExp(`/tours/${TOUR_ID}`), { timeout: 15000 })
-    if (getPathAndSearch(page.url()) !== `/tours/${TOUR_ID}?step=2`) {
-      const nextButton = page.getByRole('button', { name: 'Next' })
-      if (await nextButton.isVisible().catch(() => false)) {
-        await nextButton.click()
-      } else {
-        await page.goto(`${BASE_URL}/tours/${TOUR_ID}?step=2`, { waitUntil: 'networkidle' })
-      }
-    }
     await page.waitForURL(new RegExp(`/tours/${TOUR_ID}\\?step=2$`), { timeout: 15000 })
     result.tourDetour.stepUrl = page.url()
+    assert(
+      getPathAndSearch(result.tourDetour.stepUrl) === `/tours/${TOUR_ID}?step=2`,
+      'Tour list reopen did not resume to the saved step URL',
+    )
     await page.getByRole('button', { name: 'View in Code Viewer' }).click()
     await page.waitForURL(/\/files\/frontend\/src\/pages\/tours\/tour-detail\.tsx\?line=/, { timeout: 15000 })
     await page.getByRole('button', { name: 'Back to Tour' }).waitFor({ state: 'visible', timeout: 15000 })

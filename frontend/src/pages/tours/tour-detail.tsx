@@ -8,34 +8,11 @@ import { buildTourStepUrl, createDetourAnchor, mergeDetourState, parsePositiveIn
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { buildEditedStepAddPayload } from './tour-detail-utils'
+import { saveTourProgress } from './tour-progress'
 import type { TourGetStepsResultPayload, TourGetFileAtRefResultPayload, TourDeleteStepResultPayload, TourAddStepResultPayload, TourAddStepPayload } from '@code-viewer/shared'
 
 type TourData = TourGetStepsResultPayload
 type TourStep = TourData['steps'][number]
-
-// T063: Tour progress stored in localStorage
-function getProgressKey(extensionId: string, tourId: string): string {
-  return `tour-progress:${extensionId}:${tourId}`
-}
-
-function loadProgress(extensionId: string, tourId: string): number {
-  try {
-    const raw = localStorage.getItem(getProgressKey(extensionId, tourId))
-    if (!raw) return 0
-    const data = JSON.parse(raw) as { currentStep: number }
-    return data.currentStep ?? 0
-  } catch {
-    return 0
-  }
-}
-
-function saveProgress(extensionId: string, tourId: string, currentStep: number): void {
-  try {
-    localStorage.setItem(getProgressKey(extensionId, tourId), JSON.stringify({ currentStep }))
-  } catch {
-    // ignore
-  }
-}
 
 function getLanguageFromFile(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
@@ -123,8 +100,8 @@ export function TourDetailPage() {
       }
       setTourData(data)
 
-      // URL step is primary truth; localStorage remains fallback.
-      const desiredIndex = stepQuery != null ? stepQuery - 1 : loadProgress(workspace!.extensionId, tourId)
+      // URL step is the only semantic location truth for the detail route.
+      const desiredIndex = stepQuery != null ? stepQuery - 1 : 0
       const clampedStep = Math.max(0, Math.min(desiredIndex, data.steps.length - 1))
       setCurrentStep(clampedStep)
 
@@ -179,10 +156,10 @@ export function TourDetailPage() {
     }
   }, [tourData, stepQuery, currentStep])
 
-  // T063: save progress when step changes
+  // Persist progress as reopen convenience only; it no longer defines route truth.
   useEffect(() => {
     if (!workspace || !tourId || !tourData) return
-    saveProgress(workspace.extensionId, tourId, currentStep)
+    saveTourProgress(workspace.extensionId, tourId, currentStep)
   }, [currentStep, workspace, tourId, tourData])
 
   // Parse description into sections for editing

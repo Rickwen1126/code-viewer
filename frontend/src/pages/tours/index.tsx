@@ -5,6 +5,8 @@ import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useTourEdit } from '../../hooks/use-tour-edit'
 import { PullToRefresh } from '../../components/pull-to-refresh'
+import { buildTourStepUrl } from '../../services/semantic-navigation'
+import { getResumeTourStep } from './tour-progress'
 import type { TourListResultPayload, TourCreateResultPayload } from '@code-viewer/shared'
 
 type TourSummary = TourListResultPayload['tours'][number]
@@ -231,7 +233,10 @@ export function TourListPage() {
                 <Copy size={14} />
               </button>
               <button
-                onClick={() => navigate(`/tours/${encodeURIComponent(tour.id)}`)}
+                onClick={() => navigate(buildTourStepUrl(
+                  tour.id,
+                  getResumeTourStep(workspace.extensionId, tour.id, tour.stepCount),
+                ))}
                 style={{
                   flex: 1,
                   padding: '14px 16px 14px 8px',
