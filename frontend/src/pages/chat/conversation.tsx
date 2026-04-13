@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
+import { useWorkspace } from '../../hooks/use-workspace'
 import { wsClient, generateId } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
+import { readCurrentFileForWorkspace } from '../../services/current-file'
 import { CodeBlock } from '../../components/code-block'
 import type {
   ChatSendPayload,
@@ -132,6 +134,7 @@ export function ChatConversationPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { request, connectionState } = useWebSocket()
+  const { workspace } = useWorkspace()
   const [turns, setTurns] = useState<Turn[]>([])
   const [inputValue, setInputValue] = useState('')
   const [sendingTurnId, setSendingTurnId] = useState<string | null>(null)
@@ -146,11 +149,11 @@ export function ChatConversationPage() {
 
   // Auto-attach current file if navigated from code viewer
   useEffect(() => {
-    const lastFile = localStorage.getItem('code-viewer:current-file')
+    const lastFile = readCurrentFileForWorkspace(workspace)
     if (lastFile && isNewSession && fileRefs.length === 0) {
       setFileRefs([lastFile])
     }
-  }, [])
+  }, [workspace, isNewSession, fileRefs.length])
 
   // T053: load history or offline cache on mount
   useEffect(() => {

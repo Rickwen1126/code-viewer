@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { cacheService } from '../../services/cache'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../services/file-location'
+import { readCurrentFileForWorkspace } from '../../services/current-file'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { PullToRefresh } from '../../components/pull-to-refresh'
 import { getBookmarks, type Bookmark } from '../../services/bookmarks'
@@ -148,8 +149,7 @@ export function FileBrowserPage() {
   const [collapsedSnapshot, setCollapsedSnapshot] = useState<Set<string> | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  // Current file from localStorage (set by code-viewer)
-  const currentFile = localStorage.getItem('code-viewer:current-file')
+  const currentFile = readCurrentFileForWorkspace(workspace)
 
   function handleToggle(path: string) {
     setExpandedDirs(prev => {

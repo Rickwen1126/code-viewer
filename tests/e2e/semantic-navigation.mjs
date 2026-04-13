@@ -99,6 +99,11 @@ async function main() {
     localStorage.setItem('code-viewer:debug', 'true')
     localStorage.removeItem('code-viewer:selected-workspace')
     localStorage.removeItem('code-viewer:current-file')
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('code-viewer:current-file:')) {
+        localStorage.removeItem(key)
+      }
+    }
   })
 
   const result = {

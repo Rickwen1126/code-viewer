@@ -10,6 +10,7 @@ import {
   parseFileLocationQuery,
   zeroBasedToOneBasedLine,
 } from '../../services/file-location'
+import { writeCurrentFileForWorkspace } from '../../services/current-file'
 import {
   getDetourAnchor,
   mergeDetourState,
@@ -164,10 +165,9 @@ export function CodeViewerPage() {
   // Persist current file path immediately on navigation
   useEffect(() => {
     if (path) {
-      localStorage.setItem('code-viewer:current-file', path)
-      if (workspace) localStorage.setItem(`code-viewer:current-file:${workspace.extensionId}`, path)
+      writeCurrentFileForWorkspace(workspace, path)
     }
-  }, [path])
+  }, [path, workspace])
 
   useEffect(() => {
     setFile(null)

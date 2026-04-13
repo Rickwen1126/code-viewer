@@ -99,6 +99,11 @@ async function main() {
     await page.evaluate(() => {
       localStorage.removeItem('code-viewer:selected-workspace')
       localStorage.removeItem('code-viewer:current-file')
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('code-viewer:current-file:')) {
+          localStorage.removeItem(key)
+        }
+      }
     })
     await page.goto(`${BASE_URL}/workspaces`, { waitUntil: 'networkidle' })
 

@@ -19,12 +19,11 @@ This audit exists to preserve high-value UX while semantic location moves toward
 | Surface | Storage / Key | Source | UX | Type | Phase 1 | Replacement path |
 |---|---|---|---|---|---|---|
 | Initial redirect | `code-viewer:selected-workspace` | `frontend/src/app.tsx` | App 進來時先回上次 workspace | convenience restore | keep | 後續可由 opaque `workspaceKey` resolver 補強，但當前先保留 |
-| Initial redirect | `code-viewer:current-file:${extensionId}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | App 進來時直接回上次檔案 | convenience restore | keep | 先保留；之後可改成從 canonical file URL / last-location snapshot 重建 |
-| Initial redirect fallback | `code-viewer:current-file` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | 沒有 per-workspace key 時仍能回檔案 | convenience restore | keep | Phase 2 再判斷是否還需要 global fallback |
+| Initial redirect | `code-viewer:current-file:${workspaceKey}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | App 進來時直接回 selected workspace 的上次檔案 | convenience restore | keep | 目前已改成 stable workspace key；之後可改成從 canonical file URL / last-location snapshot 重建 |
+| Initial redirect migration fallback | `code-viewer:current-file:${extensionId}` / `code-viewer:current-file` | `frontend/src/app.tsx`, `frontend/src/services/current-file.ts` | 舊資料仍可讀取，不打斷升級 | migration fallback | keep-temporarily | 不再寫入；Phase 2 後段再評估何時完全移除 |
 | Workspace rebind | `code-viewer:selected-workspace` | `frontend/src/hooks/use-workspace.tsx` | reload / reconnect 後自動重新 select workspace | convenience restore | keep | Phase 1 保留；未來可由 `workspaceKey -> rootPath` resolver 補強 |
 | Recent files | `code-viewer:recent-files` | `frontend/src/pages/files/file-browser.tsx` | 最近檔案捷徑 | convenience restore | keep | 不被 URL 取代；屬高價值 convenience |
-| Current file marker | `code-viewer:current-file` | `frontend/src/pages/files/file-browser.tsx`, `frontend/src/pages/files/code-viewer.tsx` | File Browser 高亮目前檔案、展開路徑 | convenience restore | keep | 可由 canonical file URL 驅動 current file，但先保留 bridge |
-| Current file marker | `code-viewer:current-file:${extensionId}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | 每個 workspace 記住各自最後檔案 | convenience restore | keep | 未來可改為 last semantic location snapshot |
+| Current file marker | `code-viewer:current-file:${workspaceKey}` | `frontend/src/app.tsx`, `frontend/src/pages/files/file-browser.tsx`, `frontend/src/pages/files/code-viewer.tsx` | File Browser 高亮目前檔案、展開路徑、每個 workspace 記住最後檔案 | convenience restore | keep | 目前已改成 stable workspace key；未來可改為 last semantic location snapshot |
 | Expanded directories | `code-viewer:expanded-dirs` | `frontend/src/pages/files/file-browser.tsx` | File Browser 記住展開狀態 | convenience restore | keep | 不需 URL 化，維持 local convenience |
 | File scroll restore | `code-viewer:scroll:${extensionId}:${path}` | `frontend/src/pages/files/code-viewer.tsx` | 再次打開同檔案時回到上次看的位置 | convenience restore | keep-as-fallback | canonical `line/endLine` 會處理精準 location；scroll restore 留作 reopen fallback |
 | File location from navigation | `location.state.scrollToLine` | `frontend/src/pages/files/code-viewer.tsx` | 點 jump / View in Code 時跳到指定行 | canonical location candidate | removed-in-phase-2 | 已由 `/files/:path?line=&endLine=` 取代；不再作為 location truth |
@@ -33,7 +32,7 @@ This audit exists to preserve high-value UX while semantic location moves toward
 | Workspace list cache | IndexedDB `workspaces` | `frontend/src/services/cache.ts` | 離線或 reconnect 前先顯示 workspace list | performance cache | keep | 與 semantic URL 並存，不衝突 |
 | Git status cache | IndexedDB `git-status` | `frontend/src/services/cache.ts`, `frontend/src/pages/git/index.tsx` | cache-first 顯示 Git page | performance cache | keep | 與 semantic URL 並存，不衝突 |
 | Chat session cache | IndexedDB `chat-sessions` | `frontend/src/services/cache.ts`, `frontend/src/pages/chat/conversation.tsx` | chat 離線重開可看舊 session | performance cache | keep | 不在這次 location migration 範圍內 |
-| Chat file auto-attach | `code-viewer:current-file` | `frontend/src/pages/chat/conversation.tsx` | new chat 自動附上目前檔案 | convenience restore | keep | 之後可考慮改讀 current semantic location，而不是 localStorage |
+| Chat file auto-attach | `code-viewer:current-file:${workspaceKey}` | `frontend/src/pages/chat/conversation.tsx` | new chat 自動附上目前 workspace 的目前檔案 | convenience restore | keep | 目前已改成 workspace-scoped current-file，避免跨 workspace 污染 |
 | Tour progress | `tour-progress:${extensionId}:${tourId}` | `frontend/src/pages/tours/tour-detail.tsx`, `frontend/src/pages/tours/index.tsx` | 從 Tour list reopen 時回到上次 step | convenience restore | keep-as-entry-fallback | `/tours/:tourId?step=` 已是 canonical；localStorage 只保留給列表入口 resume convenience |
 | Word wrap | `code-viewer:wrap-enabled` | `frontend/src/pages/files/code-viewer.tsx` | 保留閱讀偏好 | preference | keep | 不需 URL 化 |
 | Markdown mode | `code-viewer:md-view-mode` | `frontend/src/pages/files/code-viewer.tsx` | 保留 rendered/raw 偏好 | preference | keep | 不需 URL 化 |
@@ -47,7 +46,7 @@ This audit exists to preserve high-value UX while semantic location moves toward
 
 1. `code-viewer:recent-files`
    - 讓使用者能重新點到該檔案
-2. `code-viewer:current-file` / `code-viewer:current-file:${extensionId}`
+2. `code-viewer:current-file:${workspaceKey}`（migration 期間仍可讀舊 key）
    - 讓系統知道目前檔案與 workspace 對應
 3. `code-viewer:scroll:${extensionId}:${path}`
    - `CodeViewerPage` 在沒有 `scrollToLine` 時恢復舊 scrollTop
@@ -59,8 +58,8 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
 這也是組合行為：
 
 1. `code-viewer:selected-workspace`
-2. `code-viewer:current-file:${extensionId}`
-3. `code-viewer:current-file`
+2. `code-viewer:current-file:${workspaceKey}`
+3. migration fallback：`code-viewer:current-file:${extensionId}` / `code-viewer:current-file`
 
 `app.tsx` 的 `InitialRedirect` 目前直接依賴這組資料。Phase 1 若改入口路由，必須明確保留或等價重建。
 
@@ -125,3 +124,8 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
   - 已不再作為 `TourDetailPage` route truth
   - canonical tour URL 現在是唯一 step location 來源
   - localStorage 只保留給 Tour list reopen convenience
+
+- `code-viewer:current-file:${workspaceKey}`
+  - 已成為 current-file convenience restore 的 primary key
+  - 舊的 `:${extensionId}` 與 global key 只保留讀取 fallback，不再寫入
+  - 這讓 app reopen / file highlight / chat auto-attach 不再跨 workspace 污染

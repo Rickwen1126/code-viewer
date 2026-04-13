@@ -83,6 +83,7 @@ Phase 1 的目標是讓導航正確，不是一次清空所有舊狀態機制。
 - 目前 active implementation slice 改為 **Phase 2 state cleanup**
 - Phase 2 的第一刀應優先清掉已被 canonical URL contract 取代的 legacy location truth，而不是先碰 convenience restore / preference / cache
 - Tour progress 這輪的方向是：detail route 只信 URL，resume UX 留在列表入口處理
+- current-file 這輪的方向是：workspace-scoped stable key 為主，舊 `extensionId/global` key 只保留 migration fallback
 
 ---
 

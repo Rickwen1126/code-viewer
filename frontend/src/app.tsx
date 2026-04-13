@@ -10,6 +10,7 @@ import { useWebSocket } from './hooks/use-websocket'
 import { useDocumentVisibility } from './hooks/use-visibility'
 import { debugLog } from './services/debug'
 import { buildFileRoutePath } from './services/file-location'
+import { readCurrentFileForWorkspace } from './services/current-file'
 import type { WatchDescriptor, WatchSyncPayload, WatchSyncResultPayload } from '@code-viewer/shared'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
@@ -32,13 +33,11 @@ function InitialRedirect() {
   const savedWorkspace = localStorage.getItem('code-viewer:selected-workspace')
   if (!savedWorkspace) return <Navigate to="/workspaces" replace />
 
-  // Try per-workspace current file first, fallback to global
   let savedFile: string | null = null
   try {
     const ws = JSON.parse(savedWorkspace)
-    savedFile = localStorage.getItem(`code-viewer:current-file:${ws.extensionId}`)
+    savedFile = readCurrentFileForWorkspace(ws)
   } catch { /* ignore */ }
-  if (!savedFile) savedFile = localStorage.getItem('code-viewer:current-file')
 
   if (savedFile) {
     return <Navigate to={buildFileRoutePath(savedFile)} replace />
