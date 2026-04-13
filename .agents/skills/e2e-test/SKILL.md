@@ -28,6 +28,31 @@ Before running E2E, confirm the app under test is actually the latest build:
 3. If the extension host was launched before the latest build, relaunch it
 4. Do not trust an E2E pass from a stale extension host
 
+## Current Execution Strategy
+
+`/e2e-test` now has two distinct roles. Do not mix them.
+
+### 1. Focused feature E2E
+
+Use this while a feature tranche is still expanding.
+
+- Every newly landed feature must get a focused E2E that proves its own contract
+- Focused E2E can use the surface where the feature originates:
+  - mobile web / Playwright
+  - backend HTTP API
+  - CLI
+  - extension command
+- If the feature generates a URL, the test is not complete until that URL is consumed by the mobile web and resolves to the expected location
+
+### 2. Full regression `/e2e-test`
+
+Use this only at milestone gates:
+
+- after the current feature tranche is complete
+- after state cleanup / migration work that can change restore behaviour
+
+Do **not** rerun the entire full checklist after every small feature if the checklist itself is still being expanded.
+
 ## Pass Criteria — Every Test Item MUST
 
 A test item is PASS only when ALL of the following are met:
@@ -40,6 +65,7 @@ A test item is PASS only when ALL of the following are met:
    - If error logs present -> immediate FAIL, log the full error message
 3. **Round-trip verification**: After a mutation, navigate away and back (or re-enter from a different entry point) to confirm the change actually persisted — not just optimistic UI.
 4. **Error path verification** (where applicable): Trigger a failure scenario and confirm the UI shows an error message to the user (not silent failure).
+5. **Canonical URL verification** (for link/location features): Confirm the generated or current URL matches the canonical route contract, then direct-entry that URL and verify the same semantic location is restored.
 
 ### Three-layer log verification
 
@@ -66,6 +92,22 @@ Frontend (browser console)  →  Backend (terminal stdout)  →  Extension (VS C
 **For Playwright E2E**: Layer 1 (frontend console) is the primary check — always read the log file. Layer 2 (backend) can be checked via Bash if needed for debugging failures. Layer 3 (extension) is hardest to access from Playwright — check indirectly via response type (.result vs .error).
 
 **The key rule**: if frontend console shows `.error` response, the test FAILS regardless of UI state. If frontend console shows `.result` but UI doesn't update, the test also FAILS (frontend bug).
+
+### Mixed-surface validation rule
+
+Some features do not begin in the mobile web UI, for example:
+
+- backend link APIs
+- CLI link commands
+- extension commands such as `Copy Mobile Link`
+
+For these:
+
+1. Verify the source surface really produced the expected URL / payload
+2. Open that URL in the mobile web flow
+3. Verify the resolved page, semantic location, and round-trip behaviour there
+
+Source-surface success alone is **not** enough for PASS
 
 **What counts as FAIL:**
 - UI shows expected elements but console has `.error` response (silent failure)
@@ -149,18 +191,41 @@ Use Playwright MCP to verify each item against `http://localhost:4801` at 390x84
 | 42 | Workspace name in Files | Files tab with workspace selected | Workspace name shown on left side of toolbar row (next to Collapse All). |
 | 43 | Edit/Delete error toast | Trigger edit/delete failure (e.g. WS error) | Red toast "Failed to update step" shown at bottom, auto-dismiss 3s. Tour content NOT replaced by error. |
 
+### Semantic Links & Media
+
+| # | Test | Steps | Data Verification |
+|---|------|-------|-------------------|
+| 44 | Open-file deep link | Open `/open/file?workspace=<workspaceKey>&path=<path>&line=12&endLine=20` directly | Resolves to `/files/...?...line=12&endLine=20`, correct workspace selected, line target restored after direct entry. |
+| 45 | Tour detour unwind | From Tour detail step → `View in Code Viewer` → `Back to Tour` → browser Forward | `Back to Tour` returns to the original `tourId + step` URL via unwind, not push. Browser Forward re-enters the same code detour entry. |
+| 46 | Git detour unwind | From Git diff → `View Live File` → `Back to Diff` → browser Forward | `Back to Diff` returns to the original diff URL via unwind, not push. Browser Forward re-enters the same code detour entry. |
+| 47 | Image preview | Open an image file under `/files/*` | Renders actual image preview, not raw/base64 text. URL remains canonical file URL. |
+| 48 | Video preview | Open a video file under `/files/*` | Renders `<video>` preview, metadata loads, URL remains canonical file URL. |
+
+### Pending Additions For Current Feature Tranche
+
+Add these to active execution as soon as each feature lands. They are part of the current tranche contract even if not yet implemented.
+
+| # | Test | Steps | Data Verification |
+|---|------|-------|-------------------|
+| 49 | Git media-aware flow | From Git flow, open a binary/media file through the intended UX | Correct preview/open path used for the diff context. No fake text diff for media. |
+| 50 | Link diff | Generate a diff deep link from backend/CLI/extension surface, then open it in mobile web | URL matches canonical diff route contract. Direct entry opens the expected diff context. |
+| 51 | Link tour-step | Generate a tour-step deep link from backend/CLI/extension surface, then open it in mobile web | URL matches canonical tour-step route contract. Direct entry opens the expected tour and step. |
+| 52 | Copy Mobile Link | Invoke extension `Copy Mobile Link`, read clipboard URL, then open it in mobile web | Clipboard contains canonical public URL. Opened page resolves to the expected workspace + semantic location. |
+
 ## Execution Protocol
 
 1. Set viewport to 390x844
 2. Navigate to `http://localhost:4801`
-3. Execute each item sequentially
-4. At EVERY verification point:
+3. If running **full regression**, execute each active checklist item sequentially
+4. If running **focused feature E2E**, execute only the items relevant to that feature plus any directly impacted regression checks
+5. At EVERY verification point:
    a. Take a screenshot (`browser_take_screenshot`) — visually confirm
    b. Take a snapshot (`browser_snapshot`) — confirm UI elements
    c. For mutations: call `browser_console_messages` → Read the console log file → check for `.result` (success) or `.error` (failure)
-   d. For mutations: navigate away and back to confirm persistence (round-trip)
-5. On failure: screenshot + console log content + exact failure reason, continue to next test item
-6. **NEVER mark PASS based solely on UI snapshot** — console log verification is mandatory for any WS operation
+   d. For link/location features: capture the canonical URL and verify direct-entry from it
+   e. For mutations: navigate away and back to confirm persistence (round-trip)
+6. On failure: screenshot + console log content + exact failure reason, continue to next test item
+7. **NEVER mark PASS based solely on UI snapshot** — console log verification is mandatory for any WS operation
 
 ## Report
 

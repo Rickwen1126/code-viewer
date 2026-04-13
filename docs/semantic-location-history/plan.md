@@ -53,6 +53,32 @@ Phase 1 的目標是讓導航正確，不是一次清空所有舊狀態機制。
 
 ---
 
+## Current Status Snapshot
+
+截至 `2026-04-13`，以下基礎能力已落地：
+
+1. **Phase 0 audit 已建立**
+   - `cache-audit.md` 已盤點 current cache / restore / preference / performance cache
+2. **Canonical file semantic location 已落地**
+   - file URL 已支援 `line` / `endLine`
+   - same-file 與 cross-file code jump 已參與 history
+3. **Tour / Git detour contract 已落地**
+   - `Back to Tour` / `Back to Diff` 已用 `unwind`
+4. **Opaque `workspaceKey` public contract 已落地**
+   - public deep link 不再以 absolute `rootPath` 為 canonical identifier
+5. **`/files/*` media preview 已落地**
+   - image / video preview 已可在 file viewer 中顯示
+
+因此後續優先順序不再是「先 cleanup 再擴功能」，而是：
+
+1. 先補齊 **E2E contract / checklist**
+2. 再完成本輪剩餘 feature tranche
+3. 跑一次完整 full E2E regression
+4. 最後才做 state cleanup
+5. cleanup 後再跑一次 full E2E regression
+
+---
+
 ## Phase 0: Current Cache / Restore Audit
 
 ### 目標
@@ -188,7 +214,7 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 
 ---
 
-## Phase 1: Canonical Semantic Location
+## Phase 1: Canonical Semantic Location (Completed)
 
 ### 目標
 
@@ -211,7 +237,7 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 
 ---
 
-## Phase 2: Tour / Git Context Integration
+## Phase 2: Tour / Git Context Integration (Completed)
 
 ### 目標
 
@@ -238,7 +264,7 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 
 ---
 
-## Phase 3: External Deep-Link Public Identity Hardening
+## Phase 3: External Deep-Link Public Identity Hardening (Completed)
 
 ### 目標
 
@@ -287,11 +313,90 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 
 ---
 
-## Phase 4: State Simplification After Stability
+## Phase 4: E2E Contract Expansion
 
 ### 目標
 
-在 Phase 1/2/3 穩定後，再清理哪些舊機制已不再是 location 真相。
+先把 `/e2e-test` 的 pass contract 與 checklist 擴成能覆蓋本輪 feature tranche，而不是在功能還沒疊完時反覆重跑一份過時的 full checklist。
+
+### 任務
+
+1. 補 semantic link / deep-link 的 checklist
+   - `/open/file`
+   - `Back to Tour`
+   - `Back to Diff`
+2. 補 media preview 的 checklist
+   - image preview
+   - video preview
+3. 為本輪尚未完成的 feature 預留 checklist 與 pass criteria
+   - Git media-aware flow
+   - `link diff`
+   - `link tour-step`
+   - extension `Copy Mobile Link`
+4. 明確區分兩種測試：
+   - **focused feature E2E**：每個功能完成後立即驗
+   - **full regression `/e2e-test`**：整輪 feature tranche 完成後才跑
+5. 明確補上 mixed-surface validation 規則
+   - 若功能起點在 backend / CLI / extension，必須先在來源 surface 驗證 URL 產出
+   - 再用 mobile web 消費該 URL，證明端到端可用
+
+### 完成標準
+
+- `/e2e-test` skill 已反映本輪 feature tranche 的新能力
+- 每個新功能都有明確的 focused E2E 驗證目標
+- full checklist 不再只反映舊功能集
+
+---
+
+## Phase 5: Remaining Feature Tranche
+
+### 目標
+
+完成本輪已明確決定要一起交付、且會改變 user-facing capability 的剩餘功能。
+
+### 任務
+
+1. Git media-aware flow
+   - 在 Git flow 中對 binary / media 檔案提供合理的 preview / open path
+2. `link diff`
+   - 讓 agent / CLI / backend 能直接產出 diff deep link
+3. `link tour-step`
+   - 讓 agent / CLI / backend 能直接產出某個 tour step 的 deep link
+4. extension `Copy Mobile Link`
+   - 直接從 desktop VS Code 取得可在 mobile web 打開的 canonical URL
+
+### 交付方式
+
+- 每完成一個 feature，就補對應 focused E2E
+- 此階段 **不** 以 full `/e2e-test` 作為主要節奏
+- 除非 feature 影響既有 checklist 項目，否則不先跑整包 regression
+
+---
+
+## Phase 6: Full Feature Regression Gate
+
+### 目標
+
+在本輪 feature tranche 全部落地後，再跑一次完整 `/e2e-test`，驗證整體功能疊加後仍然可用。
+
+### 任務
+
+1. 用更新後的 checklist 跑完整 `/e2e-test`
+2. 補齊新增功能的缺口
+3. 若 full regression 揭露契約缺陷，先修功能/契約，再進 cleanup
+
+### 完成標準
+
+- 全部已完成功能都被 full checklist 覆蓋
+- 不存在只在 focused E2E 通過、整體 regression 卻失敗的狀態
+
+---
+
+## Phase 7: State Simplification After Stability
+
+### 目標
+
+在 feature tranche 已定型、且 full regression 已先證明可用之後，再清理哪些舊機制已不再是 location 真相。
 
 ### 任務
 
@@ -309,6 +414,21 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
    - 哪些行為是 intentional retained UX
    - 哪些舊行為已不再保證
 
+### 為什麼 cleanup 放在這裡
+
+這一階段 side effect 最大。若在 feature tranche 期間就先 cleanup，會同時混雜：
+
+- 新能力擴張
+- E2E checklist 擴張
+- location truth / fallback 重整
+
+這會讓失敗來源變得難以隔離。因此 cleanup 明確放在：
+
+- 新功能已齊
+- full regression 已先跑過
+
+之後再做，語義最乾淨。
+
 ### 原則
 
 - URL 應成為 location truth
@@ -321,6 +441,26 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 
 ---
 
+## Phase 8: Post-Cleanup Full Regression Gate
+
+### 目標
+
+在 state cleanup 完成後，再跑一次完整 `/e2e-test`，證明「保留行為、不保留舊 code」這個契約成立。
+
+### 任務
+
+1. 用與 Phase 6 相同的 full checklist 重跑
+2. 對照 `cache-audit.md` 驗證 must-preserve UX
+3. 補出 cleanup regression 或缺失
+
+### 完成標準
+
+- semantic URL / history contract 仍正確
+- must-preserve UX 仍存在
+- 已移除或降級的舊 state 不再偷偷成為唯一真相來源
+
+---
+
 ## 驗證方式
 
 ### Navigation correctness
@@ -330,6 +470,7 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 3. Tour Next / Prev 不製造一格一格的 browser history
 4. Tour -> Code -> `Back to Tour` 直接 unwind 回原 step
 5. Git diff -> Code -> `Back to Diff` 直接 unwind 回原 diff
+6. direct link / copied link / generated link 都能直接打開正確 semantic location
 
 ### UX preservation
 
@@ -338,6 +479,7 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 3. File Browser 仍能展開到 current file
 4. workspace reload 後仍能自動 rebind
 5. cache-first 體感不要明顯退化
+6. new link-producing surfaces 產出的 URL 可被 mobile web 直接消費
 
 ### Guardrail
 
@@ -369,5 +511,23 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 
 ### Milestone D
 
+- 更新 `/e2e-test` contract
+- 補 semantic link / media preview / upcoming feature checklist
+
+### Milestone E
+
+- 完成本輪剩餘 feature tranche
+- 每個 feature 補 focused E2E
+
+### Milestone F
+
+- 跑完整 `/e2e-test`
+
+### Milestone G
+
 - state simplification
 - fallback/UX cleanup
+
+### Milestone H
+
+- cleanup 後再跑完整 `/e2e-test`
