@@ -158,9 +158,8 @@ export function CodeViewerPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const restoreStateRef = useRef('')
   const queryLocation = parseFileLocationQuery(searchParams)
-  const legacyState = location.state as { scrollToLine?: number } | null
   const detourAnchor = getDetourAnchor(location.state)
-  const targetLine = oneBasedToZeroBasedLine(queryLocation.line) ?? legacyState?.scrollToLine ?? null
+  const targetLine = oneBasedToZeroBasedLine(queryLocation.line)
 
   // Persist current file path immediately on navigation
   useEffect(() => {

@@ -77,6 +77,12 @@ Phase 1 的目標是讓導航正確，不是一次清空所有舊狀態機制。
 4. 最後才做 state cleanup
 5. cleanup 後再跑一次 full E2E regression
 
+### Current execution note
+
+- `extension Copy Mobile Link` 已明確延後，記錄於 `docs/todo/2026-04-13.md`
+- 目前 active implementation slice 改為 **Phase 2 state cleanup**
+- Phase 2 的第一刀應優先清掉已被 canonical URL contract 取代的 legacy location truth，而不是先碰 convenience restore / preference / cache
+
 ---
 
 ## Phase 0: Current Cache / Restore Audit

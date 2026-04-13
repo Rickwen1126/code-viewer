@@ -27,7 +27,7 @@ This audit exists to preserve high-value UX while semantic location moves toward
 | Current file marker | `code-viewer:current-file:${extensionId}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | 每個 workspace 記住各自最後檔案 | convenience restore | keep | 未來可改為 last semantic location snapshot |
 | Expanded directories | `code-viewer:expanded-dirs` | `frontend/src/pages/files/file-browser.tsx` | File Browser 記住展開狀態 | convenience restore | keep | 不需 URL 化，維持 local convenience |
 | File scroll restore | `code-viewer:scroll:${extensionId}:${path}` | `frontend/src/pages/files/code-viewer.tsx` | 再次打開同檔案時回到上次看的位置 | convenience restore | keep-as-fallback | canonical `line/endLine` 會處理精準 location；scroll restore 留作 reopen fallback |
-| File location from navigation | `location.state.scrollToLine` | `frontend/src/pages/files/code-viewer.tsx` | 點 jump / View in Code 時跳到指定行 | canonical location candidate | migrate-to-URL | 由 `/files/:path?line=&endLine=` 取代 |
+| File location from navigation | `location.state.scrollToLine` | `frontend/src/pages/files/code-viewer.tsx` | 點 jump / View in Code 時跳到指定行 | canonical location candidate | removed-in-phase-2 | 已由 `/files/:path?line=&endLine=` 取代；不再作為 location truth |
 | File content cache | IndexedDB `file-content` | `frontend/src/services/cache.ts`, `frontend/src/pages/files/code-viewer.tsx` | cache-first 顯示檔案內容 | performance cache | keep | 與 semantic URL 並存，不衝突 |
 | File tree cache | IndexedDB `file-tree` | `frontend/src/services/cache.ts`, `frontend/src/pages/files/file-browser.tsx` | cache-first 顯示 tree | performance cache | keep | 與 semantic URL 並存，不衝突 |
 | Workspace list cache | IndexedDB `workspaces` | `frontend/src/services/cache.ts` | 離線或 reconnect 前先顯示 workspace list | performance cache | keep | 與 semantic URL 並存，不衝突 |
@@ -111,3 +111,12 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
 2. 不可在沒有替代入口 restore 的情況下拿掉 `InitialRedirect` 所依賴的 current-file keys
 3. Tour 的 local progress 在 step URL 真正落地前，不可直接移除
 4. 偏好型 storage 不應和 location migration 一起清理
+
+## Phase 2 Progress
+
+### Completed in current slice
+
+- `location.state.scrollToLine`
+  - 已從 file location primary truth 移除
+  - canonical file URL 現在是唯一的 semantic location 來源
+  - reopen / scroll convenience restore 仍保留，不受這刀影響

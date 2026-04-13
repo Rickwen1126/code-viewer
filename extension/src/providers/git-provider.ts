@@ -218,15 +218,30 @@ export function startGitStatusWatch(sendEvent: (msg: WsMessage) => void): vscode
   debugLog('startGitStatusWatch', { root: repo.rootUri.fsPath })
 
   let emitTimer: ReturnType<typeof setTimeout> | undefined
+  let fsSettleTimer: ReturnType<typeof setTimeout> | undefined
 
-  const emitStatusChanged = (source: 'repo' | 'fs') => {
-    if (emitTimer) clearTimeout(emitTimer)
-    emitTimer = setTimeout(() => {
+  const scheduleEmit = (source: 'repo' | 'fs' | 'fs-settle', delayMs: number) => {
+    const timer = setTimeout(() => {
       const branch = repo.state.HEAD?.name ?? ''
       const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length
       debugLog('git.statusChanged', { source, branch, changedFileCount, root: repo.rootUri.fsPath })
       sendEvent(createMessage('git.statusChanged', { branch, changedFileCount }))
-    }, 150)
+    }, delayMs)
+
+    return timer
+  }
+
+  const emitStatusChanged = (source: 'repo' | 'fs') => {
+    if (emitTimer) clearTimeout(emitTimer)
+    emitTimer = scheduleEmit(source, 150)
+
+    if (source === 'fs') {
+      // External file operations can reach the filesystem watcher before VS Code's
+      // Git API updates repo.state. Follow up once more after a short settle window
+      // so the mobile Git page picks up newly created or deleted files reliably.
+      if (fsSettleTimer) clearTimeout(fsSettleTimer)
+      fsSettleTimer = scheduleEmit('fs-settle', 900)
+    }
   }
 
   const repoStateDisposable = repo.state.onDidChange(() => {
@@ -249,6 +264,7 @@ export function startGitStatusWatch(sendEvent: (msg: WsMessage) => void): vscode
     const branch = repo.state.HEAD?.name ?? ''
     debugLog('stopGitStatusWatch', { branch, root: repo.rootUri.fsPath })
     if (emitTimer) clearTimeout(emitTimer)
+    if (fsSettleTimer) clearTimeout(fsSettleTimer)
   })
 
   return [repoStateDisposable, watcher, onCreated, onDeleted, onChanged, timerDisposable]

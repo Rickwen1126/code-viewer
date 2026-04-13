@@ -33,6 +33,15 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+async function waitFor(predicate, timeout = 15000, interval = 100) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await new Promise((resolve) => setTimeout(resolve, interval))
+  }
+  throw new Error('Timed out waiting for condition')
+}
+
 function cleanupFiles() {
   if (existsSync(TEST_FILE_PATH)) rmSync(TEST_FILE_PATH)
   if (existsSync(TEST_FILE_2_PATH)) rmSync(TEST_FILE_2_PATH)
@@ -97,6 +106,11 @@ async function main() {
     await workspaceButton.waitFor({ state: 'visible', timeout: 15000 })
     await workspaceButton.click()
     await page.waitForURL(/\/files$/, { timeout: 15000 })
+    await waitFor(
+      () => consoleLines.filter((line) => line.includes('[ws] ⇐ file.tree.result')).length >= 2,
+      5000,
+    )
+    await page.waitForTimeout(250)
 
     const selectedWorkspaceRaw = await page.evaluate(() => localStorage.getItem('code-viewer:selected-workspace'))
     const selectedWorkspace = selectedWorkspaceRaw ? JSON.parse(selectedWorkspaceRaw) : null
