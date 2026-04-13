@@ -1,0 +1,31 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: diff-tour-step-links 2026-04-13",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 0\n🟡 Suggestions: 1\n✅ Good Practices: 2\n\n### Scope\nReviewed commits `828bdb4` and `fef5f20` covering the staged E2E contract update plus the new `link diff` / `link tour-step` implementation across shared, backend, frontend resolver pages, CLI, and focused E2E.\n\n### Focus\nPublic deep-link contract consistency, resolver correctness under real workspace lifecycles, and whether the mixed-surface E2E actually proves the feature the user will consume."
+    },
+    {
+      "file": "frontend/src/pages/open/workspace-resolver.tsx",
+      "line": 40,
+      "endLine": 107,
+      "title": "🟡 Cached workspace entries can trigger a premature hard error before live workspace data settles",
+      "description": "## Problem\n\n`WorkspaceScopedResolverPage` seeds `workspaces` from cache, then immediately allows that cached match to drive `connection.selectWorkspace`. Because `extensionId` is runtime-scoped, a cached entry can be structurally correct (`workspaceKey` / `rootPath` still match) but still carry an expired `extensionId` after VS Code or backend reconnects.\n\nIn that case the resolver can hit `connection.selectWorkspace` too early, reject, and show `Failed to select workspace for this link.` before the fresh `connection.listWorkspaces` result has a chance to replace the stale cache entry.\n\n## Why It Matters\n\nThis does not corrupt data, but it weakens one of the main promises of the new link system: a valid link should feel stable even across reconnects. A stale cache turning that into a visible hard error is the wrong failure mode.\n\n## Suggestion\n\nTreat cache as a fast hint, not as authoritative selection input. Two low-risk fixes:\n\n1. Only use cached workspaces for waiting-state / optimistic display, and gate actual `selectWorkspace` on the live list once `connection.listWorkspaces` returns.\n2. Or keep the cache fast-path, but on first `selectWorkspace` failure, automatically retry once after a fresh live list refresh before surfacing an error.\n\n## Rationale\n\nThe backend authority for live workspace binding already exists. The resolver should lean on that authority a little more aggressively before presenting a user-visible failure."
+    },
+    {
+      "file": "packages/shared/src/links.ts",
+      "line": 43,
+      "endLine": 77,
+      "title": "✅ Shared builders keep the new public link contract centralized",
+      "description": "## What Went Well\n\nThe new `buildOpenTourUrl()` and `buildOpenGitDiffUrl()` follow the same pattern as the existing file link builder instead of letting each surface invent its own query shape.\n\n## Why It Matters\n\nThat keeps the public contract centralized in one place and prevents backend, CLI, and frontend resolver pages from drifting into slightly different URL formats. For deep-link features, this kind of discipline matters more than the individual routes themselves."
+    },
+    {
+      "file": "tests/e2e/semantic-navigation.mjs",
+      "line": 161,
+      "endLine": 259,
+      "title": "✅ The focused E2E validates the real mixed-surface workflow, not just one layer in isolation",
+      "description": "## What Went Well\n\nThe test does not stop at API success or route rendering. It asks backend for a `tour-step` or `diff` link, uses the returned `localUrl` to drive the mobile web, then verifies canonical URL resolution, detour unwind, browser forward restore, and relevant frontend console events.\n\n## Why It Matters\n\nThis matches the actual product promise: agents or tools hand the user a URL, and that URL must open the right place in the app. The test therefore proves the feature end-to-end instead of proving only that each layer looks plausible in isolation."
+    }
+  ]
+}

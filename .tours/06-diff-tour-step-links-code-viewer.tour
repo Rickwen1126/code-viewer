@@ -1,0 +1,58 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "06 - Module Overview: Diff and Tour-Step Links",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 白話導讀\n\n這條 tour 在看的是：`semantic-location-history` 這個 milestone 怎麼從「file deep link」再往前推一步，讓 agent / CLI / backend 都能直接產出 `diff` 與 `tour step` 的可消費連結，最後還是回到 mobile web 上用同一套 resolver 入口接住。\n\n## 這次改動在解什麼問題\n\n前一輪已經有 `/open/file`。但實際 agent workflow 還有兩個高價值入口：\n1. 我想直接開某個 diff；\n2. 我想直接開某個 tour 的某一步。\n\n如果沒有這兩條 canonical link，agent 回報就還是得講『先去某個 tab，再自己找』，這不符合這次要建立的 deep-link workflow。\n\n## mental model\n\n這輪沿用同一條原則：\n- public contract 由 shared builder 定義；\n- backend 用 live workspace registry resolve；\n- frontend 用 resolver route 做 runtime workspace binding；\n- CLI 只是這套 contract 的另一個 source surface；\n- focused E2E 要證明 backend/CLI 產生的連結，真的能被 mobile web 消費。\n\n## 為什麼值得讀\n\n走完這條 tour，你會看到一個很實用的跨模組模式：**一個新 deep-link capability，不是只加一個 route，而是 shared contract、backend authority、frontend resolver、CLI surface、E2E proof 五層一起收斂。**"
+    },
+    {
+      "file": "packages/shared/src/links.ts",
+      "line": 43,
+      "endLine": 77,
+      "ref": "fef5f20f0e18b8f640c3974d36a295eecb51239c",
+      "title": "Step 1: Shared builder 先把 `tour-step` 與 `git-diff` 的 public URL contract 定住",
+      "description": "## Code Range\n\nL43-L77\n\n## Insight\n\n**機制**：`buildOpenTourUrl()` 與 `buildOpenGitDiffUrl()` 把兩種新入口固定成 `/open/tour?...` 與 `/open/git-diff?...`。這延續前一輪的做法：public deep link 不是每層自己拼，而是 shared 層一次定成 canonical form。\n\n**故障模式**：如果 backend、CLI、frontend 各自組 URL，就很容易出現 query key 不一致、缺少正規化、或同一個功能有多個看起來都能用的 link form。\n\n**設計取捨**：把 builder 放在 shared 的代價是 public contract 變成跨模組承諾；好處是之後新增 source surface 時不會再重做一遍 URL 設計。\n\n### 白話解析\n\n這一步是在定『外部世界要怎麼指向一個 diff，或一個 tour step』。只要這層定得穩，後面的 backend API、CLI、resolver 頁面都只是消費同一個格式。\n\n### 思考問題\n\n1. 哪些 query 值應該被正規化，哪些保持原樣？\n2. `tour step` 與 `diff` 為什麼值得有自己的 resolver route，而不是都塞進 `/open/file`？"
+    },
+    {
+      "file": "backend/src/http/file-links.ts",
+      "line": 97,
+      "endLine": 188,
+      "ref": "fef5f20f0e18b8f640c3974d36a295eecb51239c",
+      "title": "Step 2: Backend 把 live workspace registry 擴成三種 link response",
+      "description": "## Code Range\n\nL97-L188\n\n## Insight\n\n**機制**：`resolveWorkspace()` 先把 public `workspaceRef` 解到 live workspace，再由 `buildResolverLinkPayload()` 共用輸出 `resolverPath/localUrl/lanUrl`，最後分別包成 file、diff、tour-step 三種 response。\n\n**故障模式**：如果每條 API route 都自己解析 workspace、自己組 LAN/local URL，link surface 很快會漂移；尤其連線狀態與 URL contract 一旦分裂，agent 會拿到『看起來合法，但實際打不開』的連結。\n\n**設計取捨**：這裡選的是 helper 集中化。好處是所有 link API 共用同一套 authority 與輸出 shape；代價是 backend 逐漸從 relay 長出 automation API，需要更自覺地管理 public contract。\n\n### 白話解析\n\n這一步是在把『backend 知道哪些 workspace 現在真的活著』，轉成『backend 可以幫你生出現在真的能打開的連結』。重點不是字串，而是 live registry 的權威性被接到 agent workflow 上。\n\n### 思考問題\n\n1. 如果未來還有 `link review-edit`，這裡最適合怎麼擴？\n2. 什麼時候該回 404，什麼時候該回 409？"
+    },
+    {
+      "file": "backend/src/app.ts",
+      "line": 81,
+      "endLine": 159,
+      "ref": "fef5f20f0e18b8f640c3974d36a295eecb51239c",
+      "title": "Step 3: HTTP surface 很薄，只負責 parse -> resolve -> return canonical payload",
+      "description": "## Code Range\n\nL81-L159\n\n## Insight\n\n**機制**：`/api/links/diff` 與 `/api/links/tour-step` 本身沒有自己的商業邏輯；它們只做 query parsing、authorization、呼叫 link builder、再把 authority 的結果翻成標準 HTTP response。\n\n**故障模式**：如果 route handler 自己夾雜過多條件分支，很快就會出現 API surface 跟內部 link semantics 不一致，之後維護也難測。\n\n**設計取捨**：讓 route 保持薄薄一層，能讓 API contract 清楚、測試容易；代價是 helper 層要承擔較多共用語義。\n\n### 白話解析\n\n這一段其實是在告訴你：backend route 不該是第二套規則，而應該只是把 canonical 規則包成 HTTP 入口。\n\n### 思考問題\n\n1. route handler 與 helper 的責任邊界應該劃在哪裡？\n2. 這種 API surface 什麼時候值得開始有 versioning？"
+    },
+    {
+      "file": "frontend/src/pages/open/workspace-resolver.tsx",
+      "line": 23,
+      "endLine": 121,
+      "ref": "fef5f20f0e18b8f640c3974d36a295eecb51239c",
+      "title": "Step 4: Shared resolver page 把 stable deep link 轉成當前 session 的實際 workspace binding",
+      "description": "## Code Range\n\nL23-L121\n\n## Insight\n\n**機制**：`WorkspaceScopedResolverPage` 是這輪的 frontend 核心。它先拿 URL 裡的 `workspaceRef + targetUrl`，再用 cache + live `connection.listWorkspaces` 找到 matching workspace，必要時先 `connection.selectWorkspace`，最後才 `replace()` 到真正的 canonical page URL。\n\n**故障模式**：如果 deep link 直接進 `/tours/...` 或 `/git/diff/...`，app 當下可能還綁在錯的 workspace，導致路由看起來對，但資料根本不是那個 repo。\n\n**設計取捨**：多一層 resolver 會讓 flow 多一步，但它把 stable link input 跟 runtime binding 清楚拆開。這也是 agent-friendly deep link 能成立的原因。\n\n### 白話解析\n\n這不是內容頁，它是接待處。它負責先把人帶到對的 workspace，再送進真正要看的 diff 或 tour step。\n\n### 思考問題\n\n1. cache 應該只拿來加速，還是可以直接驅動第一次選 workspace？\n2. 為什麼這裡用 `replace` 而不是 `push`？"
+    },
+    {
+      "file": "packages/cli/src/index.ts",
+      "line": 255,
+      "endLine": 337,
+      "ref": "fef5f20f0e18b8f640c3974d36a295eecb51239c",
+      "title": "Step 5: CLI 不是特例，而是共享 contract 的另一個 source surface",
+      "description": "## Code Range\n\nL255-L337\n\n## Insight\n\n**機制**：`link diff` 與 `link tour-step` 沒有自己發明新格式。CLI 先從 backend 拿 live workspace list，resolve 到正確的 workspace，再呼叫 `/api/links/diff` 或 `/api/links/tour-step` 取得 canonical payload。\n\n**故障模式**：如果 CLI 直接在本地硬組 URL，不經過 backend authority，就會跟 live workspace status 脫節，也容易跟 frontend/backed 的 contract 漂移。\n\n**設計取捨**：CLI 依賴 backend 會多一次 round-trip，但這正是好處：它保證 agent workflow 與 mobile web 最終消費的是同一套真相。\n\n### 白話解析\n\nCLI 這裡的角色不是自己當老大，而是當一個方便的入口，把 repo path 或 tour id 轉成已驗證可用的 deep link。\n\n### 思考問題\n\n1. CLI 什麼時候應接受 human-friendly 輸入，什麼時候應強迫 caller 提供精準 id？\n2. 如果未來有 GUI copy-link，最該共用哪一層？"
+    },
+    {
+      "file": "tests/e2e/semantic-navigation.mjs",
+      "line": 161,
+      "endLine": 259,
+      "ref": "fef5f20f0e18b8f640c3974d36a295eecb51239c",
+      "title": "Step 6: Focused E2E 證明的是『backend 產出的 link，真的能被 mobile web 消費』",
+      "description": "## Code Range\n\nL161-L259\n\n## Insight\n\n**機制**：這段 E2E 沒停在 API 200。它先向 backend 要 `tour-step` / `diff` link，再真的用 `page.goto(localUrl)` 進 mobile web，驗 canonical URL、UI affordance、unwind 行為，以及 frontend console 裡的關鍵 round-trip log。\n\n**故障模式**：如果只測 API response 或只測 frontend 手動點 UI，都無法證明 agent 真正回給使用者的 link 會 work。這輪要驗的是 mixed-surface contract，而不是單一層 happy path。\n\n**設計取捨**：focused E2E 成本比 unit test 高，但它直接驗了這次 feature 最重要的承諾：agent / backend 產生的網址，使用者點了之後就是能看。\n\n### 白話解析\n\n這裡測的不是『某個函式回傳字串』，而是整條鏈：backend 生 link -> mobile web 消費 -> canonical route 成立 -> detour/back-forward 也沒壞。\n\n### 思考問題\n\n1. 對 deep-link feature 來說，為什麼 mixed-surface E2E 比單層測試更重要？\n2. 這種 focused E2E 跟 full regression checklist 的邊界該怎麼切？"
+    }
+  ]
+}
