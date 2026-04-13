@@ -96,8 +96,13 @@ async function main() {
   })
 
   await page.addInitScript(() => {
+    if (sessionStorage.getItem('code-viewer:e2e-semantic-init') === 'done') {
+      return
+    }
+    sessionStorage.setItem('code-viewer:e2e-semantic-init', 'done')
     localStorage.setItem('code-viewer:debug', 'true')
     localStorage.removeItem('code-viewer:selected-workspace')
+    localStorage.removeItem('code-viewer:last-location')
     localStorage.removeItem('code-viewer:current-file')
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith('code-viewer:current-file:')) {
@@ -111,6 +116,7 @@ async function main() {
     targetLine,
     openFile: {
       resolvedUrl: null,
+      rootRedirectUrl: null,
       workspaceKey,
       workspaceRoot: null,
       workspaceExtensionId: null,
@@ -166,6 +172,13 @@ async function main() {
     assert(result.openFile.selectWorkspaceResult, 'Missing connection.selectWorkspace.result during /open/file resolve')
     assert(result.openFile.highlightRuleFound, 'URL line did not produce a highlight rule in the code viewer')
     await page.screenshot({ path: SCREENSHOT_OPEN_FILE, fullPage: true })
+    await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' })
+    await page.waitForURL(new RegExp(`/files/frontend/src/app\\.tsx\\?line=${targetLine}$`), { timeout: 15000 })
+    result.openFile.rootRedirectUrl = page.url()
+    assert(
+      result.openFile.rootRedirectUrl === result.openFile.resolvedUrl,
+      'Initial redirect did not restore the last canonical file location',
+    )
 
     const tourLinkResponse = await fetch(
       `http://127.0.0.1:4800/api/links/tour-step?workspace=${encodeURIComponent(workspaceKey)}&tourId=${encodeURIComponent(TOUR_ID)}&step=2`,

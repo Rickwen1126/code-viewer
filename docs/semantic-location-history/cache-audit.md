@@ -18,8 +18,9 @@ This audit exists to preserve high-value UX while semantic location moves toward
 
 | Surface | Storage / Key | Source | UX | Type | Phase 1 | Replacement path |
 |---|---|---|---|---|---|---|
-| Initial redirect | `code-viewer:selected-workspace` | `frontend/src/app.tsx` | App 進來時先回上次 workspace | convenience restore | keep | 目前已透過 stored workspace snapshot + `workspaceKey` 讀取 current-file；後續可再演進成 last semantic location snapshot |
-| Initial redirect | `code-viewer:current-file:${workspaceKey}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | App 進來時直接回 selected workspace 的上次檔案 | convenience restore | keep | 目前已改成 stable workspace key；之後可改成從 canonical file URL / last-location snapshot 重建 |
+| Initial redirect | `code-viewer:selected-workspace` | `frontend/src/app.tsx` | App 進來時先回上次 workspace | convenience restore | keep | 現在會先用 `code-viewer:last-location` 還原 canonical route，再 fallback 到 current-file convenience |
+| Initial redirect | `code-viewer:last-location` | `frontend/src/app.tsx` | App 進來時直接回上次 canonical semantic location | convenience restore | keep | 目前只記 canonical detail route（file / tour step / git diff），不保存 detour state |
+| Initial redirect fallback | `code-viewer:current-file:${workspaceKey}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | 當沒有 last-location snapshot 時，仍可回 selected workspace 的上次檔案 | convenience restore | keep | 目前已改成 stable workspace key；保留為 file-centric fallback，不再是唯一入口 restore 來源 |
 | Initial redirect migration fallback | `code-viewer:current-file:${extensionId}` / `code-viewer:current-file` | `frontend/src/app.tsx`, `frontend/src/services/current-file.ts` | 舊資料仍可讀取，不打斷升級 | migration fallback | keep-temporarily | 不再寫入；Phase 2 後段再評估何時完全移除 |
 | Workspace rebind | `code-viewer:selected-workspace` | `frontend/src/hooks/use-workspace.tsx` | reload / reconnect 後自動重新 select workspace | convenience restore | keep | 目前已改為先 `listWorkspaces` 再用 `workspaceKey`/`rootPath` resolve live workspace，不再直接信任 cached `extensionId` |
 | Recent files | `code-viewer:recent-files` | `frontend/src/pages/files/file-browser.tsx` | 最近檔案捷徑 | convenience restore | keep | 不被 URL 取代；屬高價值 convenience |
@@ -58,8 +59,9 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
 這也是組合行為：
 
 1. `code-viewer:selected-workspace`
-2. `code-viewer:current-file:${workspaceKey}`
-3. migration fallback：`code-viewer:current-file:${extensionId}` / `code-viewer:current-file`
+2. `code-viewer:last-location`
+3. fallback：`code-viewer:current-file:${workspaceKey}`
+4. migration fallback：`code-viewer:current-file:${extensionId}` / `code-viewer:current-file`
 
 `app.tsx` 的 `InitialRedirect` 目前直接依賴這組資料。Phase 1 若改入口路由，必須明確保留或等價重建。
 
@@ -134,6 +136,11 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
   - reconnect / reload 已改為 stable identity resolve
   - persisted snapshot 仍保留，但 `extensionId` 不再被直接當作 selection authority
   - 這讓 VS Code restart 後的 workspace rebind 不再依賴舊 runtime id
+
+- `code-viewer:last-location`
+  - app reopen 現在會先回上次 canonical semantic location
+  - 目前只保存 canonical detail route，不保存 detour state
+  - `current-file` 仍保留為 file-centric fallback，避免失去原本好用的 reopen UX
 
 - `code-viewer:scroll:${workspaceKey}:${path}`
   - per-file scroll restore 已改成 stable workspace key

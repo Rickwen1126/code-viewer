@@ -12,6 +12,7 @@ import { debugLog } from './services/debug'
 import { buildFileRoutePath } from './services/file-location'
 import { readCurrentFileForWorkspace } from './services/current-file'
 import { readStoredWorkspace } from './services/selected-workspace'
+import { readLastLocationForWorkspace, writeLastLocationForWorkspace } from './services/last-location'
 import type { WatchDescriptor, WatchSyncPayload, WatchSyncResultPayload } from '@code-viewer/shared'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
@@ -29,10 +30,15 @@ import { OpenFileResolverPage } from './pages/open/open-file'
 import { OpenTourResolverPage } from './pages/open/open-tour'
 import { OpenGitDiffResolverPage } from './pages/open/open-git-diff'
 
-/** Smart redirect: restore last viewed file instead of always going to /workspaces */
+/** Smart redirect: restore the last canonical semantic location before falling back to file reopen convenience. */
 function InitialRedirect() {
   const savedWorkspace = readStoredWorkspace()
   if (!savedWorkspace) return <Navigate to="/workspaces" replace />
+
+  const savedLocation = readLastLocationForWorkspace(savedWorkspace)
+  if (savedLocation) {
+    return <Navigate to={savedLocation} replace />
+  }
 
   const savedFile = readCurrentFileForWorkspace(savedWorkspace)
 
@@ -103,6 +109,18 @@ function WatchSyncController() {
   return null
 }
 
+function LastLocationTracker() {
+  const location = useLocation()
+  const { workspace } = useWorkspace()
+
+  useEffect(() => {
+    if (!workspace) return
+    writeLastLocationForWorkspace(workspace, `${location.pathname}${location.search}`)
+  }, [location.pathname, location.search, workspace])
+
+  return null
+}
+
 function TabLayout() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -156,6 +174,7 @@ function TabLayout() {
   return (
     <div {...swipeHandlers} style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
       <WatchSyncController />
+      <LastLocationTracker />
       <ConnectionStatus />
       <main style={{ flex: 1, overflow: 'auto' }}>
         <Routes>
