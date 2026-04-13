@@ -71,6 +71,11 @@ html {
 .code-wrap-mode pre {
   white-space: pre-wrap !important;
   word-break: break-word !important;
+  padding-left: 0 !important;
+}
+
+.code-line-numbers.code-wrap-mode [data-testid="shiki-container"] {
+  padding-left: 0 !important;
 }
 
 /* Wrap mode line numbers via data-line attribute (set by Shiki transformer) */
@@ -80,18 +85,16 @@ html {
 }
 
 .code-line-numbers.code-wrap-mode .line {
-  display: block;
-  padding-left: var(--code-gutter-width, 3em);
+  display: flex;
+  align-items: flex-start;
   position: relative;
   min-height: 1.5em;
 }
 
-.code-line-numbers.code-wrap-mode .line::before {
-  content: attr(data-line);
-  position: absolute;
-  left: -0.5em;
+.code-line-numbers.code-wrap-mode .line-gutter {
+  flex: 0 0 calc(var(--code-gutter-width, 3em) + 0.5em);
   box-sizing: border-box;
-  width: calc(var(--code-gutter-width, 3em) + 0.5em);
+  display: block;
   text-align: right;
   color: #858585;
   user-select: none;
@@ -99,10 +102,13 @@ html {
   border-right: 1px solid #333;
 }
 
-/* Bookmark star on line in wrap mode — toggled via .bookmarked class */
-.code-line-numbers.code-wrap-mode .line.bookmarked::before {
-  content: "\2605" attr(data-line);
+.code-line-numbers.code-wrap-mode .line-gutter.bookmarked {
   color: #e2b93d;
+}
+
+.code-line-numbers.code-wrap-mode .line-content {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Remove tabindex focus outline that causes select-all on click */

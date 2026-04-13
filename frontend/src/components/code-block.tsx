@@ -1,5 +1,5 @@
 import ShikiHighlighter from 'react-shiki'
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useLayoutEffect } from 'react'
 
 interface SelectionRange {
   start: { line: number; character: number }
@@ -52,12 +52,14 @@ function mapLanguage(lang: string): string {
   return LANGUAGE_MAP[lang] ?? lang
 }
 
-// Shiki transformer factory: inject data-line + optional .bookmarked class
-function createLineTransformer(bookmarked?: Set<number>) {
+// Shiki transformer factory: inject display line number + optional .bookmarked class
+function createLineTransformer(startLine: number, bookmarked?: Set<number>) {
   return {
     line(node: { properties: Record<string, unknown> }, line: number) {
-      node.properties['data-line'] = line
-      if (bookmarked?.has(line)) {
+      const displayLine = startLine + line - 1
+      node.properties['data-line'] = displayLine
+      const isBookmarked = bookmarked?.has(displayLine)
+      if (isBookmarked) {
         const existing = (node.properties['class'] as string) ?? ''
         node.properties['class'] = existing ? `${existing} bookmarked` : 'bookmarked'
       }
@@ -65,8 +67,57 @@ function createLineTransformer(bookmarked?: Set<number>) {
   }
 }
 
+function wrapLineContent(root: HTMLElement) {
+  const lines = root.querySelectorAll<HTMLElement>('.line')
+
+  lines.forEach((line) => {
+    const existingGutter = line.querySelector<HTMLElement>(':scope > .line-gutter')
+    const existingContent = line.querySelector<HTMLElement>(':scope > .line-content')
+    const lineNumber = line.dataset.line
+    const isBookmarked = line.classList.contains('bookmarked')
+
+    if (existingGutter && existingContent) {
+      existingGutter.textContent = isBookmarked ? `\u2605${lineNumber ?? ''}` : lineNumber ?? ''
+      existingGutter.classList.toggle('bookmarked', isBookmarked)
+      return
+    }
+
+    const childNodes = Array.from(line.childNodes)
+    const gutter = document.createElement('span')
+    gutter.className = isBookmarked ? 'line-gutter bookmarked' : 'line-gutter'
+    gutter.setAttribute('aria-hidden', 'true')
+    gutter.textContent = isBookmarked ? `\u2605${lineNumber ?? ''}` : lineNumber ?? ''
+
+    const content = document.createElement('span')
+    content.className = 'line-content'
+    for (const child of childNodes) {
+      content.appendChild(child)
+    }
+
+    line.append(gutter, content)
+  })
+}
+
+function unwrapLineContent(root: HTMLElement) {
+  const lines = root.querySelectorAll<HTMLElement>('.line')
+
+  lines.forEach((line) => {
+    const gutter = line.querySelector<HTMLElement>(':scope > .line-gutter')
+    const content = line.querySelector<HTMLElement>(':scope > .line-content')
+    if (!gutter || !content) return
+
+    while (content.firstChild) {
+      line.insertBefore(content.firstChild, gutter)
+    }
+
+    gutter.remove()
+    content.remove()
+  })
+}
+
 export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine, bookmarkedLines, onLineNumberClick, startLine = 1, selectionHighlight }: CodeBlockProps) {
   const safeCode = code ?? ''
+  const codeRootRef = useRef<HTMLDivElement | null>(null)
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem('code-viewer:font-size')
     return saved ? Number(saved) : DEFAULT_FONT_SIZE
@@ -87,9 +138,26 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const transformers = useMemo(
-    () => showLineNumbers ? [createLineTransformer(bookmarkedLines)] : undefined,
-    [showLineNumbers, bookmarkedLines],
+    () => showLineNumbers ? [createLineTransformer(startLine, bookmarkedLines)] : undefined,
+    [showLineNumbers, startLine, bookmarkedLines],
   )
+
+  useLayoutEffect(() => {
+    const root = codeRootRef.current
+    if (!root) return
+
+    if (!showLineNumbers) {
+      unwrapLineContent(root)
+      return
+    }
+
+    if (wordWrap) {
+      wrapLineContent(root)
+      return
+    }
+
+    unwrapLineContent(root)
+  }, [safeCode, showLineNumbers, wordWrap, bookmarkedLines, startLine])
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
@@ -171,23 +239,16 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
         </div>
       )}
       <div
+        ref={codeRootRef}
         className={classNames}
         onClick={wordWrap && onLineNumberClick ? (e) => {
-          // In wrap mode, line numbers are CSS pseudo-elements — detect click in gutter area
-          const target = e.currentTarget
-          const rect = target.getBoundingClientRect()
-          const gutterClickWidth = (gutterWidth + 0.5) * fontSize + 1
-          if (e.clientX - rect.left > gutterClickWidth) return // not in gutter area
-          // Find which .line element was clicked
-          const lineEls = target.querySelectorAll('.line')
-          for (let i = 0; i < lineEls.length; i++) {
-            const lineRect = lineEls[i].getBoundingClientRect()
-            if (e.clientY >= lineRect.top && e.clientY <= lineRect.bottom) {
-              const dataLine = lineEls[i].getAttribute('data-line')
-              if (dataLine) { e.stopPropagation(); onLineNumberClick(parseInt(dataLine, 10)) }
-              break
-            }
-          }
+          const gutter = (e.target as HTMLElement | null)?.closest('.line-gutter')
+          if (!gutter) return
+          const lineEl = gutter.closest('.line')
+          const dataLine = lineEl?.getAttribute('data-line')
+          if (!dataLine) return
+          e.stopPropagation()
+          onLineNumberClick(parseInt(dataLine, 10))
         } : undefined}
         style={{
           flex: 1,
