@@ -179,7 +179,7 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 7. **Git cache-first**
    - `cache.ts` 的 IndexedDB `git-status`
 8. **Tour 進度恢復**
-   - `tour-detail.tsx` 的 `tour-progress:<extensionId>:<tourId>`
+   - `tour-detail.tsx` 的 `tour-progress:<workspaceKey>:<tourId>`
 9. **閱讀偏好**
    - `code-viewer:font-size`
    - `code-viewer:wrap-enabled`
@@ -202,7 +202,7 @@ Phase 0 不是只做一次口頭盤點，而是要落成可持續更新的 audit
 6. **Git 頁 cache-first 顯示**
    - 目前來自 IndexedDB `git-status`
 7. **Tour step 恢復**
-   - 目前主要來自 `tour-progress:<extensionId>:<tourId>`
+   - 目前主要來自 `tour-progress:<workspaceKey>:<tourId>`
 8. **各種偏好設定**
    - word wrap
    - markdown raw/rendered

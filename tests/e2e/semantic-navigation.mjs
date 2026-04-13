@@ -189,12 +189,12 @@ async function main() {
       'Direct tour-step link did not resolve to canonical URL',
     )
 
-    await page.evaluate(({ extensionId, tourId }) => {
+    await page.evaluate(({ workspaceKey, tourId }) => {
       localStorage.setItem(
-        `tour-progress:${extensionId}:${tourId}`,
+        `tour-progress:${workspaceKey}:${tourId}`,
         JSON.stringify({ currentStep: 1 }),
       )
-    }, { extensionId: result.openFile.workspaceExtensionId, tourId: TOUR_ID })
+    }, { workspaceKey, tourId: TOUR_ID })
 
     await page.getByRole('button', { name: 'Tours', exact: true }).click()
     await page.waitForURL(/\/tours$/, { timeout: 15000 })

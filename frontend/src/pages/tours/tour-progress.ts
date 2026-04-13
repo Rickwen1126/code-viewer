@@ -1,40 +1,75 @@
-export function getTourProgressKey(extensionId: string, tourId: string): string {
-  return `tour-progress:${extensionId}:${tourId}`
+interface WorkspaceLike {
+  workspaceKey?: string | null
+  extensionId?: string | null
 }
 
-export function loadTourProgress(extensionId: string, tourId: string): number {
+export function getTourProgressKey(workspace: WorkspaceLike | null | undefined, tourId: string): string | null {
+  if (!workspace?.workspaceKey) return null
+  return `tour-progress:${workspace.workspaceKey}:${tourId}`
+}
+
+export function getLegacyTourProgressKey(workspace: WorkspaceLike | null | undefined, tourId: string): string | null {
+  if (!workspace?.extensionId) return null
+  return `tour-progress:${workspace.extensionId}:${tourId}`
+}
+
+export function loadTourProgress(workspace: WorkspaceLike | null | undefined, tourId: string): number {
   try {
-    const raw = localStorage.getItem(getTourProgressKey(extensionId, tourId))
-    if (!raw) return 0
-    const data = JSON.parse(raw) as { currentStep?: number }
-    return typeof data.currentStep === 'number' && Number.isFinite(data.currentStep)
-      ? Math.max(0, Math.trunc(data.currentStep))
-      : 0
+    const stableKey = getTourProgressKey(workspace, tourId)
+    if (stableKey) {
+      const stableRaw = localStorage.getItem(stableKey)
+      if (stableRaw) {
+        const data = JSON.parse(stableRaw) as { currentStep?: number }
+        return typeof data.currentStep === 'number' && Number.isFinite(data.currentStep)
+          ? Math.max(0, Math.trunc(data.currentStep))
+          : 0
+      }
+    }
+
+    const legacyKey = getLegacyTourProgressKey(workspace, tourId)
+    if (legacyKey) {
+      const legacyRaw = localStorage.getItem(legacyKey)
+      if (legacyRaw) {
+        const data = JSON.parse(legacyRaw) as { currentStep?: number }
+        return typeof data.currentStep === 'number' && Number.isFinite(data.currentStep)
+          ? Math.max(0, Math.trunc(data.currentStep))
+          : 0
+      }
+    }
+
+    return 0
   } catch {
     return 0
   }
 }
 
-export function saveTourProgress(extensionId: string, tourId: string, currentStep: number): void {
+export function saveTourProgress(
+  workspace: WorkspaceLike | null | undefined,
+  tourId: string,
+  currentStep: number,
+): void {
   try {
-    localStorage.setItem(
-      getTourProgressKey(extensionId, tourId),
-      JSON.stringify({ currentStep: Math.max(0, Math.trunc(currentStep)) }),
-    )
+    const stableKey = getTourProgressKey(workspace, tourId)
+    if (stableKey) {
+      localStorage.setItem(
+        stableKey,
+        JSON.stringify({ currentStep: Math.max(0, Math.trunc(currentStep)) }),
+      )
+    }
   } catch {
     // ignore
   }
 }
 
 export function getResumeTourStep(
-  extensionId: string,
+  workspace: WorkspaceLike | null | undefined,
   tourId: string,
   stepCount: number,
 ): number {
   const clampedStepCount = Math.max(0, Math.trunc(stepCount))
   if (clampedStepCount <= 1) return 1
 
-  const savedIndex = loadTourProgress(extensionId, tourId)
+  const savedIndex = loadTourProgress(workspace, tourId)
   const clampedIndex = Math.max(0, Math.min(savedIndex, clampedStepCount - 1))
   return clampedIndex + 1
 }

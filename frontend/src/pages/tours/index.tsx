@@ -235,7 +235,7 @@ export function TourListPage() {
               <button
                 onClick={() => navigate(buildTourStepUrl(
                   tour.id,
-                  getResumeTourStep(workspace.extensionId, tour.id, tour.stepCount),
+                  getResumeTourStep(workspace, tour.id, tour.stepCount),
                 ))}
                 style={{
                   flex: 1,

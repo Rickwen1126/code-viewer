@@ -159,7 +159,7 @@ export function TourDetailPage() {
   // Persist progress as reopen convenience only; it no longer defines route truth.
   useEffect(() => {
     if (!workspace || !tourId || !tourData) return
-    saveTourProgress(workspace.extensionId, tourId, currentStep)
+    saveTourProgress(workspace, tourId, currentStep)
   }, [currentStep, workspace, tourId, tourData])
 
   // Parse description into sections for editing
