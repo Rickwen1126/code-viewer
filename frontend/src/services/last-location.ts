@@ -13,11 +13,19 @@ interface LastLocationSnapshot {
 
 const STORAGE_KEY = 'code-viewer:last-location'
 
-export function isRestorableLocation(pathname: string): boolean {
+function hasPositiveStepQuery(search: string): boolean {
+  const raw = new URLSearchParams(search).get('step')
+  if (!raw) return false
+  const value = Number(raw)
+  return Number.isFinite(value) && Math.trunc(value) >= 1
+}
+
+export function isRestorableLocation(pathname: string, search = ''): boolean {
   if (pathname.includes('?') || pathname.includes('#')) return false
-  return pathname.startsWith('/files/')
-    || pathname.startsWith('/git/diff/')
-    || /^\/tours\/[^/]+$/.test(pathname)
+  if (pathname.startsWith('/files/')) return pathname.length > '/files/'.length
+  if (pathname.startsWith('/git/diff/')) return pathname.length > '/git/diff/'.length
+  if (/^\/tours\/[^/]+$/.test(pathname)) return hasPositiveStepQuery(search)
+  return false
 }
 
 function matchesWorkspace(
@@ -43,7 +51,7 @@ export function readLastLocationForWorkspace(workspace: WorkspaceLike | null | u
     if (!snapshot?.href || !matchesWorkspace(workspace, snapshot)) return null
 
     const parsed = new URL(snapshot.href, 'http://localhost')
-    if (!isRestorableLocation(parsed.pathname)) return null
+    if (!isRestorableLocation(parsed.pathname, parsed.search)) return null
     return `${parsed.pathname}${parsed.search}`
   } catch {
     return null
@@ -58,7 +66,7 @@ export function writeLastLocationForWorkspace(
 
   try {
     const parsed = new URL(href, 'http://localhost')
-    if (!isRestorableLocation(parsed.pathname)) return
+    if (!isRestorableLocation(parsed.pathname, parsed.search)) return
 
     localStorage.setItem(
       STORAGE_KEY,

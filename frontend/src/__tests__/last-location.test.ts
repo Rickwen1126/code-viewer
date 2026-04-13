@@ -36,8 +36,8 @@ describe('last-location storage', () => {
   it('accepts only restorable canonical detail routes', () => {
     expect(isRestorableLocation('/files/src/app.tsx')).toBe(true)
     expect(isRestorableLocation('/git/diff/src/app.tsx')).toBe(true)
-    expect(isRestorableLocation('/tours/abc?step=2')).toBe(false)
-    expect(isRestorableLocation('/tours/abc')).toBe(true)
+    expect(isRestorableLocation('/tours/abc')).toBe(false)
+    expect(isRestorableLocation('/tours/abc', '?step=2')).toBe(true)
     expect(isRestorableLocation('/files')).toBe(false)
     expect(isRestorableLocation('/open/file')).toBe(false)
   })
@@ -50,6 +50,12 @@ describe('last-location storage', () => {
 
   it('ignores non-restorable routes', () => {
     writeLastLocationForWorkspace(workspace, '/workspaces')
+
+    expect(readLastLocationForWorkspace(workspace)).toBeNull()
+  })
+
+  it('ignores bare tour routes until the URL is canonicalized with step', () => {
+    writeLastLocationForWorkspace(workspace, '/tours/tour-1')
 
     expect(readLastLocationForWorkspace(workspace)).toBeNull()
   })

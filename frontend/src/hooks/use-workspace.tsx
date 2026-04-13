@@ -41,31 +41,58 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    const storedWorkspace = workspace
+    let cancelled = false
+
     setWorkspaceReady(false)
-    request<Record<string, never>, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
-      .then((listRes) => {
-        const matchedWorkspace = findMatchingWorkspace(workspace, listRes.payload.workspaces)
+    void (async () => {
+      try {
+        const listRes = await request<Record<string, never>, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
+        const matchedWorkspace = findMatchingWorkspace(storedWorkspace, listRes.payload.workspaces)
         if (!matchedWorkspace) {
-          setWorkspace(null)
-          setWorkspaceReady(true)
-          return null
+          if (!cancelled) {
+            setWorkspace(null)
+            setWorkspaceReady(true)
+          }
+          return
         }
 
-        return request<{ extensionId: string }, SelectWorkspaceResultPayload>(
-          'connection.selectWorkspace',
-          { extensionId: matchedWorkspace.extensionId },
-        )
-      })
-      .then((selectRes) => {
-        if (!selectRes) return
-        setWorkspace(selectRes.payload.workspace)
-        setWorkspaceReady(true)
-      })
-      .catch(() => {
-        // Unable to resolve a live workspace entry — clear stale workspace
-        setWorkspace(null)
-        setWorkspaceReady(true)
-      })
+        try {
+          const selectRes = await request<{ extensionId: string }, SelectWorkspaceResultPayload>(
+            'connection.selectWorkspace',
+            { extensionId: matchedWorkspace.extensionId },
+          )
+          if (!cancelled) {
+            setWorkspace(selectRes.payload.workspace)
+          }
+        } catch {
+          // Only clear the stored workspace after a confirmed live-list miss.
+          // A request failure can be transient, so keep the snapshot unless a
+          // second live lookup proves the workspace is truly gone.
+          try {
+            const retryListRes = await request<Record<string, never>, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
+            const retryMatch = findMatchingWorkspace(storedWorkspace, retryListRes.payload.workspaces)
+            if (!retryMatch && !cancelled) {
+              setWorkspace(null)
+            }
+          } catch {
+            // keep the stored workspace snapshot on transient failures
+          }
+        } finally {
+          if (!cancelled) {
+            setWorkspaceReady(true)
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setWorkspaceReady(true)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [connectionState]) // only on connection change, not workspace change
 
   const selectWorkspace = useCallback((ws: Workspace) => {
