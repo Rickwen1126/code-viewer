@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFileLinkResponse,
+  buildGitDiffLinkResponse,
+  buildTourStepLinkResponse,
   getLanIp,
+  normalizeNonEmptyString,
+  parseGitDiffStatus,
   normalizeRepoRelativePath,
   parsePositiveInt,
   type WorkspaceLinkEntry,
@@ -39,6 +43,24 @@ describe('parsePositiveInt', () => {
     expect(parsePositiveInt('0')).toBeUndefined()
     expect(parsePositiveInt('-1')).toBeUndefined()
     expect(parsePositiveInt('abc')).toBeUndefined()
+  })
+})
+
+describe('parseGitDiffStatus', () => {
+  it('only accepts known git statuses', () => {
+    expect(parseGitDiffStatus('added')).toBe('added')
+    expect(parseGitDiffStatus('modified')).toBe('modified')
+    expect(parseGitDiffStatus('deleted')).toBe('deleted')
+    expect(parseGitDiffStatus('renamed')).toBe('renamed')
+    expect(parseGitDiffStatus('weird')).toBeUndefined()
+  })
+})
+
+describe('normalizeNonEmptyString', () => {
+  it('returns trimmed non-empty strings only', () => {
+    expect(normalizeNonEmptyString('  tour-abc  ')).toBe('tour-abc')
+    expect(normalizeNonEmptyString('   ')).toBeNull()
+    expect(normalizeNonEmptyString(null)).toBeNull()
   })
 })
 
@@ -102,6 +124,61 @@ describe('buildFileLinkResponse', () => {
         [makeWorkspace({ status: 'stale' })],
       ).kind,
     ).toBe('workspace_not_connected')
+  })
+})
+
+describe('buildGitDiffLinkResponse', () => {
+  it('builds deep links for a connected git diff workspace', () => {
+    const result = buildGitDiffLinkResponse(
+      {
+        workspaceRef: 'ws_codeviewer',
+        path: 'packages/cli/src/index.ts',
+        commit: 'abc123',
+        status: 'modified',
+      },
+      [makeWorkspace()],
+      { lanIp: '192.168.1.23' },
+    )
+
+    expect(result.kind).toBe('ok')
+    if (result.kind !== 'ok') return
+
+    expect(result.payload.resolverPath).toBe(
+      '/open/git-diff?workspace=ws_codeviewer&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified',
+    )
+    expect(result.payload.localUrl).toBe(
+      'http://localhost:4801/open/git-diff?workspace=ws_codeviewer&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified',
+    )
+    expect(result.payload.lanUrl).toBe(
+      'http://192.168.1.23:4801/open/git-diff?workspace=ws_codeviewer&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified',
+    )
+  })
+})
+
+describe('buildTourStepLinkResponse', () => {
+  it('builds deep links for a connected tour step workspace', () => {
+    const result = buildTourStepLinkResponse(
+      {
+        workspaceRef: 'ws_codeviewer',
+        tourId: 'review-tour',
+        step: 3,
+      },
+      [makeWorkspace()],
+      { lanIp: '192.168.1.23' },
+    )
+
+    expect(result.kind).toBe('ok')
+    if (result.kind !== 'ok') return
+
+    expect(result.payload.resolverPath).toBe(
+      '/open/tour?workspace=ws_codeviewer&tourId=review-tour&step=3',
+    )
+    expect(result.payload.localUrl).toBe(
+      'http://localhost:4801/open/tour?workspace=ws_codeviewer&tourId=review-tour&step=3',
+    )
+    expect(result.payload.lanUrl).toBe(
+      'http://192.168.1.23:4801/open/tour?workspace=ws_codeviewer&tourId=review-tour&step=3',
+    )
   })
 })
 

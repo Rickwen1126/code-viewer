@@ -32,6 +32,11 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+function getPathAndSearch(rawUrl) {
+  const url = new URL(rawUrl)
+  return `${url.pathname}${url.search}`
+}
+
 function findOneBasedLine(filePath, needle) {
   const lines = readFileSync(filePath, 'utf8').split('\n')
   const index = lines.findIndex((line) => line.includes(needle))
@@ -65,11 +70,11 @@ async function expectNoRuntimeErrors() {
 async function main() {
   const targetLine = findOneBasedLine(APP_FILE_PATH, APP_TARGET_TEXT)
   const workspaceKey = await findWorkspaceKey(WORKSPACE_PATH)
-  const headCommit = execSync('git rev-parse HEAD', {
+  const diffCommit = execSync(`git log -n 1 --format=%H -- ${JSON.stringify(GIT_TARGET_FILE)}`, {
     cwd: WORKSPACE_PATH,
     encoding: 'utf8',
   }).trim()
-  const headCommitShort = headCommit.slice(0, 7)
+  const diffCommitShort = diffCommit.slice(0, 7)
   const browser = await chromium.launch({
     executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     headless: true,
@@ -108,13 +113,19 @@ async function main() {
       highlightRuleFound: false,
     },
     tourDetour: {
+      apiResolverPath: null,
+      apiLocalUrl: null,
+      directUrl: null,
       stepUrl: null,
       codeUrl: null,
       unwindUrl: null,
       forwardUrl: null,
     },
     gitDetour: {
-      commit: headCommit,
+      commit: diffCommit,
+      apiResolverPath: null,
+      apiLocalUrl: null,
+      directUrl: null,
       diffUrl: null,
       codeUrl: null,
       unwindUrl: null,
@@ -147,11 +158,40 @@ async function main() {
     assert(result.openFile.highlightRuleFound, 'URL line did not produce a highlight rule in the code viewer')
     await page.screenshot({ path: SCREENSHOT_OPEN_FILE, fullPage: true })
 
-    await page.getByRole('button', { name: 'Tours' }).click()
+    const tourLinkResponse = await fetch(
+      `http://127.0.0.1:4800/api/links/tour-step?workspace=${encodeURIComponent(workspaceKey)}&tourId=${encodeURIComponent(TOUR_ID)}&step=2`,
+    )
+    assert(tourLinkResponse.ok, `Failed to fetch tour-step link: ${tourLinkResponse.status} ${tourLinkResponse.statusText}`)
+    const tourLink = await tourLinkResponse.json()
+    result.tourDetour.apiResolverPath = tourLink.resolverPath
+    result.tourDetour.apiLocalUrl = tourLink.localUrl
+    await page.evaluate(() => {
+      localStorage.removeItem('code-viewer:selected-workspace')
+    })
+    await page.goto(tourLink.localUrl, { waitUntil: 'networkidle' })
+    await page.waitForURL(new RegExp(`/tours/${TOUR_ID}\\?step=2$`), { timeout: 20000 })
+    result.tourDetour.directUrl = page.url()
+    assert(
+      result.tourDetour.apiResolverPath === `/open/tour?workspace=${workspaceKey}&tourId=${encodeURIComponent(TOUR_ID)}&step=2`,
+      'tour-step resolver path did not match expected contract',
+    )
+    assert(
+      getPathAndSearch(result.tourDetour.directUrl) === `/tours/${TOUR_ID}?step=2`,
+      'Direct tour-step link did not resolve to canonical URL',
+    )
+
+    await page.getByRole('button', { name: 'Tours', exact: true }).click()
     await page.waitForURL(/\/tours$/, { timeout: 15000 })
     await page.locator('button', { hasText: TOUR_TITLE }).first().click()
     await page.waitForURL(new RegExp(`/tours/${TOUR_ID}`), { timeout: 15000 })
-    await page.getByRole('button', { name: 'Next' }).click()
+    if (getPathAndSearch(page.url()) !== `/tours/${TOUR_ID}?step=2`) {
+      const nextButton = page.getByRole('button', { name: 'Next' })
+      if (await nextButton.isVisible().catch(() => false)) {
+        await nextButton.click()
+      } else {
+        await page.goto(`${BASE_URL}/tours/${TOUR_ID}?step=2`, { waitUntil: 'networkidle' })
+      }
+    }
     await page.waitForURL(new RegExp(`/tours/${TOUR_ID}\\?step=2$`), { timeout: 15000 })
     result.tourDetour.stepUrl = page.url()
     await page.getByRole('button', { name: 'View in Code Viewer' }).click()
@@ -169,15 +209,37 @@ async function main() {
     assert(result.tourDetour.unwindUrl === result.tourDetour.stepUrl, 'Back to Tour did not unwind to the original tour step URL')
     assert(result.tourDetour.forwardUrl === result.tourDetour.codeUrl, 'Browser forward did not restore the code detour entry')
 
-    await page.getByRole('button', { name: 'Git' }).click()
+    const diffLinkResponse = await fetch(
+      `http://127.0.0.1:4800/api/links/diff?workspace=${encodeURIComponent(workspaceKey)}&path=${encodeURIComponent(GIT_TARGET_FILE)}&commit=${encodeURIComponent(diffCommit)}&status=modified`,
+    )
+    assert(diffLinkResponse.ok, `Failed to fetch diff link: ${diffLinkResponse.status} ${diffLinkResponse.statusText}`)
+    const diffLink = await diffLinkResponse.json()
+    result.gitDetour.apiResolverPath = diffLink.resolverPath
+    result.gitDetour.apiLocalUrl = diffLink.localUrl
+    await page.evaluate(() => {
+      localStorage.removeItem('code-viewer:selected-workspace')
+    })
+    await page.goto(diffLink.localUrl, { waitUntil: 'networkidle' })
+    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${diffCommit}&status=modified$`), { timeout: 20000 })
+    result.gitDetour.directUrl = page.url()
+    assert(
+      result.gitDetour.apiResolverPath === `/open/git-diff?workspace=${workspaceKey}&path=${encodeURIComponent(GIT_TARGET_FILE)}&commit=${diffCommit}&status=modified`,
+      'diff resolver path did not match expected contract',
+    )
+    assert(
+      getPathAndSearch(result.gitDetour.directUrl) === `/git/diff/packages/cli/src/index.ts?commit=${diffCommit}&status=modified`,
+      'Direct diff link did not resolve to canonical URL',
+    )
+
+    await page.getByRole('button', { name: 'Git', exact: true }).click()
     await page.waitForURL(/\/git$/, { timeout: 15000 })
-    const commitButton = page.locator('button', { hasText: headCommitShort }).first()
+    const commitButton = page.locator('button', { hasText: diffCommitShort }).first()
     await commitButton.waitFor({ state: 'visible', timeout: 15000 })
     await commitButton.click()
     const gitFileButton = page.locator('button', { hasText: GIT_TARGET_FILE }).first()
     await gitFileButton.waitFor({ state: 'visible', timeout: 20000 })
     await gitFileButton.click()
-    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${headCommit}`), { timeout: 15000 })
+    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${diffCommit}`), { timeout: 15000 })
     result.gitDetour.diffUrl = page.url()
     await page.getByRole('button', { name: 'View in Code' }).click()
     await page.waitForURL(/\/files\/packages\/cli\/src\/index\.ts\?line=/, { timeout: 15000 })
@@ -185,7 +247,7 @@ async function main() {
     result.gitDetour.codeUrl = page.url()
     await page.screenshot({ path: SCREENSHOT_GIT_CODE, fullPage: true })
     await page.getByRole('button', { name: 'Back to Diff' }).click()
-    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${headCommit}`), { timeout: 15000 })
+    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${diffCommit}`), { timeout: 15000 })
     result.gitDetour.unwindUrl = page.url()
     await page.goForward({ waitUntil: 'networkidle' })
     await page.waitForURL(/\/files\/packages\/cli\/src\/index\.ts\?line=/, { timeout: 15000 })

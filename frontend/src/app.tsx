@@ -24,6 +24,8 @@ import { PendingEditsListPage } from './pages/review'
 import { EditDiffReviewPage } from './pages/review/edit-diff'
 import { ToolApprovalPage } from './pages/review/tool-approval'
 import { OpenFileResolverPage } from './pages/open/open-file'
+import { OpenTourResolverPage } from './pages/open/open-tour'
+import { OpenGitDiffResolverPage } from './pages/open/open-git-diff'
 
 /** Smart redirect: restore last viewed file instead of always going to /workspaces */
 function InitialRedirect() {
@@ -163,6 +165,8 @@ function TabLayout() {
         <Routes>
           <Route index element={<InitialRedirect />} />
           <Route path="open/file" element={<OpenFileResolverPage />} />
+          <Route path="open/tour" element={<OpenTourResolverPage />} />
+          <Route path="open/git-diff" element={<OpenGitDiffResolverPage />} />
           <Route path="workspaces" element={<WorkspacesPage />} />
           <Route path="files" element={<FileBrowserPage />} />
           <Route path="files/*" element={<CodeViewerPage />} />

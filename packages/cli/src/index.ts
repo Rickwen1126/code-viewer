@@ -25,7 +25,7 @@ interface AdminWorkspacesResponse {
   workspaces: WorkspaceStatusEntry[]
 }
 
-interface FileLinkResponse {
+interface ResolverLinkResponse {
   status: 'ok'
   generatedAt: number
   workspace: Pick<WorkspaceStatusEntry, 'workspaceKey' | 'displayName' | 'gitBranch' | 'extensionVersion' | 'status'>
@@ -151,6 +151,15 @@ interface LinkFileOptions {
   backend?: string
 }
 
+interface LinkDiffOptions extends LinkFileOptions {
+  commit?: string
+  status?: 'added' | 'modified' | 'deleted' | 'renamed'
+}
+
+interface LinkTourStepOptions extends LinkFileOptions {
+  step?: number
+}
+
 async function linkFile(targetArg: string, options: LinkFileOptions) {
   const backendBase = normalizeBackendBase(options.backend ?? process.env.CODE_VIEWER_BACKEND_URL)
   const secret = process.env.CODE_VIEWER_SECRET
@@ -189,7 +198,7 @@ async function linkFile(targetArg: string, options: LinkFileOptions) {
   if (target.endLine != null) url.searchParams.set('endLine', String(target.endLine))
   if (secret) url.searchParams.set('secret', secret)
 
-  const response = await fetchJson<FileLinkResponse>(url)
+  const response = await fetchJson<ResolverLinkResponse>(url)
 
   if (options.json) {
     console.log(JSON.stringify(response, null, 2))
@@ -207,6 +216,124 @@ async function linkFile(targetArg: string, options: LinkFileOptions) {
     console.log(`  Mobile:    ${response.lanUrl}`)
   }
   console.log('')
+}
+
+function resolveWorkspaceByOption(
+  workspaceArg: string | undefined,
+  workspaces: WorkspaceStatusEntry[],
+): WorkspaceStatusEntry | null {
+  if (!workspaceArg) return null
+  const trimmed = workspaceArg.trim()
+  const resolvedWorkspaceRoot = trimmed.startsWith('ws_') ? null : resolve(trimmed)
+  return workspaces.find((workspace) =>
+    workspace.workspaceKey === trimmed ||
+    (resolvedWorkspaceRoot != null && workspace.rootPath === resolvedWorkspaceRoot),
+  ) ?? null
+}
+
+function printResolverLink(
+  label: string,
+  workspaceRoot: string,
+  response: ResolverLinkResponse,
+  extraLines: Array<[string, string]>,
+) {
+  console.log('')
+  console.log(`${label} ready`)
+  console.log(`  Workspace: ${response.workspace.displayName}`)
+  console.log(`  Key:       ${response.workspace.workspaceKey}`)
+  console.log(`  Root:      ${workspaceRoot}`)
+  for (const [key, value] of extraLines) {
+    console.log(`  ${key.padEnd(10)}${value}`)
+  }
+  console.log(`  Local:     ${response.localUrl}`)
+  if (response.lanUrl) {
+    console.log(`  Mobile:    ${response.lanUrl}`)
+  }
+  console.log('')
+}
+
+async function linkDiff(targetArg: string, options: LinkDiffOptions) {
+  const backendBase = normalizeBackendBase(options.backend ?? process.env.CODE_VIEWER_BACKEND_URL)
+  const secret = process.env.CODE_VIEWER_SECRET
+  const absFilePath = resolve(targetArg)
+  const workspaces = await listWorkspaces(backendBase, secret)
+
+  let matchedWorkspace: WorkspaceStatusEntry | null = null
+  if (options.workspace) {
+    matchedWorkspace = resolveWorkspaceByOption(options.workspace, workspaces)
+    if (!matchedWorkspace) {
+      throw new Error(`No connected workspace matches ${options.workspace}.`)
+    }
+  } else {
+    matchedWorkspace = findBestWorkspaceForFile(absFilePath, workspaces)
+    if (!matchedWorkspace) {
+      throw new Error(`No connected workspace matches ${absFilePath}. Use --workspace <rootPath>.`)
+    }
+  }
+
+  const workspaceRoot = matchedWorkspace.rootPath
+  const relativePath = normalizeRepoRelativePath(relative(workspaceRoot, absFilePath))
+  if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) {
+    throw new Error(`File is outside workspace: ${absFilePath}`)
+  }
+
+  const url = new URL('/api/links/diff', backendBase)
+  url.searchParams.set('workspace', matchedWorkspace.workspaceKey)
+  url.searchParams.set('path', relativePath)
+  if (options.commit) url.searchParams.set('commit', options.commit)
+  if (options.status) url.searchParams.set('status', options.status)
+  if (secret) url.searchParams.set('secret', secret)
+
+  const response = await fetchJson<ResolverLinkResponse>(url)
+
+  if (options.json) {
+    console.log(JSON.stringify(response, null, 2))
+    return
+  }
+
+  printResolverLink('Diff link', workspaceRoot, response, [
+    ['Path:', relativePath],
+    ['Commit:', options.commit ?? '(workspace diff)'],
+    ['Status:', options.status ?? '(auto)'],
+  ])
+}
+
+async function linkTourStep(tourId: string, options: LinkTourStepOptions) {
+  const backendBase = normalizeBackendBase(options.backend ?? process.env.CODE_VIEWER_BACKEND_URL)
+  const secret = process.env.CODE_VIEWER_SECRET
+  const workspaces = await listWorkspaces(backendBase, secret).then((items) =>
+    items.filter((workspace) => workspace.status === 'connected'),
+  )
+
+  let matchedWorkspace = resolveWorkspaceByOption(options.workspace, workspaces)
+  if (!matchedWorkspace) {
+    if (options.workspace) {
+      throw new Error(`No connected workspace matches ${options.workspace}.`)
+    }
+    if (workspaces.length === 1) {
+      matchedWorkspace = workspaces[0]
+    } else {
+      throw new Error('Tour step links require --workspace <rootPath> when multiple workspaces are connected.')
+    }
+  }
+
+  const url = new URL('/api/links/tour-step', backendBase)
+  url.searchParams.set('workspace', matchedWorkspace.workspaceKey)
+  url.searchParams.set('tourId', tourId)
+  if (options.step != null) url.searchParams.set('step', String(options.step))
+  if (secret) url.searchParams.set('secret', secret)
+
+  const response = await fetchJson<ResolverLinkResponse>(url)
+
+  if (options.json) {
+    console.log(JSON.stringify(response, null, 2))
+    return
+  }
+
+  printResolverLink('Tour step link', matchedWorkspace.rootPath, response, [
+    ['Tour:', tourId],
+    ['Step:', options.step != null ? String(options.step) : '(saved progress)'],
+  ])
 }
 
 // ── Commands ────────────────────────────────────────────────────────
@@ -325,6 +452,10 @@ Commands:
   status         Show service status
   link file <target> [--workspace <path>] [--json]
                  Generate a deep link for a file or range
+  link diff <target> [--workspace <path>] [--commit <hash>] [--status <status>] [--json]
+                 Generate a deep link for a git diff
+  link tour-step <tourId> [--workspace <path>] [--step <n>] [--json]
+                 Generate a deep link for a tour step
 
 Examples:
   code-viewer start ~/code/my-project
@@ -332,6 +463,8 @@ Examples:
   code-viewer status
   code-viewer link file frontend/src/app.tsx --workspace ~/code/code-viewer
   code-viewer link file ~/code/code-viewer/frontend/src/app.tsx:120:140 --json
+  code-viewer link diff packages/cli/src/index.ts --workspace ~/code/code-viewer --commit abc123
+  code-viewer link tour-step review-tour --workspace ~/code/code-viewer --step 3
 `)
 }
 
@@ -370,6 +503,91 @@ function parseLinkFileArgs(args: string[]): { target: string; options: LinkFileO
   return { target, options }
 }
 
+function parseLinkDiffArgs(args: string[]): { target: string; options: LinkDiffOptions } {
+  const [target, ...rest] = args
+  if (!target) {
+    throw new Error('Usage: code-viewer link diff <target> [--workspace <path>] [--commit <hash>] [--status <status>] [--json]')
+  }
+
+  const options: LinkDiffOptions = {}
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index]
+    switch (arg) {
+      case '--workspace':
+        options.workspace = rest[index + 1]
+        if (!options.workspace) throw new Error('--workspace requires a path')
+        index += 1
+        break
+      case '--backend':
+        options.backend = rest[index + 1]
+        if (!options.backend) throw new Error('--backend requires a URL')
+        index += 1
+        break
+      case '--commit':
+        options.commit = rest[index + 1]
+        if (!options.commit) throw new Error('--commit requires a hash')
+        index += 1
+        break
+      case '--status':
+        {
+          const status = rest[index + 1]
+          if (status !== 'added' && status !== 'modified' && status !== 'deleted' && status !== 'renamed') {
+            throw new Error('--status must be one of: added, modified, deleted, renamed')
+          }
+          options.status = status
+          index += 1
+        }
+        break
+      case '--json':
+        options.json = true
+        break
+      default:
+        throw new Error(`Unknown option: ${arg}`)
+    }
+  }
+
+  return { target, options }
+}
+
+function parseLinkTourStepArgs(args: string[]): { tourId: string; options: LinkTourStepOptions } {
+  const [tourId, ...rest] = args
+  if (!tourId) {
+    throw new Error('Usage: code-viewer link tour-step <tourId> [--workspace <path>] [--step <n>] [--json]')
+  }
+
+  const options: LinkTourStepOptions = {}
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index]
+    switch (arg) {
+      case '--workspace':
+        options.workspace = rest[index + 1]
+        if (!options.workspace) throw new Error('--workspace requires a path')
+        index += 1
+        break
+      case '--backend':
+        options.backend = rest[index + 1]
+        if (!options.backend) throw new Error('--backend requires a URL')
+        index += 1
+        break
+      case '--step':
+        {
+          const step = parsePositiveInt(rest[index + 1])
+          if (step == null) throw new Error('--step requires a positive integer')
+          options.step = step
+          index += 1
+        }
+        break
+      case '--json':
+        options.json = true
+        break
+      default:
+        throw new Error(`Unknown option: ${arg}`)
+    }
+  }
+
+  return { tourId, options }
+}
+
 // ── Main ────────────────────────────────────────────────────────────
 
 const [command, ...args] = process.argv.slice(2)
@@ -390,13 +608,28 @@ switch (command) {
     status()
     break
   case 'link':
-    if (args[0] !== 'file') {
-      console.error('Usage: code-viewer link file <target> [--workspace <path>] [--json]')
-      process.exit(1)
-    }
     try {
-      const { target, options } = parseLinkFileArgs(args.slice(1))
-      await linkFile(target, options)
+      switch (args[0]) {
+        case 'file': {
+          const { target, options } = parseLinkFileArgs(args.slice(1))
+          await linkFile(target, options)
+          break
+        }
+        case 'diff': {
+          const { target, options } = parseLinkDiffArgs(args.slice(1))
+          await linkDiff(target, options)
+          break
+        }
+        case 'tour-step': {
+          const { tourId, options } = parseLinkTourStepArgs(args.slice(1))
+          await linkTourStep(tourId, options)
+          break
+        }
+        default:
+          throw new Error(
+            'Usage: code-viewer link <file|diff|tour-step> ...',
+          )
+      }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
       process.exit(1)

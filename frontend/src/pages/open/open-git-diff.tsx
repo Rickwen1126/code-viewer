@@ -1,18 +1,19 @@
 import { useSearchParams } from 'react-router'
-import { buildFileLocationUrl, parseFileLocationQuery } from '../../services/file-location'
+import { buildGitDiffUrl } from '../../services/semantic-navigation'
 import { WorkspaceScopedResolverPage } from './workspace-resolver'
 
-export function OpenFileResolverPage() {
+export function OpenGitDiffResolverPage() {
   const [searchParams] = useSearchParams()
 
   const workspaceRef = searchParams.get('workspace')
   const path = searchParams.get('path')
-  const fileQuery = parseFileLocationQuery(searchParams)
-  const targetUrl = path ? buildFileLocationUrl(path, fileQuery) : null
+  const commit = searchParams.get('commit') ?? undefined
+  const status = searchParams.get('status') ?? undefined
+  const targetUrl = path ? buildGitDiffUrl(path, { commit, status }) : null
 
   return (
     <WorkspaceScopedResolverPage
-      title="Open File Link"
+      title="Open Git Diff Link"
       workspaceRef={workspaceRef}
       targetUrl={path && targetUrl ? targetUrl : null}
       invalidMessage="Invalid link: workspace and path are required."
@@ -20,6 +21,8 @@ export function OpenFileResolverPage() {
       selectingLabel="workspace"
       details={[
         { label: 'path', value: path },
+        { label: 'commit', value: commit ?? null },
+        { label: 'status', value: status ?? null },
       ]}
     />
   )
