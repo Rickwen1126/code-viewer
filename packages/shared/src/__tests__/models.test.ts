@@ -587,11 +587,11 @@ describe('Workspace', () => {
       rootPath: '/home/user/project',
       gitBranch: 'main',
       vscodeVersion: '1.100.0',
-      extensionVersion: '0.0.4',
+      extensionVersion: '0.0.5',
     }
     expect(ws.extensionId).toBe('ext-123')
     expect(ws.gitBranch).toBe('main')
-    expect(ws.extensionVersion).toBe('0.0.4')
+    expect(ws.extensionVersion).toBe('0.0.5')
   })
 
   it('should allow null gitBranch', () => {
@@ -602,7 +602,7 @@ describe('Workspace', () => {
       rootPath: '/tmp/project',
       gitBranch: null,
       vscodeVersion: '1.100.0',
-      extensionVersion: '0.0.4',
+      extensionVersion: '0.0.5',
     }
     expect(ws.gitBranch).toBeNull()
   })

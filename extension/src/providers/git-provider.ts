@@ -212,14 +212,44 @@ export function parseUnifiedDiff(diffText: string): Array<{
 // Watch for git status changes
 export function startGitStatusWatch(sendEvent: (msg: WsMessage) => void): vscode.Disposable[] {
   const repo = getWorkspaceRepo()
-  if (!repo) return []
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!repo || !workspaceFolder) return []
+
   debugLog('startGitStatusWatch', { root: repo.rootUri.fsPath })
-  const disposable = repo.state.onDidChange(() => {
-    const branch = repo.state.HEAD?.name ?? ''
-    const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length
-    debugLog('git.statusChanged', { branch, changedFileCount, root: repo.rootUri.fsPath })
-    sendEvent(createMessage('git.statusChanged', { branch, changedFileCount }))
+
+  let emitTimer: ReturnType<typeof setTimeout> | undefined
+
+  const emitStatusChanged = (source: 'repo' | 'fs') => {
+    if (emitTimer) clearTimeout(emitTimer)
+    emitTimer = setTimeout(() => {
+      const branch = repo.state.HEAD?.name ?? ''
+      const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length
+      debugLog('git.statusChanged', { source, branch, changedFileCount, root: repo.rootUri.fsPath })
+      sendEvent(createMessage('git.statusChanged', { branch, changedFileCount }))
+    }, 150)
+  }
+
+  const repoStateDisposable = repo.state.onDidChange(() => {
+    emitStatusChanged('repo')
   })
 
-  return [disposable]
+  // Git API state change alone misses some external file operations, especially
+  // newly created untracked files. Keep a demand-scoped filesystem watcher while
+  // the Git page is active so the mobile Git view can still refresh live.
+  const watcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(workspaceFolder, '**/*'),
+    false,
+    false,
+    false,
+  )
+  const onCreated = watcher.onDidCreate(() => emitStatusChanged('fs'))
+  const onDeleted = watcher.onDidDelete(() => emitStatusChanged('fs'))
+  const onChanged = watcher.onDidChange(() => emitStatusChanged('fs'))
+  const timerDisposable = new vscode.Disposable(() => {
+    const branch = repo.state.HEAD?.name ?? ''
+    debugLog('stopGitStatusWatch', { branch, root: repo.rootUri.fsPath })
+    if (emitTimer) clearTimeout(emitTimer)
+  })
+
+  return [repoStateDisposable, watcher, onCreated, onDeleted, onChanged, timerDisposable]
 }

@@ -2,7 +2,7 @@
   "name": "code-viewer-extension",
   "displayName": "Code Viewer",
   "description": "Mobile Code Viewer VS Code Extension",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": true,
   "engines": {
     "vscode": "^1.100.0"

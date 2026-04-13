@@ -45,7 +45,7 @@ From repo root:
 ```bash
 pnpm --dir extension typecheck
 pnpm --dir extension package
-code --install-extension /Users/rickwen/code/code-viewer/extension/code-viewer-extension-0.0.4.vsix --force
+code --install-extension /Users/rickwen/code/code-viewer/extension/code-viewer-extension-0.0.5.vsix --force
 ```
 
 The `extension/package.json` scripts are the source of truth:
@@ -58,7 +58,7 @@ The `extension/package.json` scripts are the source of truth:
 After `pnpm --dir extension package`, inspect the VSIX contents:
 
 ```bash
-unzip -l extension/code-viewer-extension-0.0.4.vsix
+unzip -l extension/code-viewer-extension-0.0.5.vsix
 ```
 
 Expected shape:
@@ -120,7 +120,7 @@ Those lines mean the installed package is broken at runtime.
 ## Guardrails
 
 - Do not trust `code --list-extensions --show-versions` alone. It proves installation, not activation.
-- Do not trust a stale `code-viewer-extension-0.0.4.vsix` file. Re-run `pnpm --dir extension package`.
+- Do not trust a stale `code-viewer-extension-0.0.5.vsix` file. Re-run `pnpm --dir extension package`.
 - Do not package raw `dist/` output from `tsc` without cleaning it first.
 - If source changed and you need an installed VSIX, always rebuild before packaging.
 

@@ -26,7 +26,7 @@ Rebuild the installed Code Viewer extension and verify that daily VS Code window
 
 3. Validate the VSIX contents before install:
    ```bash
-   unzip -l extension/code-viewer-extension-0.0.4.vsix
+   unzip -l extension/code-viewer-extension-0.0.5.vsix
    ```
    Accept only the bundled layout:
    - `extension/package.json`
@@ -40,7 +40,7 @@ Rebuild the installed Code Viewer extension and verify that daily VS Code window
 
 4. Install the VSIX:
    ```bash
-   code --install-extension /Users/rickwen/code/code-viewer/extension/code-viewer-extension-0.0.4.vsix --force
+   code --install-extension /Users/rickwen/code/code-viewer/extension/code-viewer-extension-0.0.5.vsix --force
    ```
 
 5. If the user wants daily VS Code windows updated, reload or restart those windows.
