@@ -1,4 +1,4 @@
-import type { DiffHunk } from '@code-viewer/shared'
+import type { DiffHunk, FilePreviewKind } from '@code-viewer/shared'
 
 export function buildAddedFileHunks(content: string): DiffHunk[] {
   if (content === '') return []
@@ -17,4 +17,29 @@ export function buildAddedFileHunks(content: string): DiffHunk[] {
       })),
     },
   ]
+}
+
+interface GitMediaPreviewOptions {
+  previewKind: FilePreviewKind | null
+  commit?: string
+  status?: string
+  hasDiffHunks: boolean
+}
+
+export function shouldLoadGitMediaPreview({
+  previewKind,
+  commit,
+  status,
+  hasDiffHunks,
+}: GitMediaPreviewOptions): boolean {
+  return previewKind != null && !commit && status !== 'deleted' && !hasDiffHunks
+}
+
+export function shouldLoadAddedFileTextFallback({
+  previewKind,
+  commit,
+  status,
+  hasDiffHunks,
+}: GitMediaPreviewOptions): boolean {
+  return previewKind == null && !commit && status === 'added' && !hasDiffHunks
 }
