@@ -3,6 +3,8 @@ import {
   MSG_FILE_TREE,
   MSG_FILE_READ,
   MSG_FILE_READ_RESULT,
+  MSG_FILE_PREVIEW,
+  MSG_FILE_PREVIEW_RESULT,
   MSG_FILE_TREE_RESULT,
   MSG_FILE_TREE_CHANGED,
   MSG_FILE_CONTENT_CHANGED,
@@ -58,6 +60,7 @@ import {
 import type {
   FileTreeNode,
   FileContent,
+  FilePreview,
   GitStatus,
   ChangedFile,
   FileDiff,
@@ -203,6 +206,8 @@ describe('message type constants — file domain', () => {
     expect(MSG_FILE_TREE_RESULT).toBe('file.tree.result')
     expect(MSG_FILE_READ).toBe('file.read')
     expect(MSG_FILE_READ_RESULT).toBe('file.read.result')
+    expect(MSG_FILE_PREVIEW).toBe('file.preview')
+    expect(MSG_FILE_PREVIEW_RESULT).toBe('file.preview.result')
     expect(MSG_FILE_TREE_CHANGED).toBe('file.treeChanged')
     expect(MSG_FILE_CONTENT_CHANGED).toBe('file.contentChanged')
   })
@@ -336,6 +341,22 @@ describe('FileContent', () => {
     expect(content.languageId).toBe('typescript')
     expect(content.lineCount).toBe(1)
     expect(content.encoding).toBe('utf8')
+  })
+})
+
+describe('FilePreview', () => {
+  it('should have all required fields', () => {
+    const preview: FilePreview = {
+      path: 'assets/logo.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      encoding: 'base64',
+      data: 'Zm9v',
+      size: 3,
+    }
+    expect(preview.kind).toBe('image')
+    expect(preview.mimeType).toBe('image/png')
+    expect(preview.encoding).toBe('base64')
   })
 })
 

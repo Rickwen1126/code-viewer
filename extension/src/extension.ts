@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import type { WsMessage, WatchSetPayload } from '@code-viewer/shared'
 import { WsClient, createMessage } from './ws/client'
-import { handleFileTree, handleFileRead } from './providers/file-provider'
+import { handleFileTree, handleFileRead, handleFilePreview } from './providers/file-provider'
 import { handleLspHover, handleLspDefinition, handleLspReferences, handleLspDocumentSymbol } from './providers/lsp-provider'
 import { handleGitStatus, handleGitDiff, handleGitLog, handleGitCommitFiles } from './providers/git-provider'
 import {
@@ -48,6 +48,7 @@ type Handler = (msg: WsMessage, send: (m: WsMessage) => void, client?: WsClient)
 const handlers: Record<string, Handler> = {
   'file.tree': handleFileTree,
   'file.read': handleFileRead,
+  'file.preview': handleFilePreview,
   'lsp.hover': handleLspHover,
   'lsp.definition': handleLspDefinition,
   'lsp.references': handleLspReferences,

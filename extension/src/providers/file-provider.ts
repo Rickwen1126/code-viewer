@@ -1,9 +1,13 @@
 import * as vscode from 'vscode'
 import type { WsMessage } from '@code-viewer/shared'
 import type { FileTreeNode } from '@code-viewer/shared'
+import { getFilePreviewKind, getFilePreviewMimeType } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
 import { debugLog } from '../utils/debug'
 import { validatePath } from '../utils/validate-path'
+
+const MAX_IMAGE_PREVIEW_BYTES = 12 * 1024 * 1024
+const MAX_VIDEO_PREVIEW_BYTES = 25 * 1024 * 1024
 
 // Handle file.tree request: recursively read workspace directory
 export async function handleFileTree(
@@ -220,6 +224,59 @@ export async function handleFileRead(
     }, msg.id))
   } catch (err) {
     sendResponse(createMessage('file.read.error', {
+      code: 'NOT_FOUND',
+      message: `File not found: ${payload.path}`,
+    }, msg.id))
+  }
+}
+
+export async function handleFilePreview(
+  msg: WsMessage,
+  sendResponse: (msg: WsMessage) => void,
+): Promise<void> {
+  const payload = msg.payload as { path: string }
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) {
+    sendResponse(createMessage('file.preview.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id))
+    return
+  }
+
+  const validation = validatePath(payload.path, workspaceFolder)
+  if (!validation.valid) {
+    sendResponse(createMessage('file.preview.error', { code: 'INVALID_REQUEST', message: validation.reason }, msg.id))
+    return
+  }
+
+  const kind = getFilePreviewKind(payload.path)
+  const mimeType = getFilePreviewMimeType(payload.path)
+  if (!kind || !mimeType) {
+    sendResponse(createMessage('file.preview.error', { code: 'INVALID_REQUEST', message: 'Unsupported preview type' }, msg.id))
+    return
+  }
+
+  try {
+    const stat = await vscode.workspace.fs.stat(validation.uri)
+    const maxBytes = kind === 'video' ? MAX_VIDEO_PREVIEW_BYTES : MAX_IMAGE_PREVIEW_BYTES
+    if (stat.size > maxBytes) {
+      const maxMb = Math.floor(maxBytes / (1024 * 1024))
+      sendResponse(createMessage('file.preview.error', {
+        code: 'INVALID_REQUEST',
+        message: `Preview too large (>${maxMb}MB)`,
+      }, msg.id))
+      return
+    }
+
+    const rawContent = await vscode.workspace.fs.readFile(validation.uri)
+    sendResponse(createMessage('file.preview.result', {
+      path: payload.path,
+      kind,
+      mimeType,
+      encoding: 'base64',
+      data: Buffer.from(rawContent).toString('base64'),
+      size: rawContent.byteLength,
+    }, msg.id))
+  } catch {
+    sendResponse(createMessage('file.preview.error', {
       code: 'NOT_FOUND',
       message: `File not found: ${payload.path}`,
     }, msg.id))

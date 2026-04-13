@@ -1,4 +1,4 @@
-import type { FileContent, GitStatus, ChatSession } from './models.js'
+import type { FileContent, FilePreview, GitStatus, ChatSession } from './models.js'
 
 // ── WsMessage envelope ──────────────────────────────────────────────
 
@@ -55,6 +55,8 @@ export const MSG_FILE_TREE = 'file.tree' as const
 export const MSG_FILE_TREE_RESULT = 'file.tree.result' as const
 export const MSG_FILE_READ = 'file.read' as const
 export const MSG_FILE_READ_RESULT = 'file.read.result' as const
+export const MSG_FILE_PREVIEW = 'file.preview' as const
+export const MSG_FILE_PREVIEW_RESULT = 'file.preview.result' as const
 export const MSG_FILE_TREE_CHANGED = 'file.treeChanged' as const
 export const MSG_FILE_CONTENT_CHANGED = 'file.contentChanged' as const
 
@@ -222,6 +224,12 @@ export interface FileReadPayload {
 }
 
 export type FileReadResultPayload = FileContent
+
+export interface FilePreviewPayload {
+  path: string
+}
+
+export type FilePreviewResultPayload = FilePreview
 
 export interface FileTreeChangedPayload {
   changes: Array<{

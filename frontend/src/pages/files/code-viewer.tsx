@@ -27,12 +27,15 @@ import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
 import { useTourEdit } from '../../hooks/use-tour-edit'
 import { AddStepOverlay } from '../../components/add-step-overlay'
+import { createObjectUrlFromBase64, formatPreviewSize } from '../../services/file-preview'
 import type {
   FileReadResultPayload,
+  FilePreviewResultPayload,
   LspDefinitionResultPayload,
   LspReferencesResultPayload,
   LspDocumentSymbolResultPayload,
 } from '@code-viewer/shared'
+import { getFilePreviewKind } from '@code-viewer/shared'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const LINE_HEIGHT = 19.5 // 13px * 1.5
@@ -52,6 +55,9 @@ export function CodeViewerPage() {
   const { workspace, workspaceReady } = useWorkspace()
   const visibility = useDocumentVisibility()
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
+  const [preview, setPreview] = useState<FilePreviewResultPayload | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tooLarge, setTooLarge] = useState(false)
   const [wordWrap, setWordWrap] = useState(() =>
@@ -62,6 +68,7 @@ export function CodeViewerPage() {
     localStorage.getItem('code-viewer:md-view-mode') !== 'raw',
   )
 
+  const previewKind = getFilePreviewKind(path)
   const isMarkdown = file?.languageId === 'markdown'
 
   // References list state (T041)
@@ -163,6 +170,15 @@ export function CodeViewerPage() {
     }
   }, [path])
 
+  useEffect(() => {
+    setFile(null)
+    setPreview(null)
+    setPreviewError(null)
+    setPreviewUrl(null)
+    setTooLarge(false)
+    setLoading(true)
+  }, [path, previewKind])
+
   // Redirect to workspace selection if no workspace ever selected
   useEffect(() => {
     if (!workspace && connectionState === 'connected') {
@@ -172,28 +188,36 @@ export function CodeViewerPage() {
 
   // Cache-first: immediately show cached file content
   useEffect(() => {
-    if (!path || !workspace) return
+    if (!path || !workspace || previewKind) return
     cacheService.getFileContent(workspace.extensionId, path).then(cached => {
       if (cached) {
         setFile(cached)
         setLoading(false)
       }
     })
-  }, [path, workspace])
+  }, [path, workspace, previewKind])
 
   // Background fetch on connect (no spinner if we have cached data)
   useEffect(() => {
     if (!path || !workspace || !workspaceReady || connectionState !== 'connected') return
-    loadFileBackground()
+    if (previewKind) {
+      loadPreview()
+    } else {
+      loadFileBackground()
+    }
     const unsub = wsClient.subscribe('file.contentChanged', (msg) => {
       const payload = msg.payload as { path: string }
       if (payload.path === path) {
         debugLog('watch:file', 'event', { source: 'push', path: payload.path })
-        loadFileBackground()
+        if (previewKind) {
+          loadPreview()
+        } else {
+          loadFileBackground()
+        }
       }
     })
     return unsub
-  }, [path, workspace, workspaceReady, connectionState])
+  }, [path, workspace, workspaceReady, connectionState, previewKind])
 
   const wasHiddenRef = useRef(visibility !== 'visible')
   useEffect(() => {
@@ -205,11 +229,21 @@ export function CodeViewerPage() {
     if (!wasHiddenRef.current || !path || !workspace || !workspaceReady || connectionState !== 'connected') return
     wasHiddenRef.current = false
     debugLog('watch:file', 'resume-reload', { path, workspace: workspace.extensionId })
-    void loadFileBackground()
-  }, [visibility, path, workspace, workspaceReady, connectionState])
+    void (previewKind ? loadPreview() : loadFileBackground())
+  }, [visibility, path, workspace, workspaceReady, connectionState, previewKind])
+
+  useEffect(() => {
+    if (!preview) return
+    const objectUrl = createObjectUrlFromBase64(preview.mimeType, preview.data)
+    setPreviewUrl(objectUrl)
+    return () => {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }, [preview])
 
   // Scroll position: debounced save
   useEffect(() => {
+    if (previewKind) return
     const container = scrollContainerRef.current
     if (!container || !workspace || !path) return
     let timer: ReturnType<typeof setTimeout>
@@ -226,10 +260,11 @@ export function CodeViewerPage() {
     }
     container.addEventListener('scroll', handler, { passive: true })
     return () => { clearTimeout(timer); container.removeEventListener('scroll', handler) }
-  }, [path, workspace, file])
+  }, [path, workspace, file, previewKind])
 
   // Restore semantic target location first, then fall back to saved scroll.
   useEffect(() => {
+    if (previewKind) return
     if (!file || !workspace || !scrollContainerRef.current) return
     const restoreKey = buildFileRestoreKey(workspace.rootPath, path, {
       line: queryLocation.line,
@@ -256,7 +291,7 @@ export function CodeViewerPage() {
         scrollContainerRef.current?.scrollTo({ top: scrollTop })
       })
     } catch { /* ignore */ }
-  }, [file, path, workspace, targetLine])
+  }, [file, path, workspace, targetLine, previewKind])
 
   // Cleanup: purge scroll entries older than 7 days (once on mount)
   useEffect(() => {
@@ -302,6 +337,22 @@ export function CodeViewerPage() {
         const cached = await cacheService.getFileContent(workspace.extensionId, path)
         if (cached) setFile(cached)
       }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadPreview() {
+    if (!path) return
+    try {
+      const res = await request<{ path: string }, FilePreviewResultPayload>('file.preview', { path })
+      setPreview(res.payload)
+      setPreviewError(null)
+      setFile(null)
+      addRecentFile(path)
+    } catch (error) {
+      setPreview(null)
+      setPreviewError(error instanceof Error ? error.message : 'Preview unavailable')
     } finally {
       setLoading(false)
     }
@@ -463,6 +514,79 @@ export function CodeViewerPage() {
 
   const fileName = path.split('/').pop() ?? path
 
+  if (previewKind) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '6px 12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            {detourAnchor && (
+              <button
+                onClick={() => unwindToDetourAnchor(navigate, detourAnchor)}
+                style={{
+                  background: 'none',
+                  border: '1px solid #444',
+                  color: '#569cd6',
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                {detourAnchor.label}
+              </button>
+            )}
+            <div style={{ fontSize: 13, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              {fileName}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: '#888' }}>{preview?.mimeType ?? previewKind}</span>
+            {preview && (
+              <span style={{ fontSize: 11, color: '#888' }}>{formatPreviewSize(preview.size)}</span>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            overflow: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#111',
+            padding: 16,
+          }}
+        >
+          {loading ? (
+            <div style={{ color: '#888', fontSize: 14 }}>Loading preview...</div>
+          ) : previewUrl && preview?.kind === 'image' ? (
+            <img
+              src={previewUrl}
+              alt={fileName}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
+            />
+          ) : previewUrl && preview?.kind === 'video' ? (
+            <video
+              src={previewUrl}
+              controls
+              playsInline
+              preload="metadata"
+              style={{ width: '100%', maxHeight: '100%', background: '#000', borderRadius: 8 }}
+            />
+          ) : (
+            <div style={{ textAlign: 'center', color: '#888' }}>
+              <div style={{ fontSize: 14, color: '#d4d4d4', marginBottom: 8 }}>Preview unavailable</div>
+              <div style={{ fontSize: 12 }}>{previewError ?? 'This file type is not previewable yet.'}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (loading && !file) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -479,7 +603,6 @@ export function CodeViewerPage() {
           <span style={{ fontSize: 13, color: '#d4d4d4' }}>{fileName}</span>
         </div>
         <div style={{ flex: 1, padding: '12px 16px', display: 'flex', gap: 12 }}>
-          {/* Line number gutter skeleton */}
           <div style={{ width: 28, flexShrink: 0 }}>
             {Array.from({ length: 20 }, (_, i) => (
               <div
@@ -495,7 +618,6 @@ export function CodeViewerPage() {
               />
             ))}
           </div>
-          {/* Code lines skeleton */}
           <div style={{ flex: 1 }}>
             {[65, 40, 80, 55, 30, 70, 45, 90, 35, 60, 25, 75, 50, 85, 20, 70, 40, 55, 30, 65].map(
               (w, i) => (

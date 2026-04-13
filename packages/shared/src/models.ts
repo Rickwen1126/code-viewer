@@ -1,3 +1,5 @@
+import type { FilePreviewKind } from './file-preview.js'
+
 // ── File ────────────────────────────────────────────────────────────
 
 export interface FileTreeNode {
@@ -18,6 +20,15 @@ export interface FileContent {
   isDirty: boolean
   encoding: string
   lineCount: number
+}
+
+export interface FilePreview {
+  path: string
+  kind: FilePreviewKind
+  mimeType: string
+  encoding: 'base64'
+  data: string
+  size: number
 }
 
 // ── Git ─────────────────────────────────────────────────────────────
