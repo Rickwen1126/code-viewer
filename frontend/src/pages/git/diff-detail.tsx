@@ -104,13 +104,14 @@ export function GitDiffDetailPage() {
   const fileName = path.split('/').pop() ?? path
   const hunks = diff?.hunks.length ? diff.hunks : addedFileContent ? buildAddedFileHunks(addedFileContent.content) : []
   const isEmptyAddedFile = status === 'added' && addedFileContent?.content === '' && diff?.hunks.length === 0
-  const showMediaPreview = preview != null && previewUrl != null && diff?.hunks.length === 0
-  const showMediaEmptyState = !showMediaPreview && previewKind != null && diff?.hunks.length === 0
+  const showMediaState = previewKind != null && diff?.hunks.length === 0
   const canViewInCode = status !== 'deleted'
   const viewInCodeUrl = buildFileLocationUrl(path, { line: getPrimaryCodeLine(hunks) })
   const diffUrl = buildGitDiffUrl(path, { commit, status })
 
   function renderMediaContent() {
+    const hasLoadedPreview = preview != null && previewUrl != null
+
     if (loading) {
       return <div style={{ padding: 16, color: '#888' }}>Loading diff...</div>
     }
@@ -127,7 +128,9 @@ export function GitDiffDetailPage() {
       return <div style={{ padding: 16, color: '#888' }}>No diff available.</div>
     }
 
-    if (showMediaPreview) {
+    if (hasLoadedPreview) {
+      const readyPreview = preview
+      const readyPreviewUrl = previewUrl
       return (
         <div
           style={{
@@ -151,8 +154,8 @@ export function GitDiffDetailPage() {
               Binary/media diff is unavailable. Showing the current workspace preview instead.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#888' }}>
-              <span>{preview.mimeType}</span>
-              <span>{formatPreviewSize(preview.size)}</span>
+              <span>{readyPreview.mimeType}</span>
+              <span>{formatPreviewSize(readyPreview.size)}</span>
             </div>
           </div>
           <div
@@ -165,15 +168,15 @@ export function GitDiffDetailPage() {
               padding: 8,
             }}
           >
-            {preview.kind === 'image' ? (
+            {readyPreview.kind === 'image' ? (
               <img
-                src={previewUrl}
+                src={readyPreviewUrl}
                 alt={fileName}
                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
               />
             ) : (
               <video
-                src={previewUrl}
+                src={readyPreviewUrl}
                 controls
                 playsInline
                 preload="metadata"
@@ -290,7 +293,7 @@ export function GitDiffDetailPage() {
           </div>
         ) : !diff ? (
           <div style={{ padding: 16, color: '#888' }}>No diff available.</div>
-        ) : showMediaEmptyState ? (
+        ) : showMediaState ? (
           renderMediaContent()
         ) : isEmptyAddedFile ? (
           <div style={{ padding: 16, color: '#888' }}>New file is empty.</div>
