@@ -11,6 +11,7 @@ import {
   zeroBasedToOneBasedLine,
 } from '../../services/file-location'
 import { writeCurrentFileForWorkspace } from '../../services/current-file'
+import { readSavedFileScroll, writeSavedFileScroll } from '../../services/file-scroll'
 import {
   getDetourAnchor,
   mergeDetourState,
@@ -249,12 +250,11 @@ export function CodeViewerPage() {
     const handler = () => {
       clearTimeout(timer)
       timer = setTimeout(() => {
-        const key = `code-viewer:scroll:${workspace.extensionId}:${path}`
-        localStorage.setItem(key, JSON.stringify({
+        writeSavedFileScroll(workspace, path, {
           scrollTop: container.scrollTop,
           contentLength: file?.content?.length ?? 0,
           timestamp: Date.now(),
-        }))
+        })
       }, 500)
     }
     container.addEventListener('scroll', handler, { passive: true })
@@ -278,12 +278,11 @@ export function CodeViewerPage() {
       return
     }
 
-    const key = `code-viewer:scroll:${workspace.extensionId}:${path}`
-    const saved = localStorage.getItem(key)
+    const saved = readSavedFileScroll(workspace, path)
     if (!saved) return
 
     try {
-      const { scrollTop, contentLength } = JSON.parse(saved)
+      const { scrollTop, contentLength } = saved
       // Skip if content changed significantly
       if (contentLength && Math.abs(file.content.length - contentLength) / contentLength > 0.1) return
       requestAnimationFrame(() => {

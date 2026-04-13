@@ -25,7 +25,7 @@ This audit exists to preserve high-value UX while semantic location moves toward
 | Recent files | `code-viewer:recent-files` | `frontend/src/pages/files/file-browser.tsx` | 最近檔案捷徑 | convenience restore | keep | 不被 URL 取代；屬高價值 convenience |
 | Current file marker | `code-viewer:current-file:${workspaceKey}` | `frontend/src/app.tsx`, `frontend/src/pages/files/file-browser.tsx`, `frontend/src/pages/files/code-viewer.tsx` | File Browser 高亮目前檔案、展開路徑、每個 workspace 記住最後檔案 | convenience restore | keep | 目前已改成 stable workspace key；未來可改為 last semantic location snapshot |
 | Expanded directories | `code-viewer:expanded-dirs` | `frontend/src/pages/files/file-browser.tsx` | File Browser 記住展開狀態 | convenience restore | keep | 不需 URL 化，維持 local convenience |
-| File scroll restore | `code-viewer:scroll:${extensionId}:${path}` | `frontend/src/pages/files/code-viewer.tsx` | 再次打開同檔案時回到上次看的位置 | convenience restore | keep-as-fallback | canonical `line/endLine` 會處理精準 location；scroll restore 留作 reopen fallback |
+| File scroll restore | `code-viewer:scroll:${workspaceKey}:${path}` | `frontend/src/pages/files/code-viewer.tsx` | 再次打開同檔案時回到上次看的位置 | convenience restore | keep-as-fallback | 目前已改成 stable workspace key；舊 `:${extensionId}` 只保留 migration 讀取 fallback。canonical `line/endLine` 仍處理精準 location；scroll restore 留作 reopen fallback |
 | File location from navigation | `location.state.scrollToLine` | `frontend/src/pages/files/code-viewer.tsx` | 點 jump / View in Code 時跳到指定行 | canonical location candidate | removed-in-phase-2 | 已由 `/files/:path?line=&endLine=` 取代；不再作為 location truth |
 | File content cache | IndexedDB `file-content` | `frontend/src/services/cache.ts`, `frontend/src/pages/files/code-viewer.tsx` | cache-first 顯示檔案內容 | performance cache | keep | 與 semantic URL 並存，不衝突 |
 | File tree cache | IndexedDB `file-tree` | `frontend/src/services/cache.ts`, `frontend/src/pages/files/file-browser.tsx` | cache-first 顯示 tree | performance cache | keep | 與 semantic URL 並存，不衝突 |
@@ -134,3 +134,8 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
   - reconnect / reload 已改為 stable identity resolve
   - persisted snapshot 仍保留，但 `extensionId` 不再被直接當作 selection authority
   - 這讓 VS Code restart 後的 workspace rebind 不再依賴舊 runtime id
+
+- `code-viewer:scroll:${workspaceKey}:${path}`
+  - per-file scroll restore 已改成 stable workspace key
+  - 舊的 `:${extensionId}:${path}` 只保留 migration 讀取 fallback，不再寫入
+  - 這讓 reopen convenience restore 不再隨 VS Code restart 失效

@@ -85,6 +85,7 @@ Phase 1 的目標是讓導航正確，不是一次清空所有舊狀態機制。
 - Tour progress 這輪的方向是：detail route 只信 URL，resume UX 留在列表入口處理
 - current-file 這輪的方向是：workspace-scoped stable key 為主，舊 `extensionId/global` key 只保留 migration fallback
 - selected-workspace 這輪的方向是：persisted snapshot 可留，但 reconnect / restore 必須先經過 live workspace resolve，不能直接信任 cached `extensionId`
+- file scroll restore 這輪的方向是：workspace-scoped stable key 為主，舊 `extensionId` key 只保留 migration 讀取 fallback
 
 ---
 
