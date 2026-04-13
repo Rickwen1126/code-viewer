@@ -10,6 +10,7 @@ import {
 function makeWorkspace(overrides: Partial<WorkspaceLinkEntry> = {}): WorkspaceLinkEntry {
   return {
     extensionId: 'ext-1',
+    workspaceKey: 'ws_codeviewer',
     displayName: 'Code Viewer',
     rootPath: '/Users/rickwen/code/code-viewer',
     gitBranch: 'main',
@@ -45,7 +46,7 @@ describe('buildFileLinkResponse', () => {
   it('builds local and lan deep links for a connected workspace', () => {
     const result = buildFileLinkResponse(
       {
-        workspaceRef: '/Users/rickwen/code/code-viewer',
+        workspaceRef: 'ws_codeviewer',
         path: 'frontend/src/app.tsx',
         line: 12,
         endLine: 20,
@@ -57,14 +58,33 @@ describe('buildFileLinkResponse', () => {
     expect(result.kind).toBe('ok')
     if (result.kind !== 'ok') return
 
+    expect(result.payload.workspace.workspaceKey).toBe('ws_codeviewer')
     expect(result.payload.resolverPath).toBe(
-      '/open/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+      '/open/file?workspace=ws_codeviewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
     )
     expect(result.payload.localUrl).toBe(
-      'http://localhost:4801/open/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+      'http://localhost:4801/open/file?workspace=ws_codeviewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
     )
     expect(result.payload.lanUrl).toBe(
-      'http://192.168.1.23:4801/open/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+      'http://192.168.1.23:4801/open/file?workspace=ws_codeviewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+    )
+  })
+
+  it('accepts legacy root-path references during migration', () => {
+    const result = buildFileLinkResponse(
+      {
+        workspaceRef: '/Users/rickwen/code/code-viewer',
+        path: 'frontend/src/app.tsx',
+        line: 12,
+      },
+      [makeWorkspace()],
+    )
+
+    expect(result.kind).toBe('ok')
+    if (result.kind !== 'ok') return
+
+    expect(result.payload.resolverPath).toBe(
+      '/open/file?workspace=ws_codeviewer&path=frontend%2Fsrc%2Fapp.tsx&line=12',
     )
   })
 
@@ -78,7 +98,7 @@ describe('buildFileLinkResponse', () => {
 
     expect(
       buildFileLinkResponse(
-        { workspaceRef: '/Users/rickwen/code/code-viewer', path: 'frontend/src/app.tsx' },
+        { workspaceRef: 'ws_codeviewer', path: 'frontend/src/app.tsx' },
         [makeWorkspace({ status: 'stale' })],
       ).kind,
     ).toBe('workspace_not_connected')

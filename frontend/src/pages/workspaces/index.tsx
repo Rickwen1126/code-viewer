@@ -38,10 +38,11 @@ export function WorkspacesPage() {
     const unsub1 = wsClient.subscribe('connection.extensionConnected', (msg) => {
       const p = msg.payload as ExtensionConnectedPayload
       setWorkspaces(prev => {
-        // Dedup by rootPath (not extensionId — PID changes on restart)
-        const next = prev.filter(w => w.rootPath !== p.rootPath)
+        // Dedup by stable workspace identity, not runtime extensionId.
+        const next = prev.filter(w => w.workspaceKey !== p.workspaceKey)
         next.push({
           extensionId: p.extensionId,
+          workspaceKey: p.workspaceKey,
           displayName: p.displayName,
           rootPath: p.rootPath,
           gitBranch: null,

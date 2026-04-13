@@ -137,6 +137,7 @@ export interface ConnectionWelcomePayload {
 export interface ListWorkspacesResultPayload {
   workspaces: Array<{
     extensionId: string
+    workspaceKey: string
     displayName: string
     rootPath: string
     gitBranch: string | null
@@ -152,6 +153,7 @@ export interface SelectWorkspacePayload {
 export interface SelectWorkspaceResultPayload {
   workspace: {
     extensionId: string
+    workspaceKey: string
     name: string
     rootPath: string
     gitBranch: string | null
@@ -162,6 +164,7 @@ export interface SelectWorkspaceResultPayload {
 
 export interface ExtensionConnectedPayload {
   extensionId: string
+  workspaceKey: string
   displayName: string
   rootPath: string
   extensionVersion: string

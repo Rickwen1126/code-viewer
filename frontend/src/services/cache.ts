@@ -5,6 +5,7 @@ const TTL_24H = 24 * 60 * 60 * 1000
 
 export interface WorkspaceEntry {
   extensionId: string
+  workspaceKey: string
   displayName: string
   rootPath: string
   gitBranch: string | null

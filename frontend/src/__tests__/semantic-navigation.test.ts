@@ -12,9 +12,9 @@ describe('semantic-navigation helpers', () => {
     )
   })
 
-  it('builds external open-file resolver URLs with stable workspace ref', () => {
-    expect(buildOpenFileUrl('/Users/rickwen/code/code-viewer', 'src/app.tsx', { line: 12, endLine: 20 })).toBe(
-      '/open/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=src%2Fapp.tsx&line=12&endLine=20',
+  it('builds external open-file resolver URLs with stable workspace keys', () => {
+    expect(buildOpenFileUrl('ws_codeviewer', 'src/app.tsx', { line: 12, endLine: 20 })).toBe(
+      '/open/file?workspace=ws_codeviewer&path=src%2Fapp.tsx&line=12&endLine=20',
     )
   })
 

@@ -43,7 +43,10 @@ export function OpenFileResolverPage() {
 
   const matchingWorkspace = useMemo(() => {
     if (!workspaceRef) return null
-    return workspaces.find((entry) => entry.rootPath === workspaceRef && entry.status === 'connected') ?? null
+    return workspaces.find((entry) =>
+      (entry.workspaceKey === workspaceRef || entry.rootPath === workspaceRef) &&
+      entry.status === 'connected',
+    ) ?? null
   }, [workspaces, workspaceRef])
 
   useEffect(() => {
@@ -54,7 +57,11 @@ export function OpenFileResolverPage() {
 
     if (attemptedRef.current) return
 
-    if (currentWorkspace?.rootPath === workspaceRef && workspaceReady) {
+    if (
+      workspaceReady &&
+      currentWorkspace &&
+      (currentWorkspace.workspaceKey === workspaceRef || currentWorkspace.rootPath === workspaceRef)
+    ) {
       attemptedRef.current = true
       navigate(targetUrl, { replace: true })
       return

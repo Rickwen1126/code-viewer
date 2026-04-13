@@ -561,6 +561,7 @@ describe('Workspace', () => {
   it('should have all required fields', () => {
     const ws: Workspace = {
       extensionId: 'ext-123',
+      workspaceKey: 'ws_project',
       name: 'My Project',
       rootPath: '/home/user/project',
       gitBranch: 'main',
@@ -575,6 +576,7 @@ describe('Workspace', () => {
   it('should allow null gitBranch', () => {
     const ws: Workspace = {
       extensionId: 'ext-456',
+      workspaceKey: 'ws_nogit',
       name: 'No Git',
       rootPath: '/tmp/project',
       gitBranch: null,

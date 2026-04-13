@@ -41,6 +41,21 @@ function findOneBasedLine(filePath, needle) {
   return index + 1
 }
 
+async function findWorkspaceKey(rootPath) {
+  const response = await fetch('http://127.0.0.1:4800/admin/workspaces')
+  if (!response.ok) {
+    throw new Error(`Failed to load admin workspaces: ${response.status} ${response.statusText}`)
+  }
+
+  const payload = await response.json()
+  const workspace = payload.workspaces?.find((entry) => entry.rootPath === rootPath)
+  if (!workspace?.workspaceKey) {
+    throw new Error(`Could not resolve workspaceKey for ${rootPath}`)
+  }
+
+  return workspace.workspaceKey
+}
+
 async function expectNoRuntimeErrors() {
   const wsErrors = consoleLines.filter((line) => line.includes('[ws] ⇐ ERROR') || line.includes('.error'))
   assert(wsErrors.length === 0, `Unexpected WS errors:\n${wsErrors.join('\n')}`)
@@ -49,6 +64,7 @@ async function expectNoRuntimeErrors() {
 
 async function main() {
   const targetLine = findOneBasedLine(APP_FILE_PATH, APP_TARGET_TEXT)
+  const workspaceKey = await findWorkspaceKey(WORKSPACE_PATH)
   const headCommit = execSync('git rev-parse HEAD', {
     cwd: WORKSPACE_PATH,
     encoding: 'utf8',
@@ -85,6 +101,7 @@ async function main() {
     targetLine,
     openFile: {
       resolvedUrl: null,
+      workspaceKey,
       workspaceRoot: null,
       listWorkspacesResult: false,
       selectWorkspaceResult: false,
@@ -109,7 +126,7 @@ async function main() {
   }
 
   try {
-    const openFileUrl = `${BASE_URL}/open/file?workspace=${encodeURIComponent(WORKSPACE_PATH)}&path=${encodeURIComponent('frontend/src/app.tsx')}&line=${targetLine}`
+    const openFileUrl = `${BASE_URL}/open/file?workspace=${encodeURIComponent(workspaceKey)}&path=${encodeURIComponent('frontend/src/app.tsx')}&line=${targetLine}`
     await page.goto(openFileUrl, { waitUntil: 'networkidle' })
     await page.waitForURL(new RegExp(`/files/frontend/src/app\\.tsx\\?line=${targetLine}$`), { timeout: 20000 })
     await page.getByText(APP_TARGET_TEXT, { exact: false }).waitFor({ state: 'visible', timeout: 15000 })

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { WSContext } from 'hono/ws'
 import type { Workspace, WatchDescriptor } from '@code-viewer/shared'
 
@@ -29,7 +30,64 @@ function getWatchDescriptorKey(descriptor: WatchDescriptor): string {
 class ConnectionManager {
   extensions = new Map<string, ExtensionEntry>()
   frontends = new Map<string, FrontendEntry>()
+  private workspaceKeyByRootPath = new Map<string, string>()
+  private rootPathByWorkspaceKey = new Map<string, string>()
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null
+
+  private deriveWorkspaceKey(rootPath: string): string {
+    const digest = createHash('sha256')
+      .update(`code-viewer-workspace-key-v1\0${rootPath}`)
+      .digest('base64url')
+
+    for (let length = 10; length <= digest.length; length += 2) {
+      const candidate = `ws_${digest.slice(0, length)}`
+      const existingRootPath = this.rootPathByWorkspaceKey.get(candidate)
+      if (!existingRootPath || existingRootPath === rootPath) {
+        return candidate
+      }
+    }
+
+    return `ws_${digest}`
+  }
+
+  getOrCreateWorkspaceKey(rootPath: string): string {
+    if (!rootPath) return ''
+    const existing = this.workspaceKeyByRootPath.get(rootPath)
+    if (existing) return existing
+
+    const workspaceKey = this.deriveWorkspaceKey(rootPath)
+    this.workspaceKeyByRootPath.set(rootPath, workspaceKey)
+    this.rootPathByWorkspaceKey.set(workspaceKey, rootPath)
+    return workspaceKey
+  }
+
+  findWorkspaceByReference(reference: string): {
+    extensionId: string
+    workspaceKey: string
+    displayName: string
+    rootPath: string
+    gitBranch: string | null
+    extensionVersion: string
+    status: 'connected' | 'stale'
+  } | null {
+    for (const [extensionId, entry] of this.extensions) {
+      if (!entry.workspace.rootPath) continue
+      const workspaceKey = this.getOrCreateWorkspaceKey(entry.workspace.rootPath)
+      if (workspaceKey === reference || entry.workspace.rootPath === reference) {
+        return {
+          extensionId,
+          workspaceKey,
+          displayName: entry.workspace.name,
+          rootPath: entry.workspace.rootPath,
+          gitBranch: entry.workspace.gitBranch,
+          extensionVersion: entry.workspace.extensionVersion ?? 'unknown',
+          status: entry.status,
+        }
+      }
+    }
+
+    return null
+  }
 
   startHeartbeat(): void {
     if (this.heartbeatInterval !== null) return
@@ -85,6 +143,10 @@ class ConnectionManager {
 
   addExtension(id: string, ws: WSContext, workspace: Workspace): void {
     const now = Date.now()
+    if (workspace.rootPath) {
+      const workspaceKey = this.getOrCreateWorkspaceKey(workspace.rootPath)
+      workspace = { ...workspace, workspaceKey }
+    }
     this.extensions.set(id, {
       ws,
       workspace,
@@ -156,6 +218,7 @@ class ConnectionManager {
 
   listWorkspaces(): Array<{
     extensionId: string
+    workspaceKey: string
     displayName: string
     rootPath: string
     gitBranch: string | null
@@ -164,6 +227,7 @@ class ConnectionManager {
   }> {
     const result: Array<{
       extensionId: string
+      workspaceKey: string
       displayName: string
       rootPath: string
       gitBranch: string | null
@@ -172,8 +236,10 @@ class ConnectionManager {
     }> = []
 
     for (const [extensionId, entry] of this.extensions) {
+      if (!entry.workspace.rootPath) continue
       result.push({
         extensionId,
+        workspaceKey: this.getOrCreateWorkspaceKey(entry.workspace.rootPath),
         displayName: entry.workspace.name,
         rootPath: entry.workspace.rootPath,
         gitBranch: entry.workspace.gitBranch,
@@ -206,6 +272,7 @@ class ConnectionManager {
 
   getAdminWorkspaces(): Array<{
     extensionId: string
+    workspaceKey: string
     displayName: string
     rootPath: string
     gitBranch: string | null
@@ -217,6 +284,7 @@ class ConnectionManager {
   }> {
     const result: Array<{
       extensionId: string
+      workspaceKey: string
       displayName: string
       rootPath: string
       gitBranch: string | null
@@ -228,8 +296,10 @@ class ConnectionManager {
     }> = []
 
     for (const [extensionId, entry] of this.extensions) {
+      if (!entry.workspace.rootPath) continue
       result.push({
         extensionId,
+        workspaceKey: this.getOrCreateWorkspaceKey(entry.workspace.rootPath),
         displayName: entry.workspace.name,
         rootPath: entry.workspace.rootPath,
         gitBranch: entry.workspace.gitBranch,

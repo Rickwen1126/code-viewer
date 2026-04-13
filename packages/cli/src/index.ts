@@ -12,6 +12,7 @@ const defaultBackendBase = 'http://127.0.0.1:4800'
 
 interface WorkspaceStatusEntry {
   extensionId: string
+  workspaceKey: string
   displayName: string
   rootPath: string
   gitBranch: string | null
@@ -27,7 +28,7 @@ interface AdminWorkspacesResponse {
 interface FileLinkResponse {
   status: 'ok'
   generatedAt: number
-  workspace: WorkspaceStatusEntry
+  workspace: Pick<WorkspaceStatusEntry, 'workspaceKey' | 'displayName' | 'gitBranch' | 'extensionVersion' | 'status'>
   resolverPath: string
   localUrl: string
   lanUrl: string | null
@@ -155,24 +156,34 @@ async function linkFile(targetArg: string, options: LinkFileOptions) {
   const secret = process.env.CODE_VIEWER_SECRET
   const target = parseLinkTarget(targetArg)
   const absFilePath = resolve(target.filePath)
+  const workspaces = await listWorkspaces(backendBase, secret)
 
-  let workspaceRoot = options.workspace ? resolve(options.workspace) : null
-  if (!workspaceRoot) {
-    const workspaces = await listWorkspaces(backendBase, secret)
-    const matched = findBestWorkspaceForFile(absFilePath, workspaces)
-    if (!matched) {
+  let matchedWorkspace: WorkspaceStatusEntry | null = null
+  if (options.workspace) {
+    const workspaceArg = options.workspace.trim()
+    const resolvedWorkspaceRoot = workspaceArg.startsWith('ws_') ? null : resolve(workspaceArg)
+    matchedWorkspace = workspaces.find((workspace) =>
+      workspace.workspaceKey === workspaceArg ||
+      (resolvedWorkspaceRoot != null && workspace.rootPath === resolvedWorkspaceRoot),
+    ) ?? null
+    if (!matchedWorkspace) {
+      throw new Error(`No connected workspace matches ${options.workspace}.`)
+    }
+  } else {
+    matchedWorkspace = findBestWorkspaceForFile(absFilePath, workspaces)
+    if (!matchedWorkspace) {
       throw new Error(`No connected workspace matches ${absFilePath}. Use --workspace <rootPath>.`)
     }
-    workspaceRoot = matched.rootPath
   }
 
+  const workspaceRoot = matchedWorkspace.rootPath
   const relativePath = normalizeRepoRelativePath(relative(workspaceRoot, absFilePath))
   if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) {
     throw new Error(`File is outside workspace: ${absFilePath}`)
   }
 
   const url = new URL('/api/links/file', backendBase)
-  url.searchParams.set('workspace', workspaceRoot)
+  url.searchParams.set('workspace', matchedWorkspace.workspaceKey)
   url.searchParams.set('path', relativePath)
   if (target.line != null) url.searchParams.set('line', String(target.line))
   if (target.endLine != null) url.searchParams.set('endLine', String(target.endLine))
@@ -188,7 +199,8 @@ async function linkFile(targetArg: string, options: LinkFileOptions) {
   console.log('')
   console.log('File link ready')
   console.log(`  Workspace: ${response.workspace.displayName}`)
-  console.log(`  Root:      ${response.workspace.rootPath}`)
+  console.log(`  Key:       ${response.workspace.workspaceKey}`)
+  console.log(`  Root:      ${workspaceRoot}`)
   console.log(`  Path:      ${relativePath}`)
   console.log(`  Local:     ${response.localUrl}`)
   if (response.lanUrl) {

@@ -14,6 +14,7 @@ function createMockWs() {
 function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   return {
     extensionId: 'ext-1',
+    workspaceKey: 'ws_placeholder',
     name: 'My Workspace',
     rootPath: '/home/user/project',
     gitBranch: 'main',
@@ -47,7 +48,10 @@ describe('ConnectionManager', () => {
 
       const entry = mgr.getExtension('ext-1')
       expect(entry).toBeDefined()
-      expect(entry?.workspace).toEqual(workspace)
+      expect(entry?.workspace).toEqual({
+        ...workspace,
+        workspaceKey: mgr.getOrCreateWorkspaceKey(workspace.rootPath),
+      })
       expect(entry?.status).toBe('connected')
       expect(entry?.staleAt).toBeNull()
     })
@@ -241,11 +245,13 @@ describe('ConnectionManager', () => {
       const workspace = makeWorkspace({ extensionId: 'ext-1', name: 'Project Alpha', rootPath: '/alpha', gitBranch: 'dev' })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mgr.addExtension('ext-1', ws as any, workspace)
+      const workspaceKey = mgr.getOrCreateWorkspaceKey('/alpha')
 
       const result = mgr.listWorkspaces()
       expect(result).toHaveLength(1)
       expect(result[0]).toEqual({
         extensionId: 'ext-1',
+        workspaceKey,
         displayName: 'Project Alpha',
         rootPath: '/alpha',
         gitBranch: 'dev',
@@ -281,6 +287,13 @@ describe('ConnectionManager', () => {
       mgr.addExtension('ext-1', ws as any, makeWorkspace({ gitBranch: null }))
       expect(mgr.listWorkspaces()[0].gitBranch).toBeNull()
     })
+
+    it('reuses the same workspace key for the same root path', () => {
+      const firstKey = mgr.getOrCreateWorkspaceKey('/shared/project')
+      const secondKey = mgr.getOrCreateWorkspaceKey('/shared/project')
+
+      expect(secondKey).toBe(firstKey)
+    })
   })
 
   // ── getAdminWorkspaces ────────────────────────────────────────────
@@ -297,6 +310,7 @@ describe('ConnectionManager', () => {
       expect(result).toHaveLength(1)
       expect(result[0]).toMatchObject({
         extensionId: 'ext-1',
+        workspaceKey: mgr.getOrCreateWorkspaceKey('/alpha'),
         displayName: 'Project Alpha',
         rootPath: '/alpha',
         gitBranch: 'main',

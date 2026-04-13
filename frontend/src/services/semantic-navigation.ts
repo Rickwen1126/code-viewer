@@ -17,11 +17,11 @@ export function buildTourStepUrl(tourId: string, step: number): string {
 }
 
 export function buildOpenFileUrl(
-  workspaceRef: string,
+  workspaceKey: string,
   path: string,
   query: { line?: number; endLine?: number } = {},
 ): string {
-  return buildSharedOpenFileUrl(workspaceRef, path, query)
+  return buildSharedOpenFileUrl(workspaceKey, path, query)
 }
 
 export function buildGitDiffUrl(

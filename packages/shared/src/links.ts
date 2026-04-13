@@ -10,12 +10,12 @@ function normalizePositiveInt(value: number | null | undefined): number | undefi
 }
 
 export function buildOpenFileUrl(
-  workspaceRef: string,
+  workspaceKey: string,
   path: string,
   query: OpenFileLinkQuery = {},
 ): string {
   const searchParams = new URLSearchParams()
-  searchParams.set('workspace', workspaceRef)
+  searchParams.set('workspace', workspaceKey)
   searchParams.set('path', path)
 
   const line = normalizePositiveInt(query.line)

@@ -124,6 +124,7 @@ export interface TourStep {
 
 export interface Workspace {
   extensionId: string
+  workspaceKey: string
   name: string
   rootPath: string
   gitBranch: string | null

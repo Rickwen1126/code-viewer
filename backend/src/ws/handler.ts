@@ -96,6 +96,7 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
 
         manager.addExtension(extensionId, ws as never, {
           extensionId,
+          workspaceKey: extensionId,
           name,
           rootPath: '',
           gitBranch: null,
@@ -124,8 +125,10 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
           const payload = msg.payload as WorkspaceRegisterPayload
           const entry = manager.getExtension(extensionId)
           if (entry) {
+            const workspaceKey = manager.getOrCreateWorkspaceKey(payload.rootPath)
             entry.workspace = {
               extensionId,
+              workspaceKey,
               name: payload.name,
               rootPath: payload.rootPath,
               gitBranch: payload.gitBranch,
@@ -142,6 +145,7 @@ export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
             MSG_CONNECTION_EXTENSION_CONNECTED,
             {
               extensionId,
+              workspaceKey: entry?.workspace.workspaceKey ?? manager.getOrCreateWorkspaceKey(payload.rootPath),
               displayName: payload.name,
               rootPath: payload.rootPath,
               extensionVersion: payload.extensionVersion ?? 'unknown',
@@ -277,6 +281,7 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
             {
               workspace: {
                 extensionId: extension.workspace.extensionId,
+                workspaceKey: extension.workspace.workspaceKey,
                 name: extension.workspace.name,
                 rootPath: extension.workspace.rootPath,
                 gitBranch: extension.workspace.gitBranch,

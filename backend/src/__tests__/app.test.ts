@@ -13,6 +13,7 @@ function createMockWs() {
 function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
   return {
     extensionId: 'ext-1',
+    workspaceKey: 'ws_placeholder',
     name: 'Code Viewer',
     rootPath: '/Users/rickwen/code/code-viewer',
     gitBranch: 'main',
@@ -43,28 +44,29 @@ describe('backend http routes', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     manager.addExtension('ext-1', createMockWs().ws as any, makeWorkspace())
+    const workspaceKey = manager.getOrCreateWorkspaceKey('/Users/rickwen/code/code-viewer')
 
     const response = await app.request(
-      'http://localhost/api/links/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+      `http://localhost/api/links/file?workspace=${encodeURIComponent(workspaceKey)}&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20`,
     )
 
     expect(response.status).toBe(200)
 
     const body = await response.json() as {
       status: string
-      workspace: { rootPath: string; displayName: string }
+      workspace: { workspaceKey: string; displayName: string }
       resolverPath: string
       localUrl: string
     }
 
     expect(body.status).toBe('ok')
-    expect(body.workspace.rootPath).toBe('/Users/rickwen/code/code-viewer')
+    expect(body.workspace.workspaceKey).toBe(workspaceKey)
     expect(body.workspace.displayName).toBe('Code Viewer')
     expect(body.resolverPath).toBe(
-      '/open/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+      `/open/file?workspace=${workspaceKey}&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20`,
     )
     expect(body.localUrl).toBe(
-      'http://localhost:4801/open/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+      `http://localhost:4801/open/file?workspace=${workspaceKey}&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20`,
     )
   })
 
@@ -76,8 +78,9 @@ describe('backend http routes', () => {
     )
     expect(missingWorkspace.status).toBe(404)
 
+    const workspaceKey = manager.getOrCreateWorkspaceKey('/Users/rickwen/code/code-viewer')
     const invalidPath = await app.request(
-      'http://localhost/api/links/file?workspace=%2FUsers%2Frickwen%2Fcode%2Fcode-viewer&path=..%2Fsecret.txt',
+      `http://localhost/api/links/file?workspace=${encodeURIComponent(workspaceKey)}&path=..%2Fsecret.txt`,
     )
     expect(invalidPath.status).toBe(400)
   })

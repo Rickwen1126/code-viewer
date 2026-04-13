@@ -4,6 +4,7 @@ import { buildOpenFileUrl, type OpenFileLinkQuery } from '@code-viewer/shared'
 
 export interface WorkspaceLinkEntry {
   extensionId: string
+  workspaceKey: string
   displayName: string
   rootPath: string
   gitBranch: string | null
@@ -17,7 +18,7 @@ export interface FileLinkRequest extends OpenFileLinkQuery {
 }
 
 export interface FileLinkPayload {
-  workspace: WorkspaceLinkEntry
+  workspace: Pick<WorkspaceLinkEntry, 'workspaceKey' | 'displayName' | 'gitBranch' | 'extensionVersion' | 'status'>
   resolverPath: string
   localUrl: string
   lanUrl: string | null
@@ -62,7 +63,9 @@ export function buildFileLinkResponse(
   workspaces: WorkspaceLinkEntry[],
   options: { lanIp?: string | null } = {},
 ): FileLinkResolution {
-  const workspace = workspaces.find((entry) => entry.rootPath === request.workspaceRef)
+  const workspace = workspaces.find((entry) =>
+    entry.workspaceKey === request.workspaceRef || entry.rootPath === request.workspaceRef,
+  )
   if (!workspace) {
     return { kind: 'workspace_not_found' }
   }
@@ -71,7 +74,7 @@ export function buildFileLinkResponse(
     return { kind: 'workspace_not_connected', workspace }
   }
 
-  const resolverPath = buildOpenFileUrl(workspace.rootPath, request.path, {
+  const resolverPath = buildOpenFileUrl(workspace.workspaceKey, request.path, {
     line: request.line,
     endLine: request.endLine,
   })
@@ -79,7 +82,13 @@ export function buildFileLinkResponse(
   return {
     kind: 'ok',
     payload: {
-      workspace,
+      workspace: {
+        workspaceKey: workspace.workspaceKey,
+        displayName: workspace.displayName,
+        gitBranch: workspace.gitBranch,
+        extensionVersion: workspace.extensionVersion,
+        status: workspace.status,
+      },
       resolverPath,
       localUrl: `http://localhost:4801${resolverPath}`,
       lanUrl: options.lanIp ? `http://${options.lanIp}:4801${resolverPath}` : null,
