@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
-import { wsClient } from '../services/ws-client'
 import { useWebSocket } from './use-websocket'
-import type { Workspace, SelectWorkspaceResultPayload } from '@code-viewer/shared'
-
-const STORAGE_KEY = 'code-viewer:selected-workspace'
+import { findMatchingWorkspace, readStoredWorkspace, writeStoredWorkspace } from '../services/selected-workspace'
+import type { Workspace, ListWorkspacesResultPayload, SelectWorkspaceResultPayload } from '@code-viewer/shared'
 
 interface WorkspaceContextValue {
   workspace: Workspace | null
@@ -21,32 +19,17 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const { connectionState, request } = useWebSocket()
-  const [workspace, setWorkspace] = useState<Workspace | null>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? (JSON.parse(raw) as Workspace) : null
-    } catch {
-      return null
-    }
-  })
+  const [workspace, setWorkspace] = useState<Workspace | null>(() => readStoredWorkspace())
   const [workspaceReady, setWorkspaceReady] = useState(() => workspace === null)
 
   // Persist to localStorage on change
   useEffect(() => {
-    try {
-      if (workspace) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
-      } else {
-        localStorage.removeItem(STORAGE_KEY)
-      }
-    } catch {
-      // Safari private mode or quota exceeded
-    }
+    writeStoredWorkspace(workspace)
   }, [workspace])
 
-  // Auto-rebind workspace on reconnect: tell backend which extension to relay to.
-  // Without this, a page reload has workspace in localStorage but backend's
-  // frontend entry has selectedExtensionId=null → requests go nowhere.
+  // Auto-rebind workspace on reconnect via stable identity. The persisted
+  // workspace may carry a stale extensionId after a VS Code restart, so always
+  // resolve against the live workspace list before selecting.
   useEffect(() => {
     if (connectionState !== 'connected') {
       setWorkspaceReady(false)
@@ -59,18 +42,30 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
 
     setWorkspaceReady(false)
-    request<{ extensionId: string }, SelectWorkspaceResultPayload>(
-      'connection.selectWorkspace',
-      { extensionId: workspace.extensionId },
-    ).then(res => {
-      // Update workspace in case details changed (e.g. gitBranch)
-      setWorkspace(res.payload.workspace)
-      setWorkspaceReady(true)
-    }).catch(() => {
-      // Extension no longer exists — clear stale workspace
-      setWorkspace(null)
-      setWorkspaceReady(true)
-    })
+    request<Record<string, never>, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
+      .then((listRes) => {
+        const matchedWorkspace = findMatchingWorkspace(workspace, listRes.payload.workspaces)
+        if (!matchedWorkspace) {
+          setWorkspace(null)
+          setWorkspaceReady(true)
+          return null
+        }
+
+        return request<{ extensionId: string }, SelectWorkspaceResultPayload>(
+          'connection.selectWorkspace',
+          { extensionId: matchedWorkspace.extensionId },
+        )
+      })
+      .then((selectRes) => {
+        if (!selectRes) return
+        setWorkspace(selectRes.payload.workspace)
+        setWorkspaceReady(true)
+      })
+      .catch(() => {
+        // Unable to resolve a live workspace entry — clear stale workspace
+        setWorkspace(null)
+        setWorkspaceReady(true)
+      })
   }, [connectionState]) // only on connection change, not workspace change
 
   const selectWorkspace = useCallback((ws: Workspace) => {

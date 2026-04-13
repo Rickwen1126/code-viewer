@@ -11,6 +11,7 @@ import { useDocumentVisibility } from './hooks/use-visibility'
 import { debugLog } from './services/debug'
 import { buildFileRoutePath } from './services/file-location'
 import { readCurrentFileForWorkspace } from './services/current-file'
+import { readStoredWorkspace } from './services/selected-workspace'
 import type { WatchDescriptor, WatchSyncPayload, WatchSyncResultPayload } from '@code-viewer/shared'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
@@ -30,14 +31,10 @@ import { OpenGitDiffResolverPage } from './pages/open/open-git-diff'
 
 /** Smart redirect: restore last viewed file instead of always going to /workspaces */
 function InitialRedirect() {
-  const savedWorkspace = localStorage.getItem('code-viewer:selected-workspace')
+  const savedWorkspace = readStoredWorkspace()
   if (!savedWorkspace) return <Navigate to="/workspaces" replace />
 
-  let savedFile: string | null = null
-  try {
-    const ws = JSON.parse(savedWorkspace)
-    savedFile = readCurrentFileForWorkspace(ws)
-  } catch { /* ignore */ }
+  const savedFile = readCurrentFileForWorkspace(savedWorkspace)
 
   if (savedFile) {
     return <Navigate to={buildFileRoutePath(savedFile)} replace />

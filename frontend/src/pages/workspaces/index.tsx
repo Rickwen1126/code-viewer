@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { cacheService, type WorkspaceEntry } from '../../services/cache'
+import { isSameWorkspace } from '../../services/selected-workspace'
 import type {
   ListWorkspacesResultPayload,
   SelectWorkspaceResultPayload,
@@ -114,7 +115,7 @@ export function WorkspacesPage() {
 
       {/* Workspace list — show cached or live, each row independently clickable */}
       {workspaces.map((ws) => {
-        const isSelected = currentWorkspace?.extensionId === ws.extensionId
+        const isSelected = isSameWorkspace(currentWorkspace, ws)
         return (
         <button
           key={ws.extensionId}

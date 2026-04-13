@@ -18,10 +18,10 @@ This audit exists to preserve high-value UX while semantic location moves toward
 
 | Surface | Storage / Key | Source | UX | Type | Phase 1 | Replacement path |
 |---|---|---|---|---|---|---|
-| Initial redirect | `code-viewer:selected-workspace` | `frontend/src/app.tsx` | App 進來時先回上次 workspace | convenience restore | keep | 後續可由 opaque `workspaceKey` resolver 補強，但當前先保留 |
+| Initial redirect | `code-viewer:selected-workspace` | `frontend/src/app.tsx` | App 進來時先回上次 workspace | convenience restore | keep | 目前已透過 stored workspace snapshot + `workspaceKey` 讀取 current-file；後續可再演進成 last semantic location snapshot |
 | Initial redirect | `code-viewer:current-file:${workspaceKey}` | `frontend/src/app.tsx`, `frontend/src/pages/files/code-viewer.tsx` | App 進來時直接回 selected workspace 的上次檔案 | convenience restore | keep | 目前已改成 stable workspace key；之後可改成從 canonical file URL / last-location snapshot 重建 |
 | Initial redirect migration fallback | `code-viewer:current-file:${extensionId}` / `code-viewer:current-file` | `frontend/src/app.tsx`, `frontend/src/services/current-file.ts` | 舊資料仍可讀取，不打斷升級 | migration fallback | keep-temporarily | 不再寫入；Phase 2 後段再評估何時完全移除 |
-| Workspace rebind | `code-viewer:selected-workspace` | `frontend/src/hooks/use-workspace.tsx` | reload / reconnect 後自動重新 select workspace | convenience restore | keep | Phase 1 保留；未來可由 `workspaceKey -> rootPath` resolver 補強 |
+| Workspace rebind | `code-viewer:selected-workspace` | `frontend/src/hooks/use-workspace.tsx` | reload / reconnect 後自動重新 select workspace | convenience restore | keep | 目前已改為先 `listWorkspaces` 再用 `workspaceKey`/`rootPath` resolve live workspace，不再直接信任 cached `extensionId` |
 | Recent files | `code-viewer:recent-files` | `frontend/src/pages/files/file-browser.tsx` | 最近檔案捷徑 | convenience restore | keep | 不被 URL 取代；屬高價值 convenience |
 | Current file marker | `code-viewer:current-file:${workspaceKey}` | `frontend/src/app.tsx`, `frontend/src/pages/files/file-browser.tsx`, `frontend/src/pages/files/code-viewer.tsx` | File Browser 高亮目前檔案、展開路徑、每個 workspace 記住最後檔案 | convenience restore | keep | 目前已改成 stable workspace key；未來可改為 last semantic location snapshot |
 | Expanded directories | `code-viewer:expanded-dirs` | `frontend/src/pages/files/file-browser.tsx` | File Browser 記住展開狀態 | convenience restore | keep | 不需 URL 化，維持 local convenience |
@@ -129,3 +129,8 @@ Phase 1 不應破壞這個組合。即使 file location 之後 URL 化，scroll 
   - 已成為 current-file convenience restore 的 primary key
   - 舊的 `:${extensionId}` 與 global key 只保留讀取 fallback，不再寫入
   - 這讓 app reopen / file highlight / chat auto-attach 不再跨 workspace 污染
+
+- `code-viewer:selected-workspace`
+  - reconnect / reload 已改為 stable identity resolve
+  - persisted snapshot 仍保留，但 `extensionId` 不再被直接當作 selection authority
+  - 這讓 VS Code restart 後的 workspace rebind 不再依賴舊 runtime id
