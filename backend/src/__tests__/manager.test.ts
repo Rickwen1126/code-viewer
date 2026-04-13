@@ -19,7 +19,7 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     rootPath: '/home/user/project',
     gitBranch: 'main',
     vscodeVersion: '1.85.0',
-    extensionVersion: '0.0.3',
+    extensionVersion: '0.0.4',
     ...overrides,
   }
 }
@@ -255,7 +255,7 @@ describe('ConnectionManager', () => {
         displayName: 'Project Alpha',
         rootPath: '/alpha',
         gitBranch: 'dev',
-        extensionVersion: '0.0.3',
+        extensionVersion: '0.0.4',
         status: 'connected',
       })
     })
@@ -315,7 +315,7 @@ describe('ConnectionManager', () => {
         rootPath: '/alpha',
         gitBranch: 'main',
         vscodeVersion: '1.85.0',
-        extensionVersion: '0.0.3',
+        extensionVersion: '0.0.4',
         status: 'connected',
       })
       expect(result[0].connectedAt).toBeGreaterThanOrEqual(connectedAtBefore)

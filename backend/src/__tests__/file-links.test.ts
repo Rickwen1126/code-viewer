@@ -18,7 +18,7 @@ function makeWorkspace(overrides: Partial<WorkspaceLinkEntry> = {}): WorkspaceLi
     displayName: 'Code Viewer',
     rootPath: '/Users/rickwen/code/code-viewer',
     gitBranch: 'main',
-    extensionVersion: '0.0.3',
+    extensionVersion: '0.0.4',
     status: 'connected',
     ...overrides,
   }

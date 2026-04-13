@@ -18,7 +18,7 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     rootPath: '/Users/rickwen/code/code-viewer',
     gitBranch: 'main',
     vscodeVersion: '1.114.0',
-    extensionVersion: '0.0.3',
+    extensionVersion: '0.0.4',
     ...overrides,
   }
 }
