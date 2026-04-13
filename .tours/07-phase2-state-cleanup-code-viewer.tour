@@ -1,0 +1,50 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "07 - Phase 2 State Cleanup: Code Viewer Stable Restore",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "這條 tour 其實是在看：Code Viewer 怎麼把 reopen / reconnect / resume 這些好用的 UX，從依賴 runtime id 的舊 state，重整成以 stable identity 與 canonical location 為主的 restore contract。\n\n如果先記不住細節，先抓住每個 step 只是在回答「這個 state 到底應該由誰當真相，以及它應該活多久」。\n\n## Code Viewer 是什麼\n\nCode Viewer 是一個 mobile-first 的 VS Code companion，桌面 extension 提供 workspace / file / git / tour 等資料，手機端 PWA 負責閱讀、導航與 detour 返回。\n\n## 錨定已知\n\n如果你熟 React Router 或瀏覽器 history，這裡可以把它想成：我們不是在做新的 store，而是在把「哪些 state 應該是 canonical route、哪些應該只是 reopen convenience」重新分層。\n\n## 這條路徑在解決什麼問題\n\n過去很多方便的 restore UX 都綁在 `extensionId`、localStorage 或 route state 上。功能能動，但 VS Code restart、workspace reconnect 或跨 session reopen 後，state 很容易從「方便」變成「不穩」。\n\n## 這條路徑展示什麼 mental model\n\nSignal、cache、preference、convenience restore、canonical location 不是同一類 state。把它們放錯層，系統就會看起來對，但在重連、重開、跨頁回來時掉資料。\n\n## 為什麼值得讀\n\n這條路徑很實務：它不是 flashy feature，而是把一堆原本好用但脆弱的 UX，重新放到比較對的 state lifetime 上。這種模式幾乎所有前端產品都會遇到。"
+    },
+    {
+      "file": "frontend/src/services/selected-workspace.ts",
+      "line": 32,
+      "endLine": 51,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "Stable Workspace Identity Becomes The Rebind Contract",
+      "description": "## Insight\n\n### 機制\n這段把 workspace rebind 的匹配順序明確定成 `workspaceKey -> rootPath -> extensionId`。也就是說，persisted workspace snapshot 還可以留，但真正重新綁回 live workspace 時，必須先走 stable identity，再把 runtime `extensionId` 降成 migration fallback。\n\n### 故障模式\n如果 reconnect 還是直接信任 cached `extensionId`，VS Code restart 之後 runtime id 一變，前端就會以為 workspace 消失，或把 selection 綁錯對象。\n\n### 設計取捨\n這樣做的好處是重連行為和 public deep link contract 對齊，兩者都以 stable identity 為主。代價是 helper 變多，而且 migration 期間要同時理解舊 `extensionId` 與新 `workspaceKey` 的語義。\n\n## 白話解析\n\n這段其實就是在回答：「我記得自己原本在哪個 workspace，但我不能再直接拿舊 handle 去用。」它先用穩定身份找回現在活著的 workspace，再用新的 runtime handle 繼續做事。使用者看到的效果，就是 VS Code 重開後，app 還能認出自己原本在哪個專案。\n\n## Code Detail\n\n### 這段在幹嘛\n- 讀寫 `code-viewer:selected-workspace`\n- 重新連線時用 stable key 對 live workspace list 做匹配\n- 只有最後 migration 階段才退回 `extensionId`\n\n### 為什麼這樣寫\n好處：\n- 把 persisted snapshot 和 live runtime handle 分成兩層\n- 跟 `workspaceKey` deep link contract 一致\n- `WorkspacesPage` 的 selected 狀態判斷也能共用同一個 identity 規則\n\n壞處：\n- migration 邏輯需要同時考慮三種 identity\n- 如果之後又新增另一種 workspace id，這個 helper 容易繼續膨脹\n\n### 思考問題\n- 為什麼 persisted workspace 可以留，但 persisted `extensionId` 不能當 authority？\n- 如果 `workspaceKey` 和 `rootPath` 都 match 不到，清掉 selection 的時機應該在哪一層決定？"
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 244,
+      "endLine": 292,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "Scroll Restore Is Demoted To Workspace-Scoped Fallback",
+      "description": "## Insight\n\n### 機制\n這段把 file restore 的層次分得很清楚：URL `line/endLine` 是 semantic truth，scroll snapshot 只是 reopen convenience，而且它也改成 `workspaceKey` primary、`extensionId` fallback。這讓 reopen 體驗保留，但不再和 canonical location 打架。\n\n### 故障模式\n如果 scroll restore 還是掛在 runtime `extensionId` 上，VS Code restart 後，同一個檔案就會突然失去「回到上次看的位置」的 UX。反過來，如果 scroll restore 還繼續當 primary truth，又會把 URL-based semantic jump 蓋掉。\n\n### 設計取捨\n這個做法保留了大家喜歡的 reopen 體感，同時承認 scroll snapshot 不適合進 URL。代價是 file viewer 要同時處理 semantic target 與 reopen fallback 的優先順序。\n\n## 白話解析\n\n這段其實就是在說：先尊重「你這次想看的地方」，再退回「你上次大概看到哪裡」。對使用者來說，點 deep link、Go to Definition 或 View in Code 時會優先到指定行；只有沒有明確語義位置時，才會回上次 scroll。\n\n## Code Detail\n\n### 這段在幹嘛\n- debounce 儲存每個檔案的 scroll snapshot\n- restore 時先看 URL line，再讀 saved scroll\n- 仍保留 contentLength heuristic，避免內容大改後硬套舊 scroll\n\n### 為什麼這樣寫\n好處：\n- reopen UX 保留，但不再污染 canonical location\n- workspace restart 後的 scroll restore 更穩\n- `readSavedFileScroll` / `writeSavedFileScroll` 把 migration 細節藏起來了\n\n壞處：\n- restore 順序變得更細，之後有人改動時需要很清楚 primary/fallback 邊界\n- contentLength 比對仍是 heuristic，不是 semantic equivalence\n\n### 思考問題\n- 為什麼 scroll restore 適合當 fallback，而不適合當 URL 真相？\n- 如果未來要支援 selection range restore，應該跟 scroll 同層，還是跟 URL line 同層？"
+    },
+    {
+      "file": "frontend/src/pages/tours/tour-progress.ts",
+      "line": 16,
+      "endLine": 75,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "Tour Progress Keeps Convenience While Step Truth Stays In URL",
+      "description": "## Insight\n\n### 機制\n這段把 `tour-progress` 也改成 stable-key migration pattern，但更重要的是它承認自己的角色：它只服務 Tour list reopen convenience，不再定義 Tour detail route 的 step truth。也就是 canonical route 是 `/tours/:tourId?step=`，localStorage 只是 resume hint。\n\n### 故障模式\n如果 Tour step 還同時依賴 URL 與 localStorage 作為真相，detail route 很容易在 refresh、direct entry、Back/Forward 時出現分裂。另一個常見問題是 runtime `extensionId` 一變，resume UX 就無故消失。\n\n### 設計取捨\n現在的設計保住了「從 Tour list 點回去時回到上次 step」這個好 UX，但避免讓 local progress 決定整條導航。代價是要接受一個事實：detail route 和 reopen convenience 是兩個不同層次。\n\n## 白話解析\n\n它其實就是在把 Tour 的『目前在哪一步』切成兩層：網址負責真相，localStorage 只負責『下次從列表進來，要不要幫你回到上次那步』。這樣使用者既保有 resume 體感，又不會因為 hidden state 讓 URL 說一套、畫面做另一套。\n\n## Code Detail\n\n### 這段在幹嘛\n- `workspaceKey` primary、`extensionId` fallback 地讀寫 tour progress\n- `getResumeTourStep()` 只把 saved index 轉成 reopen 時該跳的 step\n- 不再讓這個 storage 介入 Tour detail 的 route truth\n\n### 為什麼這樣寫\n好處：\n- Tour reopen UX 保留\n- route truth 與 local convenience 分層更清楚\n- migration pattern 和其他 Phase 2 slice 一致\n\n壞處：\n- 還要保留 legacy key 一段時間\n- 新讀者可能會一時分不清『step truth』和『resume convenience』\n\n### 思考問題\n- 為什麼 `TourDetailPage` 不該再直接信任 `tour-progress`？\n- 如果未來 Tour 支援更多 UI state，哪些能像 progress 一樣留 local，哪些不能？"
+    },
+    {
+      "file": "frontend/src/app.tsx",
+      "line": 33,
+      "endLine": 49,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "Initial Redirect Now Prefers Last Semantic Location",
+      "description": "## Insight\n\n### 機制\n這段把 app 啟動入口從『回上次 file path』升級成『先回上次 canonical semantic location』。只有找不到 `last-location` 時，才退回 `current-file` 這種 file-centric fallback。這是 Phase 2 很關鍵的一步，因為它讓 reopen 的主語從檔案變成位置。\n\n### 故障模式\n如果入口只知道 current file，不知道 last semantic location，使用者從 `/git/diff/...` 或 `/tours/:id?step=` 離開後再回來，就只能掉回 file 或 tab root，失去先前已建立的 canonical route contract。\n\n### 設計取捨\n這樣做讓 reopen 語義更一致，也更貼近 browser-like mental model。代價是 app root 開始要理解更多 location type，不能再只把 restore 想成『找一個 file path』。\n\n## 白話解析\n\n這段其實就是把『回上次看過的東西』升級成『回上次所在的位置』。對使用者來說，app 重開後不再只會把你丟回某個檔案，而是優先回到你上次正在看的那個 canonical route。\n\n## Code Detail\n\n### 這段在幹嘛\n- 先讀 stored workspace snapshot\n- 再讀 `last-location`\n- 只有沒有 semantic location 時，才退回 `current-file`\n\n### 為什麼這樣寫\n好處：\n- `InitialRedirect` 終於跟 semantic URL contract 對齊\n- `current-file` 被降級成 fallback，不再承擔過多語義責任\n- reopen 行為更接近使用者直覺\n\n壞處：\n- app root 現在會同時碰到 selection restore 與 location restore 兩個 concern\n- 如果未來要記更多 route 類型，這裡的恢復策略可能會再長大\n\n### 思考問題\n- 為什麼 `last-location` 比 `current-file` 更接近『reopen 真相』？\n- 哪些 route 值得被當成 last semantic location，哪些不值得？"
+    },
+    {
+      "file": "tests/e2e/semantic-navigation.mjs",
+      "line": 98,
+      "endLine": 181,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "E2E Locks The Contract At Behavior Level",
+      "description": "## Insight\n\n### 機制\n這段測試不是只驗 deep link 還能不能打開，而是把新的 reopen contract 也納入 semantic-navigation E2E：先走 `/open/file` 建立 canonical file location，再回 `/`，確認 `InitialRedirect` 會回到同一個 canonical URL。這讓 last-location 不只是 helper，而是被產品層驗證的 contract。\n\n### 故障模式\n如果只寫 unit test，最容易漏掉的就是『state 在真正 browser navigation 下到底會不會被自己清掉』。這支 E2E 本身就剛好抓到一個測試初始化語義錯誤：`addInitScript` 每次 navigation 都重跑，差點把 last-location 清掉。\n\n### 設計取捨\n把 reopen contract 提升到 focused E2E，成本比較高，但回報很大，因為它能驗證 route、localStorage、workspace resolve、highlight rule 這些跨層行為是不是一起成立。\n\n## 白話解析\n\n這段其實就是在證明：我們不是只把 helper 寫漂亮，而是真的讓使用者重開 app 時，會回到剛剛那個位置。它也順便提醒一件事，測試本身也有 state lifetime，寫錯了一樣會誤判產品行為。\n\n## Code Detail\n\n### 這段在幹嘛\n- 只在第一個 document 初始化時清理 localStorage\n- 建立 `/open/file` deep link flow\n- 再回 `/` 驗 `InitialRedirect` 是否回到同一個 canonical file URL\n\n### 為什麼這樣寫\n好處：\n- 把 reopen contract 變成真正可回歸的行為測試\n- 同時驗到 workspace binding、URL highlight、root redirect\n- 抓得到『測試自己破壞 state』這種常見陷阱\n\n壞處：\n- E2E 對初始化策略更敏感\n- 如果未來 root redirect contract 再變，這支測試也需要同步維護\n\n### 思考問題\n- 為什麼這裡一定要用 browser-level E2E，而不是只寫 unit test？\n- 如果未來 `last-location` 支援更多 route 類型，這支測試應該怎麼拆才不會變得太胖？"
+    }
+  ]
+}

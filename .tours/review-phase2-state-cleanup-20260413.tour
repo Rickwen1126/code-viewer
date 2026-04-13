@@ -1,0 +1,38 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: phase2-state-cleanup 2026-04-13",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 0\n🟡 Suggestions: 2\n✅ Good Practices: 2\n\n### Scope\nReviewed the Phase 2 state-cleanup milestone on `semantic-location-history`, focused on `selected-workspace`, `file-scroll`, `tour-progress`, and `last-location` restore behavior.\n\n### Focus\nState lifetime correctness, reconnect/reopen semantics, and whether canonical route truth stayed separated from convenience restore."
+    },
+    {
+      "file": "frontend/src/hooks/use-workspace.tsx",
+      "line": 64,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "🟡 Transient reconnect failures still clear the stored workspace too aggressively",
+      "description": "## Problem\n\nThe reconnect path now resolves the stored workspace via the live workspace list, which is the right direction. But the `catch` branch still treats any request failure as proof that the workspace is stale, immediately calling `setWorkspace(null)`. A transient backend hiccup during `connection.listWorkspaces` or `connection.selectWorkspace` will therefore erase the persisted workspace snapshot and downgrade the user's next reopen experience, even though the workspace may still exist.\n\n## Fix\n```ts\n.catch((error) => {\n  if (isTransportError(error)) {\n    setWorkspaceReady(true)\n    return\n  }\n\n  setWorkspace(null)\n  setWorkspaceReady(true)\n})\n```\n\nOr, more simply: only clear the stored workspace after a confirmed `listWorkspaces` miss, and treat transport/request failures as retryable.\n\n## Rationale\n\nThis is not a blocker, but it is still a semantics leak: the code now distinguishes stable identity from runtime identity, yet it still collapses `request failed` and `workspace truly disappeared` into the same outcome. That makes session continuity more fragile than the new contract suggests."
+    },
+    {
+      "file": "frontend/src/services/last-location.ts",
+      "line": 16,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "🟡 Bare tour routes are still considered restorable even though step is the real semantic location",
+      "description": "## Problem\n\n`isRestorableLocation()` accepts `/tours/:tourId` without requiring a `step` query. That means `LastLocationTracker` can briefly persist a non-canonical tour route during the load/canonicalization window before `TourDetailPage` replaces it with `?step=N`. If the app is reopened in that window, the restore path may lose the exact step and fall back to the route default.\n\n## Fix\n```ts\nfunction isRestorableLocation(pathname: string, search: string): boolean {\n  if (pathname.startsWith('/tours/')) {\n    return new URLSearchParams(search).has('step')\n  }\n  return pathname.startsWith('/files/') || pathname.startsWith('/git/diff/')\n}\n```\n\nOr keep the current helper, but delay writing tour last-location snapshots until the URL is already canonical.\n\n## Rationale\n\nThe whole point of this milestone is that semantic location should be URL-addressable and precise. Accepting a bare tour route is not catastrophic, but it reintroduces a small window where the saved route is less precise than the real semantic target."
+    },
+    {
+      "file": "frontend/src/services/selected-workspace.ts",
+      "line": 32,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "✅ Stable identity helpers are now a reusable migration seam",
+      "description": "## Problem\n\nNo issue here. This is the right kind of extraction.\n\n## Fix\n```ts\nreturn liveWorkspaces.find((workspace) => workspace.workspaceKey === storedWorkspace.workspaceKey)\n  ?? liveWorkspaces.find((workspace) => workspace.rootPath === storedWorkspace.rootPath)\n  ?? liveWorkspaces.find((workspace) => workspace.extensionId === storedWorkspace.extensionId)\n  ?? null\n```\n\n## Rationale\n\nThe milestone stopped smearing identity rules across pages and hooks. `selected-workspace`, `WorkspacesPage`, and reconnect logic now share one explicit matching policy. That reduces hidden coupling and makes later migration cleanup much safer."
+    },
+    {
+      "file": "tests/e2e/semantic-navigation.mjs",
+      "line": 98,
+      "ref": "6fb9ea509794dc37174784cf29b4190f3a85839e",
+      "title": "✅ The E2E update validates behavior rather than helper internals",
+      "description": "## Problem\n\nNo issue here. The added coverage is well-targeted.\n\n## Fix\n```js\nawait page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' })\nawait page.waitForURL(new RegExp(`/files/frontend/src/app\\.tsx\\?line=${targetLine}$`), { timeout: 15000 })\n```\n\n## Rationale\n\nThis review slice changed app reopen semantics, so the new test checks the right thing: the browser returns to the same canonical route after a real navigation cycle. It also fixed the earlier false negative from `addInitScript`, which is exactly the kind of state-lifetime bug this milestone is trying to eliminate."
+    }
+  ]
+}
