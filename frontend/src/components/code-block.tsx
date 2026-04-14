@@ -86,11 +86,12 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
     () => Math.max(2, String(maxLineNumber).length) * 0.6 + 1,
     [maxLineNumber],
   )
+  const bookmarkSignature = Array.from(bookmarkedLines ?? []).sort((a, b) => a - b).join(',')
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const transformers = useMemo(
     () => showLineNumbers ? [createLineTransformer(startLine, bookmarkedLines)] : undefined,
-    [showLineNumbers, startLine, bookmarkedLines],
+    [showLineNumbers, startLine, bookmarkedLines, bookmarkSignature],
   )
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -199,6 +200,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
         }}
       >
         <ShikiHighlighter
+          key={wordWrap && showLineNumbers ? `${language}:${startLine}:${bookmarkSignature}` : undefined}
           language={mapLanguage(language)}
           theme="dark-plus"
           showLanguage={false}
