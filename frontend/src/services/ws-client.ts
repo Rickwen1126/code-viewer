@@ -54,30 +54,40 @@ class WsClientService {
   }
 
   private visibilityHandler: (() => void) | null = null
+  private pageShowHandler: ((event: PageTransitionEvent) => void) | null = null
 
   private setupVisibilityReconnect(): void {
     if (this.visibilityHandler) return
     this.visibilityHandler = () => {
-      if (document.visibilityState !== 'visible' || !this.shouldReconnect) return
-
-      // Safari kills WS in background but may NOT fire onclose (WebKit Bug #247943).
-      // Check if WS is actually alive — if not, force reconnect.
-      if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
-        console.warn('[WS] Zombie connection detected on foreground — forcing reconnect')
-        this.ws = null
-        this.drainPendingRequests('Connection lost in background')
-        this.reconnectDelay = 1000
-        this.openSocket()
-        return
-      }
-
-      // Normal case: state is disconnected/reconnecting, try to reconnect
-      if (this.state !== 'connected' && this.state !== 'connecting') {
-        this.reconnectDelay = 1000
-        this.openSocket()
-      }
+      if (document.visibilityState !== 'visible') return
+      this.ensureActiveConnection('foreground')
+    }
+    this.pageShowHandler = () => {
+      this.ensureActiveConnection('pageshow')
     }
     document.addEventListener('visibilitychange', this.visibilityHandler)
+    window.addEventListener('pageshow', this.pageShowHandler)
+  }
+
+  private ensureActiveConnection(reason: 'foreground' | 'pageshow'): void {
+    if (!this.shouldReconnect) return
+
+    // Safari can restore a page from BFCache with a dead socket and without a
+    // matching onclose/visibility transition. Treat any non-open socket as a
+    // stale runtime and bootstrap a fresh connection.
+    if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+      console.warn(`[WS] Zombie connection detected on ${reason} — forcing reconnect`)
+      this.ws = null
+      this.drainPendingRequests('Connection lost in background')
+      this.reconnectDelay = 1000
+      this.openSocket()
+      return
+    }
+
+    if (this.state !== 'connected' && this.state !== 'connecting') {
+      this.reconnectDelay = 1000
+      this.openSocket()
+    }
   }
 
   disconnect(): void {

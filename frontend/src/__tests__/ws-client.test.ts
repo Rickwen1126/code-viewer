@@ -65,6 +65,12 @@ import { wsClient } from '../services/ws-client.js'
 const client = wsClient as any
 
 function resetClient() {
+  if (client.visibilityHandler) {
+    document.removeEventListener('visibilitychange', client.visibilityHandler)
+  }
+  if (client.pageShowHandler) {
+    window.removeEventListener('pageshow', client.pageShowHandler)
+  }
   // Hard-reset all internal state so tests are independent
   client.ws = null
   client.url = ''
@@ -75,6 +81,8 @@ function resetClient() {
   client.maxReconnectDelay = 30000
   client.shouldReconnect = true
   client.pendingRequests = new Map()
+  client.visibilityHandler = null
+  client.pageShowHandler = null
   MockWebSocket.instances = []
 }
 
@@ -332,6 +340,23 @@ describe('WsClientService', () => {
       socket.simulateClose()
 
       expect(wsClient.getState()).toBe('reconnecting')
+    })
+
+    it('should reconnect on pageshow when Safari restores a dead session', async () => {
+      wsClient.connect('ws://localhost:4800')
+      await vi.runAllTimersAsync()
+
+      const firstSocket = MockWebSocket.instances[0]
+      firstSocket.readyState = MockWebSocket.CLOSED
+      client.ws = firstSocket
+      client.state = 'disconnected'
+
+      window.dispatchEvent(new Event('pageshow'))
+      await vi.runAllTimersAsync()
+
+      expect(MockWebSocket.instances).toHaveLength(2)
+      expect(MockWebSocket.instances[1].url).toBe('ws://localhost:4800')
+      expect(wsClient.getState()).toBe('connected')
     })
   })
 
