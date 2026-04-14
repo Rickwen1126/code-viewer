@@ -35,6 +35,7 @@ export function WorkspaceScopedResolverPage({
   const [workspaces, setWorkspaces] = useState<WorkspaceEntry[]>([])
   const [statusText, setStatusText] = useState(waitingMessage)
   const [error, setError] = useState<string | null>(null)
+  const [liveLookupState, setLiveLookupState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle')
   const attemptedRef = useRef(false)
 
   useEffect(() => {
@@ -46,14 +47,20 @@ export function WorkspaceScopedResolverPage({
   }, [])
 
   useEffect(() => {
-    if (connectionState !== 'connected') return
+    if (connectionState !== 'connected') {
+      setLiveLookupState('idle')
+      return
+    }
+
+    setLiveLookupState('loading')
     request<Record<string, never>, ListWorkspacesResultPayload>('connection.listWorkspaces', {})
       .then((res) => {
         setWorkspaces(res.payload.workspaces)
         cacheService.setWorkspaceList(res.payload.workspaces)
+        setLiveLookupState('ready')
       })
       .catch(() => {
-        // Keep cache result if available.
+        setLiveLookupState('failed')
       })
   }, [connectionState, request])
 
@@ -88,8 +95,18 @@ export function WorkspaceScopedResolverPage({
       return
     }
 
-    if (!matchingWorkspace) {
+    if (liveLookupState === 'loading' || liveLookupState === 'idle') {
       setStatusText(waitingMessage)
+      return
+    }
+
+    if (liveLookupState === 'failed') {
+      setError('Backend did not respond while resolving this link. Reconnect the workspace and try again.')
+      return
+    }
+
+    if (!matchingWorkspace) {
+      setError(`No connected ${selectingLabel} matches this link. Connect the workspace first and try again.`)
       return
     }
 
@@ -114,6 +131,7 @@ export function WorkspaceScopedResolverPage({
     currentWorkspace,
     workspaceReady,
     connectionState,
+    liveLookupState,
     matchingWorkspace,
     navigate,
     request,
