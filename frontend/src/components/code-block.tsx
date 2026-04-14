@@ -52,12 +52,13 @@ function mapLanguage(lang: string): string {
   return LANGUAGE_MAP[lang] ?? lang
 }
 
-// Shiki transformer factory: inject data-line + optional .bookmarked class
-function createLineTransformer(bookmarked?: Set<number>) {
+// Shiki transformer factory: inject display line number + optional .bookmarked class
+function createLineTransformer(startLine: number, bookmarked?: Set<number>) {
   return {
     line(node: { properties: Record<string, unknown> }, line: number) {
-      node.properties['data-line'] = line
-      if (bookmarked?.has(line)) {
+      const displayLine = startLine + line - 1
+      node.properties['data-line'] = displayLine
+      if (bookmarked?.has(displayLine)) {
         const existing = (node.properties['class'] as string) ?? ''
         node.properties['class'] = existing ? `${existing} bookmarked` : 'bookmarked'
       }
@@ -76,12 +77,20 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
   fontSizeRef.current = fontSize
 
   const lineCount = useMemo(() => safeCode.split('\n').length, [safeCode])
+  const maxLineNumber = useMemo(
+    () => Math.max(startLine, startLine + lineCount - 1),
+    [startLine, lineCount],
+  )
   const gutterWidth = useMemo(() => Math.max(2, String(lineCount).length) * 0.6 + 1, [lineCount])
+  const wrapGutterWidth = useMemo(
+    () => Math.max(2, String(maxLineNumber).length) * 0.6 + 1,
+    [maxLineNumber],
+  )
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const transformers = useMemo(
-    () => showLineNumbers ? [createLineTransformer(bookmarkedLines)] : undefined,
-    [showLineNumbers, bookmarkedLines],
+    () => showLineNumbers ? [createLineTransformer(startLine, bookmarkedLines)] : undefined,
+    [showLineNumbers, startLine, bookmarkedLines],
   )
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -122,7 +131,13 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      style={{ fontSize, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.5, display: 'flex' }}
+      style={{
+        fontSize,
+        fontFamily: "'JetBrains Mono', monospace",
+        lineHeight: 1.5,
+        display: 'flex',
+        ['--wrap-gutter-width' as string]: `${wrapGutterWidth}em`,
+      }}
     >
       {/* Separate gutter only in non-wrap mode (stays fixed during horizontal scroll) */}
       {showLineNumbers && !wordWrap && (
@@ -163,7 +178,8 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           // In wrap mode, line numbers are CSS pseudo-elements — detect click in gutter area
           const target = e.currentTarget
           const rect = target.getBoundingClientRect()
-          if (e.clientX - rect.left > 50) return // not in gutter area
+          const wrapGutterClickWidth = (wrapGutterWidth + 0.5) * fontSize + 1
+          if (e.clientX - rect.left > wrapGutterClickWidth) return // not in gutter area
           // Find which .line element was clicked
           const lineEls = target.querySelectorAll('.line')
           for (let i = 0; i < lineEls.length; i++) {
