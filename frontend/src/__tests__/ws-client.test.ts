@@ -351,11 +351,26 @@ describe('WsClientService', () => {
       client.ws = firstSocket
       client.state = 'disconnected'
 
-      window.dispatchEvent(new Event('pageshow'))
+      const event = new Event('pageshow') as PageTransitionEvent
+      Object.defineProperty(event, 'persisted', { value: true })
+      window.dispatchEvent(event)
       await vi.runAllTimersAsync()
 
       expect(MockWebSocket.instances).toHaveLength(2)
       expect(MockWebSocket.instances[1].url).toBe('ws://localhost:4800')
+      expect(wsClient.getState()).toBe('connected')
+    })
+
+    it('should ignore initial non-persisted pageshow during first load', async () => {
+      wsClient.connect('ws://localhost:4800')
+
+      const event = new Event('pageshow') as PageTransitionEvent
+      Object.defineProperty(event, 'persisted', { value: false })
+      window.dispatchEvent(event)
+
+      await vi.runAllTimersAsync()
+
+      expect(MockWebSocket.instances).toHaveLength(1)
       expect(wsClient.getState()).toBe('connected')
     })
   })

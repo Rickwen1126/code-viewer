@@ -62,7 +62,8 @@ class WsClientService {
       if (document.visibilityState !== 'visible') return
       this.ensureActiveConnection('foreground')
     }
-    this.pageShowHandler = () => {
+    this.pageShowHandler = (event) => {
+      if (!this.shouldReconnectOnPageShow(event)) return
       this.ensureActiveConnection('pageshow')
     }
     document.addEventListener('visibilitychange', this.visibilityHandler)
@@ -87,6 +88,16 @@ class WsClientService {
     if (this.state !== 'connected' && this.state !== 'connecting') {
       this.reconnectDelay = 1000
       this.openSocket()
+    }
+  }
+
+  private shouldReconnectOnPageShow(event: PageTransitionEvent): boolean {
+    if (event.persisted) return true
+    try {
+      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      return nav?.type === 'back_forward'
+    } catch {
+      return false
     }
   }
 
