@@ -10,3 +10,4 @@ This directory stores curated project documents that are meant to be read and re
 - `demand-driven-watch-list/`: the current active-topic folder for replacing activation-time eager watchers with a frontend-derived watch list and narrow live-watch scopes.
 - `semantic-location-history/`: the current active-topic folder for browser-history-first semantic navigation across code jumps, Git diff, CodeTour, and future deep links.
 - `git-tour-origin-context/`: the earlier narrower precursor that focused only on Git/Tour return-context before the broader semantic-location-history contract.
+- `desktop-ui/`: desktop layout design — responsive shell with Activity Bar + resizable Sidebar + Main Content, adapting the mobile-first UI for wide viewports (>= 768px).
