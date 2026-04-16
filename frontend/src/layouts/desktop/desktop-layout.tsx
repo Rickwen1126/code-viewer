@@ -3,17 +3,17 @@ import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { ActivityBar, deriveActiveTab } from './activity-bar'
 import { SidebarPanel } from './sidebar-panel'
 import { FileBrowserSidebar } from './pages/file-browser-sidebar'
+import { GitSidebar } from './pages/git-sidebar'
+import { ToursSidebar } from './pages/tours-sidebar'
 import { FilesLandingPage } from './pages/files-landing'
 import { GitLandingPage } from './pages/git-landing'
 import { ToursLandingPage } from './pages/tours-landing'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { ConnectionStatus } from '../../components/connection-status'
 
-// Main content pages — reuse existing mobile pages for now
+// Main content pages — reuse existing mobile pages
 import { CodeViewerPage } from '../../pages/files/code-viewer'
-import { GitChangesPage } from '../../pages/git'
 import { GitDiffDetailPage } from '../../pages/git/diff-detail'
-import { TourListPage } from '../../pages/tours/index'
 import { TourDetailPage } from '../../pages/tours/tour-detail'
 import { OpenFileResolverPage } from '../../pages/open/open-file'
 import { OpenTourResolverPage } from '../../pages/open/open-tour'
@@ -38,18 +38,14 @@ export function DesktopLayout() {
 
   const workspaceInitial = workspace?.name?.[0]?.toUpperCase()
 
-  // Sidebar content based on active tab
-  // Phase 1: Files has its own desktop sidebar; Git and Tours use mobile pages temporarily
   function renderSidebar() {
     switch (activeTab) {
       case 'files':
         return <FileBrowserSidebar />
       case 'git':
-        // Temporary: reuse mobile GitChangesPage in sidebar until git-sidebar is forked
-        return <GitChangesPage />
+        return <GitSidebar />
       case 'tours':
-        // Temporary: reuse mobile TourListPage in sidebar until tours-sidebar is forked
-        return <TourListPage />
+        return <ToursSidebar />
       default:
         return <FileBrowserSidebar />
     }
