@@ -32,6 +32,7 @@ interface ResolverLinkResponse {
   resolverPath: string
   localUrl: string
   lanUrl: string | null
+  tailscaleUrl: string | null
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -212,6 +213,9 @@ async function linkFile(targetArg: string, options: LinkFileOptions) {
   console.log(`  Root:      ${workspaceRoot}`)
   console.log(`  Path:      ${relativePath}`)
   console.log(`  Local:     ${response.localUrl}`)
+  if (response.tailscaleUrl) {
+    console.log(`  Tailscale: ${response.tailscaleUrl}`)
+  }
   if (response.lanUrl) {
     console.log(`  Mobile:    ${response.lanUrl}`)
   }
@@ -246,6 +250,9 @@ function printResolverLink(
     console.log(`  ${key.padEnd(10)}${value}`)
   }
   console.log(`  Local:     ${response.localUrl}`)
+  if (response.tailscaleUrl) {
+    console.log(`  Tailscale: ${response.tailscaleUrl}`)
+  }
   if (response.lanUrl) {
     console.log(`  Mobile:    ${response.lanUrl}`)
   }

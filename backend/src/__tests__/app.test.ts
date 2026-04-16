@@ -57,6 +57,7 @@ describe('backend http routes', () => {
       workspace: { workspaceKey: string; displayName: string }
       resolverPath: string
       localUrl: string
+      tailscaleUrl: string | null
     }
 
     expect(body.status).toBe('ok')
@@ -68,6 +69,7 @@ describe('backend http routes', () => {
     expect(body.localUrl).toBe(
       `http://localhost:4801/open/file?workspace=${workspaceKey}&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20`,
     )
+    expect(typeof body.tailscaleUrl === 'string' || body.tailscaleUrl === null).toBe(true)
   })
 
   it('returns git diff and tour-step links for a connected workspace', async () => {
@@ -81,7 +83,12 @@ describe('backend http routes', () => {
       `http://localhost/api/links/diff?workspace=${encodeURIComponent(workspaceKey)}&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified`,
     )
     expect(diffResponse.status).toBe(200)
-    const diffBody = await diffResponse.json() as { status: string; resolverPath: string; localUrl: string }
+    const diffBody = await diffResponse.json() as {
+      status: string
+      resolverPath: string
+      localUrl: string
+      tailscaleUrl: string | null
+    }
     expect(diffBody.status).toBe('ok')
     expect(diffBody.resolverPath).toBe(
       `/open/git-diff?workspace=${workspaceKey}&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified`,
@@ -89,12 +96,18 @@ describe('backend http routes', () => {
     expect(diffBody.localUrl).toBe(
       `http://localhost:4801/open/git-diff?workspace=${workspaceKey}&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified`,
     )
+    expect(typeof diffBody.tailscaleUrl === 'string' || diffBody.tailscaleUrl === null).toBe(true)
 
     const tourResponse = await app.request(
       `http://localhost/api/links/tour-step?workspace=${encodeURIComponent(workspaceKey)}&tourId=review-tour&step=3`,
     )
     expect(tourResponse.status).toBe(200)
-    const tourBody = await tourResponse.json() as { status: string; resolverPath: string; localUrl: string }
+    const tourBody = await tourResponse.json() as {
+      status: string
+      resolverPath: string
+      localUrl: string
+      tailscaleUrl: string | null
+    }
     expect(tourBody.status).toBe('ok')
     expect(tourBody.resolverPath).toBe(
       `/open/tour?workspace=${workspaceKey}&tourId=review-tour&step=3`,
@@ -102,6 +115,7 @@ describe('backend http routes', () => {
     expect(tourBody.localUrl).toBe(
       `http://localhost:4801/open/tour?workspace=${workspaceKey}&tourId=review-tour&step=3`,
     )
+    expect(typeof tourBody.tailscaleUrl === 'string' || tourBody.tailscaleUrl === null).toBe(true)
   })
 
   it('rejects unknown workspaces and invalid paths', async () => {

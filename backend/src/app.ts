@@ -7,6 +7,7 @@ import {
   buildGitDiffLinkResponse,
   buildTourStepLinkResponse,
   getLanIp,
+  getTailscaleIp,
   normalizeNonEmptyString,
   parseGitDiffStatus,
   normalizeRepoRelativePath,
@@ -56,7 +57,7 @@ export function registerRoutes(app: Hono, upgradeWebSocket: UpgradeWebSocket<any
         endLine: parsePositiveInt(c.req.query('endLine')),
       },
       manager.listWorkspaces(),
-      { lanIp: getLanIp() },
+      { lanIp: getLanIp(), tailscaleIp: getTailscaleIp() },
     )
 
     if (result.kind === 'workspace_not_found') {
@@ -97,7 +98,7 @@ export function registerRoutes(app: Hono, upgradeWebSocket: UpgradeWebSocket<any
         status: parseGitDiffStatus(c.req.query('status')),
       },
       manager.listWorkspaces(),
-      { lanIp: getLanIp() },
+      { lanIp: getLanIp(), tailscaleIp: getTailscaleIp() },
     )
 
     if (result.kind === 'workspace_not_found') {
@@ -137,7 +138,7 @@ export function registerRoutes(app: Hono, upgradeWebSocket: UpgradeWebSocket<any
         step: parsePositiveInt(c.req.query('step')),
       },
       manager.listWorkspaces(),
-      { lanIp: getLanIp() },
+      { lanIp: getLanIp(), tailscaleIp: getTailscaleIp() },
     )
 
     if (result.kind === 'workspace_not_found') {

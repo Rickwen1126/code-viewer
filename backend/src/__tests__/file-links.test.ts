@@ -4,6 +4,7 @@ import {
   buildGitDiffLinkResponse,
   buildTourStepLinkResponse,
   getLanIp,
+  getTailscaleIp,
   normalizeNonEmptyString,
   parseGitDiffStatus,
   normalizeRepoRelativePath,
@@ -74,7 +75,7 @@ describe('buildFileLinkResponse', () => {
         endLine: 20,
       },
       [makeWorkspace()],
-      { lanIp: '192.168.1.23' },
+      { lanIp: '192.168.1.23', tailscaleIp: '100.112.227.109' },
     )
 
     expect(result.kind).toBe('ok')
@@ -89,6 +90,9 @@ describe('buildFileLinkResponse', () => {
     )
     expect(result.payload.lanUrl).toBe(
       'http://192.168.1.23:4801/open/file?workspace=ws_codeviewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
+    )
+    expect(result.payload.tailscaleUrl).toBe(
+      'http://100.112.227.109:4801/open/file?workspace=ws_codeviewer&path=frontend%2Fsrc%2Fapp.tsx&line=12&endLine=20',
     )
   })
 
@@ -137,7 +141,7 @@ describe('buildGitDiffLinkResponse', () => {
         status: 'modified',
       },
       [makeWorkspace()],
-      { lanIp: '192.168.1.23' },
+      { lanIp: '192.168.1.23', tailscaleIp: '100.112.227.109' },
     )
 
     expect(result.kind).toBe('ok')
@@ -152,6 +156,9 @@ describe('buildGitDiffLinkResponse', () => {
     expect(result.payload.lanUrl).toBe(
       'http://192.168.1.23:4801/open/git-diff?workspace=ws_codeviewer&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified',
     )
+    expect(result.payload.tailscaleUrl).toBe(
+      'http://100.112.227.109:4801/open/git-diff?workspace=ws_codeviewer&path=packages%2Fcli%2Fsrc%2Findex.ts&commit=abc123&status=modified',
+    )
   })
 })
 
@@ -164,7 +171,7 @@ describe('buildTourStepLinkResponse', () => {
         step: 3,
       },
       [makeWorkspace()],
-      { lanIp: '192.168.1.23' },
+      { lanIp: '192.168.1.23', tailscaleIp: '100.112.227.109' },
     )
 
     expect(result.kind).toBe('ok')
@@ -179,6 +186,9 @@ describe('buildTourStepLinkResponse', () => {
     expect(result.payload.lanUrl).toBe(
       'http://192.168.1.23:4801/open/tour?workspace=ws_codeviewer&tourId=review-tour&step=3',
     )
+    expect(result.payload.tailscaleUrl).toBe(
+      'http://100.112.227.109:4801/open/tour?workspace=ws_codeviewer&tourId=review-tour&step=3',
+    )
   })
 })
 
@@ -186,5 +196,12 @@ describe('getLanIp', () => {
   it('returns either a LAN ip or null', () => {
     const value = getLanIp()
     expect(value === null || /^\d{1,3}(\.\d{1,3}){3}$/.test(value)).toBe(true)
+  })
+})
+
+describe('getTailscaleIp', () => {
+  it('returns either a tailscale ip or null', () => {
+    const value = getTailscaleIp()
+    expect(value === null || /^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)).toBe(true)
   })
 })

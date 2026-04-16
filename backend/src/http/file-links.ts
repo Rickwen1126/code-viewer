@@ -40,6 +40,7 @@ export interface ResolverLinkPayload {
   resolverPath: string
   localUrl: string
   lanUrl: string | null
+  tailscaleUrl: string | null
 }
 
 export type ResolverLinkResolution =
@@ -94,6 +95,18 @@ export function getLanIp(): string | null {
   return null
 }
 
+export function getTailscaleIp(): string | null {
+  const nets = networkInterfaces()
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] ?? []) {
+      if (net.family === 'IPv4' && !net.internal && /^100\./.test(net.address)) {
+        return net.address
+      }
+    }
+  }
+  return null
+}
+
 function resolveWorkspace(
   workspaceRef: string,
   workspaces: WorkspaceLinkEntry[],
@@ -115,7 +128,7 @@ function resolveWorkspace(
 function buildResolverLinkPayload(
   workspace: WorkspaceLinkEntry,
   resolverPath: string,
-  options: { lanIp?: string | null } = {},
+  options: { lanIp?: string | null; tailscaleIp?: string | null } = {},
 ): ResolverLinkPayload {
   return {
     workspace: {
@@ -128,13 +141,14 @@ function buildResolverLinkPayload(
     resolverPath,
     localUrl: `http://localhost:4801${resolverPath}`,
     lanUrl: options.lanIp ? `http://${options.lanIp}:4801${resolverPath}` : null,
+    tailscaleUrl: options.tailscaleIp ? `http://${options.tailscaleIp}:4801${resolverPath}` : null,
   }
 }
 
 export function buildFileLinkResponse(
   request: FileLinkRequest,
   workspaces: WorkspaceLinkEntry[],
-  options: { lanIp?: string | null } = {},
+  options: { lanIp?: string | null; tailscaleIp?: string | null } = {},
 ): ResolverLinkResolution {
   const resolved = resolveWorkspace(request.workspaceRef, workspaces)
   if ('kind' in resolved) return resolved
@@ -153,7 +167,7 @@ export function buildFileLinkResponse(
 export function buildGitDiffLinkResponse(
   request: GitDiffLinkRequest,
   workspaces: WorkspaceLinkEntry[],
-  options: { lanIp?: string | null } = {},
+  options: { lanIp?: string | null; tailscaleIp?: string | null } = {},
 ): ResolverLinkResolution {
   const resolved = resolveWorkspace(request.workspaceRef, workspaces)
   if ('kind' in resolved) return resolved
@@ -172,7 +186,7 @@ export function buildGitDiffLinkResponse(
 export function buildTourStepLinkResponse(
   request: TourStepLinkRequest,
   workspaces: WorkspaceLinkEntry[],
-  options: { lanIp?: string | null } = {},
+  options: { lanIp?: string | null; tailscaleIp?: string | null } = {},
 ): ResolverLinkResolution {
   const resolved = resolveWorkspace(request.workspaceRef, workspaces)
   if ('kind' in resolved) return resolved
