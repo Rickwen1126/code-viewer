@@ -187,7 +187,7 @@ export function GitChangesPage() {
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <PullToRefresh onRefresh={loadStatus}>
+        <PullToRefresh onRefresh={loadStatus} scrollKey="/git">
           {/* Current worktree changes */}
           {totalChanges === 0 && commits.length === 0 && (
             <div style={{ padding: 16, color: '#888', fontSize: 13 }}>No changes — working tree is clean.</div>

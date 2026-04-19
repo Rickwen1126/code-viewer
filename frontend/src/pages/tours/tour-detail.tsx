@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useTourEdit } from '../../hooks/use-tour-edit'
+import { useScrollRestore } from '../../hooks/use-scroll-restore'
 import { buildFileLocationUrl } from '../../services/file-location'
 import { buildTourStepUrl, createDetourAnchor, mergeDetourState, parsePositiveIntQuery } from '../../services/semantic-navigation'
 import { CodeBlock } from '../../components/code-block'
@@ -65,6 +66,7 @@ export function TourDetailPage() {
   const [loadingCode, setLoadingCode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { setTourEdit } = useTourEdit()
+  const scrollRef = useScrollRestore(`/tours/${tourId}`)
 
   // Edit/delete state
   const [editingStep, setEditingStep] = useState(false)
@@ -356,7 +358,7 @@ export function TourDetailPage() {
       </div>
 
       {/* Step content — scrollable */}
-      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
         {/* Step title */}
         {step.title && (
           <div style={{ padding: '12px 16px 0', fontSize: 14, fontWeight: 600, color: '#d4d4d4' }}>

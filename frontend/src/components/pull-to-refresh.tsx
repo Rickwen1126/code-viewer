@@ -1,14 +1,17 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { saveScrollPosition, getScrollPosition } from '../hooks/use-scroll-restore'
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>
   children: React.ReactNode
+  /** When set, scroll position is saved on unmount and restored on mount. */
+  scrollKey?: string
 }
 
 const THRESHOLD = 60
 const MAX_PULL = 80
 
-export function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
+export function PullToRefresh({ onRefresh, children, scrollKey }: PullToRefreshProps) {
   const [pulling, setPulling] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
@@ -47,6 +50,21 @@ export function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
     }
     setPulling(false)
   }, [pullDistance, onRefresh])
+
+  // Scroll restore: restore on mount, save on unmount
+  useEffect(() => {
+    if (!scrollKey) return
+    const el = containerRef.current
+    const saved = getScrollPosition(scrollKey)
+    if (el && saved != null) {
+      requestAnimationFrame(() => {
+        el.scrollTop = saved
+      })
+    }
+    return () => {
+      if (el) saveScrollPosition(scrollKey, el.scrollTop)
+    }
+  }, [scrollKey])
 
   const indicatorHeight = refreshing ? 40 : pullDistance
 

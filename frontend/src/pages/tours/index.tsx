@@ -125,7 +125,7 @@ export function TourListPage() {
   }
 
   return (
-    <PullToRefresh onRefresh={loadTours}>
+    <PullToRefresh onRefresh={loadTours} scrollKey="/tours">
       <div>
       <div style={{ padding: '12px 16px', paddingTop: 'calc(12px + env(safe-area-inset-top))', borderBottom: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 16, fontWeight: 600, color: '#d4d4d4' }}>Code Tours</span>
