@@ -42,6 +42,37 @@ import { getFilePreviewKind } from '@code-viewer/shared'
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const LINE_HEIGHT = 19.5 // 13px * 1.5
 
+const menuItemStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: '8px 12px',
+  background: 'none',
+  border: 'none',
+  color: '#d4d4d4',
+  fontSize: 12,
+  textAlign: 'left',
+  cursor: 'pointer',
+}
+
+function copyToClipboard(text: string): void {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
+  } else {
+    fallbackCopy(text)
+  }
+}
+
+function fallbackCopy(text: string): void {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  document.execCommand('copy')
+  document.body.removeChild(ta)
+}
+
 interface TouchPos {
   line: number
   character: number
@@ -110,8 +141,24 @@ export function CodeViewerPage() {
   const [addStepLine, setAddStepLine] = useState<number | null>(null)
   const [stepModeActive, setStepModeActive] = useState(true) // toggle within session, doesn't clear reference point
 
+  // Overflow menu state
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
   // Bookmarks state
   const [bookmarkedLines, setBookmarkedLines] = useState<Set<number>>(new Set())
+
+  // Close overflow menu on click outside
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [menuOpen])
 
   // Load bookmarks when file changes
   useEffect(() => {
@@ -707,7 +754,7 @@ export function CodeViewerPage() {
               &#x2605;{bookmarkedLines.size}
             </span>
           )}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
           {isMarkdown && (
             <button
               onClick={() => setMdRendered((v) => {
@@ -720,7 +767,8 @@ export function CodeViewerPage() {
                 border: '1px solid #444',
                 color: mdRendered ? '#d4d4d4' : '#888',
                 fontSize: 11,
-                padding: '2px 8px',
+                padding: '0 8px',
+                height: 24,
                 borderRadius: 4,
                 cursor: 'pointer',
               }}
@@ -728,38 +776,6 @@ export function CodeViewerPage() {
               {mdRendered ? 'Rendered' : 'Raw'}
             </button>
           )}
-          <button
-            onClick={() => setWordWrap((v) => {
-              const next = !v
-              localStorage.setItem('code-viewer:wrap-enabled', String(next))
-              return next
-            })}
-            style={{
-              background: wordWrap ? '#333' : 'none',
-              border: '1px solid #444',
-              color: wordWrap ? '#d4d4d4' : '#888',
-              fontSize: 11,
-              padding: '2px 8px',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >
-            Wrap
-          </button>
-          <button
-            onClick={handleDocumentSymbols}
-            style={{
-              background: 'none',
-              border: '1px solid #444',
-              color: '#888',
-              fontSize: 11,
-              padding: '2px 8px',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >
-            Symbols
-          </button>
           <button
             onClick={() => {
               // In rendered markdown mode, switch to raw for search
@@ -774,7 +790,8 @@ export function CodeViewerPage() {
               border: '1px solid #444',
               color: searchOpen ? '#d4d4d4' : '#888',
               fontSize: 13,
-              padding: '2px 8px',
+              padding: '0 8px',
+              height: 24,
               borderRadius: 4,
               cursor: 'pointer',
             }}
@@ -789,7 +806,8 @@ export function CodeViewerPage() {
                 border: stepModeActive ? '1px solid #569cd6' : '1px solid #444',
                 color: stepModeActive ? '#d4d4d4' : '#888',
                 fontSize: 11,
-                padding: '2px 8px',
+                padding: '0 8px',
+                height: 24,
                 borderRadius: 4,
                 cursor: 'pointer',
                 maxWidth: 100,
@@ -802,6 +820,91 @@ export function CodeViewerPage() {
               Step+
             </button>
           )}
+          {/* Overflow menu */}
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              style={{
+                background: menuOpen ? '#333' : 'none',
+                border: '1px solid #444',
+                color: menuOpen ? '#d4d4d4' : '#888',
+                fontSize: 13,
+                padding: '0 8px',
+                height: 24,
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+              title="More actions"
+            >
+              &#x22EF;
+            </button>
+            {menuOpen && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: 4,
+                width: 200,
+                background: '#1e1e1e',
+                border: '1px solid #444',
+                borderRadius: 6,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                zIndex: 100,
+                overflow: 'hidden',
+              }}>
+                <button
+                  onClick={() => {
+                    copyToClipboard(path)
+                    setMenuOpen(false)
+                  }}
+                  style={menuItemStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  Copy Relative Path
+                </button>
+                <button
+                  onClick={() => {
+                    const abs = workspace?.rootPath ? `${workspace.rootPath}/${path}` : path
+                    copyToClipboard(abs)
+                    setMenuOpen(false)
+                  }}
+                  style={menuItemStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  Copy Absolute Path
+                </button>
+                <div style={{ borderTop: '1px solid #333' }} />
+                <button
+                  onClick={() => {
+                    setWordWrap((v) => {
+                      const next = !v
+                      localStorage.setItem('code-viewer:wrap-enabled', String(next))
+                      return next
+                    })
+                    setMenuOpen(false)
+                  }}
+                  style={menuItemStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  {wordWrap ? '✓ ' : ''}Word Wrap
+                </button>
+                <button
+                  onClick={() => {
+                    handleDocumentSymbols()
+                    setMenuOpen(false)
+                  }}
+                  style={menuItemStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  Symbols
+                </button>
+              </div>
+            )}
+          </div>
           </div>
         </div>
       </div>

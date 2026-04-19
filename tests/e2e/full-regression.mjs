@@ -8,6 +8,7 @@ const suite = [
   { id: 'semantic-navigation', cmd: ['node', 'tests/e2e/semantic-navigation.mjs'] },
   { id: 'media-preview', cmd: ['node', 'tests/e2e/media-preview.mjs', WORKSPACE_PATH] },
   { id: 'git-media-preview', cmd: ['node', 'tests/e2e/git-media-preview.mjs', WORKSPACE_PATH] },
+  { id: 'desktop-layout', cmd: ['node', 'tests/e2e/desktop-layout.mjs'] },
 ]
 
 function runOne({ id, cmd }) {

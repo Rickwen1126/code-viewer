@@ -3,6 +3,8 @@ import { useSwipeable } from 'react-swipeable'
 import { useContext, useCallback, Component, type ReactNode, useEffect, useMemo } from 'react'
 import { TabBar } from './components/tab-bar'
 import { ConnectionStatus } from './components/connection-status'
+import { useIsDesktop } from './hooks/use-is-desktop'
+import { DesktopLayout } from './layouts/desktop/desktop-layout'
 import { WorkspaceProvider, useWorkspace } from './hooks/use-workspace'
 import { TourEditProvider } from './hooks/use-tour-edit'
 import { ReviewProvider, ReviewContext } from './hooks/use-review'
@@ -121,7 +123,27 @@ function LastLocationTracker() {
   return null
 }
 
-function TabLayout() {
+/** Viewport split — the single branching point between mobile and desktop. */
+function ResponsiveLayout() {
+  const isDesktop = useIsDesktop()
+
+  if (isDesktop) {
+    return (
+      <>
+        <WatchSyncController />
+        <LastLocationTracker />
+        <Routes>
+          <Route index element={<InitialRedirect />} />
+          <Route path="/*" element={<DesktopLayout />} />
+        </Routes>
+      </>
+    )
+  }
+
+  return <MobileLayout />
+}
+
+function MobileLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { totalBadgeCount } = useContext(ReviewContext)
@@ -264,7 +286,7 @@ export default function App() {
           <TourEditProvider>
             <ReviewProvider>
               <Routes>
-                <Route path="/*" element={<TabLayout />} />
+                <Route path="/*" element={<ResponsiveLayout />} />
               </Routes>
             </ReviewProvider>
           </TourEditProvider>

@@ -1,0 +1,304 @@
+/**
+ * Desktop sidebar variant of GitChangesPage.
+ * Forked from pages/git/index.tsx — compact layout, no pull-to-refresh,
+ * file clicks navigate to /git/diff/* in main content, hover states.
+ */
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router'
+import { useWebSocket } from '../../../hooks/use-websocket'
+import { wsClient } from '../../../services/ws-client'
+import { cacheService } from '../../../services/cache'
+import { debugLog } from '../../../services/debug'
+import { buildGitDiffUrl } from '../../../services/semantic-navigation'
+import { useWorkspace } from '../../../hooks/use-workspace'
+import { useDocumentVisibility } from '../../../hooks/use-visibility'
+import type { GitStatusResultPayload } from '@code-viewer/shared'
+
+const STATUS_COLORS: Record<string, string> = {
+  added: '#4ec9b0',
+  modified: '#e2b93d',
+  deleted: '#f48771',
+  renamed: '#9cdcfe',
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  added: 'A',
+  modified: 'M',
+  deleted: 'D',
+  renamed: 'R',
+}
+
+interface Commit {
+  hash: string
+  hashShort: string
+  message: string
+  author: string
+  date: string | null
+}
+
+type GitStatusWithGroups = GitStatusResultPayload & {
+  stagedFiles?: Array<{ path: string; status: string; oldPath?: string }>
+  unstagedFiles?: Array<{ path: string; status: string; oldPath?: string }>
+}
+
+function CompactFileRow({ file, onClick }: { file: { path: string; status: string }; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        width: '100%',
+        padding: '4px 8px',
+        background: 'none',
+        border: 'none',
+        borderBottom: '1px solid #2a2a2a',
+        cursor: 'pointer',
+        textAlign: 'left',
+        minHeight: 26,
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+    >
+      <span style={{ flexShrink: 0, width: 14, fontSize: 11, fontWeight: 700, color: STATUS_COLORS[file.status] ?? '#888' }}>
+        {STATUS_LABELS[file.status] ?? '?'}
+      </span>
+      <span style={{ flex: 1, fontSize: 12, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {file.path}
+      </span>
+    </button>
+  )
+}
+
+export function GitSidebar() {
+  const { request, connectionState } = useWebSocket()
+  const { workspace, workspaceReady } = useWorkspace()
+  const visibility = useDocumentVisibility()
+  const navigate = useNavigate()
+  const [gitStatus, setGitStatus] = useState<GitStatusWithGroups | null>(null)
+  const [commits, setCommits] = useState<Commit[]>([])
+  const [expandedCommit, setExpandedCommit] = useState<string | null>(null)
+  const [commitFiles, setCommitFiles] = useState<Record<string, Array<{ path: string; status: string }>>>({})
+  const [loading, setLoading] = useState(true)
+
+  // Cache-first
+  useEffect(() => {
+    if (!workspace) return
+    cacheService.getGitStatus(workspace.extensionId).then(cached => {
+      if (cached) { setGitStatus(cached as GitStatusWithGroups); setLoading(false) }
+    })
+  }, [workspace])
+
+  // Background fetch
+  useEffect(() => {
+    if (connectionState !== 'connected' || !workspace || !workspaceReady) return
+    loadStatusBackground()
+    loadCommits()
+    const unsub = wsClient.subscribe('git.statusChanged', () => {
+      debugLog('watch:git', 'event', { workspace: workspace.extensionId })
+      loadStatusBackground()
+    })
+    return unsub
+  }, [connectionState, workspace, workspaceReady])
+
+  const loadStatusBackground = useCallback(async () => {
+    try {
+      const res = await request<Record<string, never>, GitStatusWithGroups>('git.status', {})
+      setGitStatus(res.payload)
+      if (workspace) cacheService.setGitStatus(workspace.extensionId, res.payload)
+    } catch { /* cached */ } finally { setLoading(false) }
+  }, [request, workspace])
+
+  const loadCommits = useCallback(async () => {
+    try {
+      const res = await request<{ maxCount: number }, { commits: Commit[] }>('git.log', { maxCount: 30 })
+      setCommits(res.payload.commits ?? [])
+    } catch { /* ignore */ }
+  }, [request])
+
+  // Reload on visibility resume
+  const [wasHidden, setWasHidden] = useState(visibility !== 'visible')
+  useEffect(() => {
+    if (visibility !== 'visible') {
+      if (!wasHidden) setWasHidden(true)
+      return
+    }
+    if (!wasHidden || connectionState !== 'connected' || !workspace || !workspaceReady) return
+    setWasHidden(false)
+    void loadStatusBackground()
+    void loadCommits()
+  }, [visibility, wasHidden, connectionState, workspace, workspaceReady, loadStatusBackground, loadCommits])
+
+  async function handleExpandCommit(hash: string) {
+    if (expandedCommit === hash) { setExpandedCommit(null); return }
+    setExpandedCommit(hash)
+    if (!commitFiles[hash]) {
+      try {
+        const res = await request<{ hash: string }, { hash: string; files: Array<{ path: string; status: string }> }>('git.commitFiles', { hash })
+        setCommitFiles(prev => ({ ...prev, [hash]: res.payload.files ?? [] }))
+      } catch {
+        setCommitFiles(prev => ({ ...prev, [hash]: [] }))
+      }
+    }
+  }
+
+  if (loading && !gitStatus) {
+    return <div style={{ padding: 12, color: '#888', fontSize: 12 }}>Loading...</div>
+  }
+
+  if (!gitStatus) {
+    return <div style={{ padding: 12, color: '#888', fontSize: 12 }}>{workspace ? 'No git repository.' : 'No workspace selected.'}</div>
+  }
+
+  const staged = gitStatus.stagedFiles ?? []
+  const unstaged = gitStatus.unstagedFiles ?? gitStatus.changedFiles ?? []
+  const totalChanges = staged.length + unstaged.length
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{
+        padding: '6px 8px',
+        borderBottom: '1px solid #333',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 13, color: '#d4d4d4', fontWeight: 600 }}>{gitStatus.branch || '(no branch)'}</span>
+        {gitStatus.ahead > 0 && <span style={{ fontSize: 10, color: '#4ec9b0', background: '#1e3a1e', padding: '0 4px', borderRadius: 3 }}>↑{gitStatus.ahead}</span>}
+        {gitStatus.behind > 0 && <span style={{ fontSize: 10, color: '#f48771', background: '#3a1e1e', padding: '0 4px', borderRadius: 3 }}>↓{gitStatus.behind}</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#888' }}>{totalChanges} changed</span>
+      </div>
+
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {totalChanges === 0 && commits.length === 0 && (
+          <div style={{ padding: 12, color: '#888', fontSize: 12 }}>Clean working tree.</div>
+        )}
+
+        {/* Staged */}
+        {staged.length > 0 && (
+          <>
+            <div style={{ padding: '4px 8px', fontSize: 10, color: '#4ec9b0', textTransform: 'uppercase', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+              Staged ({staged.length})
+            </div>
+            {staged.map(file => (
+              <CompactFileRow key={'s:' + file.path} file={file} onClick={() => navigate(buildGitDiffUrl(file.path, { status: file.status }))} />
+            ))}
+          </>
+        )}
+
+        {/* Unstaged */}
+        {unstaged.length > 0 && (
+          <>
+            <div style={{ padding: '4px 8px', fontSize: 10, color: staged.length > 0 ? '#e2b93d' : '#d4d4d4', textTransform: 'uppercase', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+              {staged.length > 0 ? 'Unstaged' : 'Changes'} ({unstaged.length})
+            </div>
+            {unstaged.map(file => (
+              <CompactFileRow key={'u:' + file.path} file={file} onClick={() => navigate(buildGitDiffUrl(file.path, { status: file.status }))} />
+            ))}
+          </>
+        )}
+
+        {/* Commits */}
+        {commits.length > 0 && (
+          <>
+            <div style={{ padding: '4px 8px', fontSize: 10, color: '#888', textTransform: 'uppercase', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+              Commits ({commits.length})
+            </div>
+            {commits.map(commit => (
+              <div key={commit.hash}>
+                <button
+                  onClick={() => handleExpandCommit(commit.hash)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 6,
+                    width: '100%',
+                    padding: '5px 8px',
+                    background: expandedCommit === commit.hash ? '#252526' : 'none',
+                    border: 'none',
+                    borderBottom: '1px solid #2a2a2a',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    minHeight: 32,
+                  }}
+                  onMouseEnter={(e) => { if (expandedCommit !== commit.hash) (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                  onMouseLeave={(e) => { if (expandedCommit !== commit.hash) (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  <span style={{ flexShrink: 0, fontSize: 10, color: '#569cd6', fontFamily: 'monospace', marginTop: 2 }}>
+                    {commit.hashShort}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {commit.message.split('\n')[0]}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 1 }}>
+                      {commit.author}{commit.date ? ` · ${formatRelativeDate(commit.date)}` : ''}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, color: '#888', flexShrink: 0 }}>{expandedCommit === commit.hash ? '▼' : '▶'}</span>
+                </button>
+
+                {/* Expanded commit files — click navigates to diff in main content */}
+                {expandedCommit === commit.hash && (
+                  <div style={{ background: '#1a1a1a' }}>
+                    {!commitFiles[commit.hash] ? (
+                      <div style={{ padding: '6px 8px', color: '#888', fontSize: 11 }}>Loading...</div>
+                    ) : commitFiles[commit.hash].length === 0 ? (
+                      <div style={{ padding: '6px 8px', color: '#888', fontSize: 11 }}>No files</div>
+                    ) : (
+                      commitFiles[commit.hash].map(file => (
+                        <button
+                          key={file.path}
+                          onClick={() => navigate(buildGitDiffUrl(file.path, { commit: commit.hash, status: file.status }))}
+                          style={{
+                            display: 'flex',
+                            gap: 6,
+                            padding: '4px 8px 4px 28px',
+                            background: 'none',
+                            border: 'none',
+                            borderBottom: '1px solid #222',
+                            width: '100%',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            minHeight: 24,
+                          }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                        >
+                          <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLORS[file.status] ?? '#888', width: 12, flexShrink: 0 }}>
+                            {STATUS_LABELS[file.status] ?? '?'}
+                          </span>
+                          <span style={{ fontSize: 11, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                            {file.path}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function formatRelativeDate(isoDate: string): string {
+  const date = new Date(isoDate)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) return `${diffDays}d ago`
+  return date.toLocaleDateString()
+}
