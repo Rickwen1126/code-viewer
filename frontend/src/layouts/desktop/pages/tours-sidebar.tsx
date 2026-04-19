@@ -39,12 +39,23 @@ export function ToursSidebar() {
     : null
   const activeStep = searchParams.get('step') ? parseInt(searchParams.get('step')!, 10) : null
 
-  // Auto-expand the active tour from URL
+  // Auto-expand the active tour from URL and load steps if needed (e.g. after sidebar remount)
   useEffect(() => {
-    if (activeTourId && expandedTourId !== activeTourId) {
+    if (!activeTourId) return
+    if (expandedTourId !== activeTourId) {
       setExpandedTourId(activeTourId)
     }
-  }, [activeTourId])
+    if (!tourSteps[activeTourId] && connectionState === 'connected') {
+      request<{ tourId: string }, TourGetStepsResultPayload>('tour.getSteps', { tourId: activeTourId })
+        .then(res => {
+          setTourSteps(prev => ({ ...prev, [activeTourId]: res.payload.steps ?? [] }))
+        })
+        .catch(() => {
+          setTourSteps(prev => ({ ...prev, [activeTourId]: [] }))
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTourId, connectionState])
 
   useEffect(() => {
     if (connectionState !== 'connected' || !workspace || !workspaceReady) return

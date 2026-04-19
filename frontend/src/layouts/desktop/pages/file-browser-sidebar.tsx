@@ -3,7 +3,7 @@
  * Forked from pages/files/file-browser.tsx — same data logic, compact layout, no pull-to-refresh.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useLocation } from 'react-router'
 import { useWebSocket } from '../../../hooks/use-websocket'
 import { cacheService } from '../../../services/cache'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../../services/file-location'
@@ -140,9 +140,11 @@ export function FileBrowserSidebar() {
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
   const navigate = useNavigate()
+  const location = useLocation()
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showRecent, setShowRecent] = useState(false)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => getExpandedDirs())
   const [collapsedSnapshot, setCollapsedSnapshot] = useState<Set<string> | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -202,14 +204,16 @@ export function FileBrowserSidebar() {
   const recentFiles = useMemo(() => getRecentFiles(), [nodes])
   const bookmarks = useMemo(
     () => workspace ? getBookmarks(workspace.extensionId) : [],
-    [workspace, searchQuery],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspace, showRecent],
   )
 
+  // Skip redirect when a resolver page (/open/*) is handling workspace selection
   useEffect(() => {
-    if (!workspace && connectionState === 'connected') {
+    if (!workspace && connectionState === 'connected' && !location.pathname.startsWith('/open/')) {
       navigate('/workspaces', { replace: true })
     }
-  }, [workspace, connectionState, navigate])
+  }, [workspace, connectionState, navigate, location.pathname])
 
   useEffect(() => {
     if (!workspace) return
@@ -246,6 +250,7 @@ export function FileBrowserSidebar() {
   function handleFileClick(path: string) {
     addRecentFile(path)
     setSearchQuery('')
+    setShowRecent(false)
     navigate(buildFileRoutePath(path))
   }
 
@@ -271,7 +276,9 @@ export function FileBrowserSidebar() {
           type="text"
           placeholder="Search files..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => { setSearchQuery(e.target.value); setShowRecent(!e.target.value.trim()) }}
+          onFocus={() => { if (!searchQuery) setShowRecent(true) }}
+          onBlur={() => setTimeout(() => setShowRecent(false), 200)}
           style={{
             width: '100%',
             background: '#2a2a2a',
@@ -287,6 +294,83 @@ export function FileBrowserSidebar() {
 
       {/* Content area — scrollable */}
       <div style={{ flex: 1, overflow: 'auto' }}>
+        {/* Bookmarks dropdown (shown on focus when no query) */}
+        {showRecent && !isSearching && bookmarks.length > 0 && (
+          <div style={{ borderBottom: '1px solid #333' }}>
+            <div style={{ padding: '4px 8px', fontSize: 10, color: '#e2b93d', textTransform: 'uppercase' }}>
+              &#x2605; Bookmarks ({bookmarks.length})
+            </div>
+            {bookmarks.map((b: Bookmark) => (
+              <button
+                key={`${b.path}:${b.line}`}
+                onClick={() => {
+                  setSearchQuery('')
+                  setShowRecent(false)
+                  navigate(buildFileLocationUrl(b.path, { line: b.line }))
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '6px 8px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '1px solid #2a2a2a',
+                  color: '#d4d4d4',
+                  fontSize: 12,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+              >
+                <span style={{ color: '#e2b93d' }}>&#x2605; </span>
+                <span style={{ color: '#569cd6' }}>{b.path.split('/').pop()}</span>
+                <span style={{ color: '#666', marginLeft: 6, fontSize: 11 }}>:{b.line}</span>
+                {b.preview && (
+                  <div style={{ fontSize: 10, color: '#666', marginTop: 1, fontFamily: "'JetBrains Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {b.preview}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Recent files dropdown (shown on focus when no query) */}
+        {showRecent && !isSearching && recentFiles.length > 0 && (
+          <div style={{ borderBottom: '1px solid #333' }}>
+            <div style={{ padding: '4px 8px', fontSize: 10, color: '#888', textTransform: 'uppercase' }}>Recent</div>
+            {recentFiles.map((path) => (
+              <button
+                key={path}
+                onClick={() => handleFileClick(path)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '6px 8px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '1px solid #2a2a2a',
+                  color: '#d4d4d4',
+                  fontSize: 12,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+              >
+                <span style={{ color: '#569cd6' }}>{path.split('/').pop()}</span>
+                <span style={{ color: '#666', marginLeft: 6, fontSize: 11 }}>
+                  {path.split('/').slice(0, -1).join('/')}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Search results */}
         {isSearching && (
           <div>
@@ -322,8 +406,8 @@ export function FileBrowserSidebar() {
           </div>
         )}
 
-        {/* File tree */}
-        {!isSearching && (
+        {/* File tree (hidden during search or recent dropdown) */}
+        {!isSearching && !showRecent && (
           <>
             {/* Header: workspace name + actions */}
             <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #2a2a2a', minHeight: 26 }}>

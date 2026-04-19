@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router'
 import { ActivityBar, deriveActiveTab } from './activity-bar'
 import { SidebarPanel } from './sidebar-panel'
+import { WorkspacePopover } from './workspace-popover'
 import { FileBrowserSidebar } from './pages/file-browser-sidebar'
 import { GitSidebar } from './pages/git-sidebar'
 import { ToursSidebar } from './pages/tours-sidebar'
@@ -24,6 +25,7 @@ export function DesktopLayout() {
   const location = useLocation()
   const { workspace } = useWorkspace()
   const activeTab = deriveActiveTab(location.pathname)
+  const [showWorkspacePopover, setShowWorkspacePopover] = useState(false)
 
   const handleTabClick = useCallback(
     (path: string) => {
@@ -33,8 +35,8 @@ export function DesktopLayout() {
   )
 
   const handleWorkspaceClick = useCallback(() => {
-    navigate('/workspaces')
-  }, [navigate])
+    setShowWorkspacePopover(prev => !prev)
+  }, [])
 
   const workspaceInitial = workspace?.name?.[0]?.toUpperCase()
 
@@ -60,6 +62,9 @@ export function DesktopLayout() {
           workspaceInitial={workspaceInitial}
           onWorkspaceClick={handleWorkspaceClick}
         />
+        {showWorkspacePopover && (
+          <WorkspacePopover onClose={() => setShowWorkspacePopover(false)} />
+        )}
         <SidebarPanel>
           {renderSidebar()}
         </SidebarPanel>
