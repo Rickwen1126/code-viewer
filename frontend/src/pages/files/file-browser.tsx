@@ -204,7 +204,7 @@ export function FileBrowserPage() {
     return allFiles.filter(f => fuzzyMatch(searchQuery, f.path)).slice(0, 20)
   }, [searchQuery, allFiles])
 
-  const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [nodes, workspace]) // re-read when tree/workspace changes
+  const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [nodes, workspace, showRecent]) // re-read when dropdown opens
   const bookmarks = useMemo(
     () => workspace ? getBookmarks(workspace.extensionId) : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
