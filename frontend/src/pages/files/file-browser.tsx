@@ -9,20 +9,22 @@ import { PullToRefresh } from '../../components/pull-to-refresh'
 import { getBookmarks, type Bookmark } from '../../services/bookmarks'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
 
-const RECENT_FILES_KEY = 'code-viewer:recent-files'
+const RECENT_FILES_PREFIX = 'code-viewer:recent-files'
 const MAX_RECENT = 15
 
-function getRecentFiles(): string[] {
+export function getRecentFiles(extensionId?: string): string[] {
+  const key = extensionId ? `${RECENT_FILES_PREFIX}:${extensionId}` : RECENT_FILES_PREFIX
   try {
-    return JSON.parse(localStorage.getItem(RECENT_FILES_KEY) ?? '[]')
+    return JSON.parse(localStorage.getItem(key) ?? '[]')
   } catch { return [] }
 }
 
-export function addRecentFile(path: string): void {
-  const recent = getRecentFiles().filter(p => p !== path)
+export function addRecentFile(path: string, extensionId?: string): void {
+  const key = extensionId ? `${RECENT_FILES_PREFIX}:${extensionId}` : RECENT_FILES_PREFIX
+  const recent = getRecentFiles(extensionId).filter(p => p !== path)
   recent.unshift(path)
   if (recent.length > MAX_RECENT) recent.length = MAX_RECENT
-  try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(recent)) } catch {}
+  try { localStorage.setItem(key, JSON.stringify(recent)) } catch {}
 }
 
 // Flatten tree into file paths for search
@@ -202,7 +204,7 @@ export function FileBrowserPage() {
     return allFiles.filter(f => fuzzyMatch(searchQuery, f.path)).slice(0, 20)
   }, [searchQuery, allFiles])
 
-  const recentFiles = useMemo(() => getRecentFiles(), [nodes]) // re-read when tree changes
+  const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [nodes, workspace]) // re-read when tree/workspace changes
   const bookmarks = useMemo(
     () => workspace ? getBookmarks(workspace.extensionId) : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,7 +260,7 @@ export function FileBrowserPage() {
   }, [loadTreeBackground])
 
   function handleFileClick(path: string) {
-    addRecentFile(path)
+    addRecentFile(path, workspace?.extensionId)
     setSearchQuery('')
     setShowRecent(false)
     navigate(buildFileRoutePath(path))

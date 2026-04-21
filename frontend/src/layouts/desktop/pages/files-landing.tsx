@@ -3,21 +3,14 @@ import { useNavigate } from 'react-router'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../../services/file-location'
 import { useWorkspace } from '../../../hooks/use-workspace'
 import { getBookmarks, type Bookmark } from '../../../services/bookmarks'
-
-const RECENT_FILES_KEY = 'code-viewer:recent-files'
-
-function getRecentFiles(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENT_FILES_KEY) ?? '[]')
-  } catch { return [] }
-}
+import { getRecentFiles } from '../../../pages/files/file-browser'
 
 /** Landing page for /files on desktop — shows recent files and bookmarks in the main content area. */
 export function FilesLandingPage() {
   const navigate = useNavigate()
   const { workspace } = useWorkspace()
 
-  const recentFiles = useMemo(() => getRecentFiles(), [])
+  const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [workspace])
   const bookmarks = useMemo(
     () => workspace ? getBookmarks(workspace.extensionId) : [],
     [workspace],

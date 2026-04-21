@@ -9,18 +9,9 @@ import { cacheService } from '../../../services/cache'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../../services/file-location'
 import { readCurrentFileForWorkspace } from '../../../services/current-file'
 import { useWorkspace } from '../../../hooks/use-workspace'
-import { addRecentFile } from '../../../pages/files/file-browser'
+import { addRecentFile, getRecentFiles } from '../../../pages/files/file-browser'
 import { getBookmarks, type Bookmark } from '../../../services/bookmarks'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
-
-const RECENT_FILES_KEY = 'code-viewer:recent-files'
-const MAX_RECENT = 15
-
-function getRecentFiles(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENT_FILES_KEY) ?? '[]')
-  } catch { return [] }
-}
 
 function flattenFiles(nodes: FileTreeNode[]): { path: string; name: string }[] {
   const result: { path: string; name: string }[] = []
@@ -201,7 +192,7 @@ export function FileBrowserSidebar() {
     return allFiles.filter(f => fuzzyMatch(searchQuery, f.path)).slice(0, 20)
   }, [searchQuery, allFiles])
 
-  const recentFiles = useMemo(() => getRecentFiles(), [nodes])
+  const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [nodes, workspace])
   const bookmarks = useMemo(
     () => workspace ? getBookmarks(workspace.extensionId) : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -248,7 +239,7 @@ export function FileBrowserSidebar() {
   }, [request, workspace])
 
   function handleFileClick(path: string) {
-    addRecentFile(path)
+    addRecentFile(path, workspace?.extensionId)
     setSearchQuery('')
     setShowRecent(false)
     navigate(buildFileRoutePath(path))

@@ -364,7 +364,7 @@ export function CodeViewerPage() {
         setFile(null)
       } else if (res.payload.content) {
         setFile(res.payload)
-        addRecentFile(path)
+        addRecentFile(path, workspace?.extensionId)
         if (workspace) {
           cacheService.setFileContent(workspace.extensionId, path, {
             path: res.payload.path,
@@ -394,7 +394,7 @@ export function CodeViewerPage() {
       setPreview(res.payload)
       setPreviewError(null)
       setFile(null)
-      addRecentFile(path)
+      addRecentFile(path, workspace?.extensionId)
     } catch (error) {
       setPreview(null)
       setPreviewError(error instanceof Error ? error.message : 'Preview unavailable')
