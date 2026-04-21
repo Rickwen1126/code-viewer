@@ -100,6 +100,9 @@ export function CodeViewerPage() {
   const [mdRendered, setMdRendered] = useState(() =>
     localStorage.getItem('code-viewer:md-view-mode') !== 'raw',
   )
+  // Track if search auto-switched from rendered to raw, so we can restore on close
+  const mdSearchSwitchRef = useRef(false)
+  const mdScrollPctRef = useRef(0)
 
   const previewKind = getFilePreviewKind(path)
   const isMarkdown = file?.languageId === 'markdown'
@@ -778,12 +781,21 @@ export function CodeViewerPage() {
           )}
           <button
             onClick={() => {
-              // In rendered markdown mode, switch to raw for search
-              if (isMarkdown && mdRendered) {
-                setMdRendered(false)
-                localStorage.setItem('code-viewer:md-view-mode', 'raw')
+              if (searchOpen) {
+                // Closing search — handled by onClose below
+                setSearchOpen(false)
+                return
               }
-              setSearchOpen(v => !v)
+              // Opening search in rendered markdown — save position, switch to raw
+              if (isMarkdown && mdRendered) {
+                const sc = scrollContainerRef.current
+                if (sc && sc.scrollHeight > sc.clientHeight) {
+                  mdScrollPctRef.current = sc.scrollTop / (sc.scrollHeight - sc.clientHeight)
+                }
+                mdSearchSwitchRef.current = true
+                setMdRendered(false)
+              }
+              setSearchOpen(true)
             }}
             style={{
               background: searchOpen ? '#333' : 'none',
@@ -913,7 +925,24 @@ export function CodeViewerPage() {
       <InFileSearch
         content={file.content}
         visible={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        onClose={() => {
+          setSearchOpen(false)
+          // Restore rendered markdown mode if search auto-switched to raw
+          if (mdSearchSwitchRef.current) {
+            mdSearchSwitchRef.current = false
+            setMdRendered(true)
+            // Restore scroll position after rendered markdown layout settles
+            const pct = mdScrollPctRef.current
+            requestAnimationFrame(() => {
+              setTimeout(() => {
+                const sc = scrollContainerRef.current
+                if (sc && sc.scrollHeight > sc.clientHeight) {
+                  sc.scrollTop = pct * (sc.scrollHeight - sc.clientHeight)
+                }
+              }, 50)
+            })
+          }
+        }}
         onMatchesChange={handleSearchMatchesChange}
       />
 
