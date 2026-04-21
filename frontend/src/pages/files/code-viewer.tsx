@@ -22,7 +22,7 @@ import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { debugLog } from '../../services/debug'
 import { CodeBlock } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
-import { InFileSearch, type SearchMatch } from '../../components/in-file-search'
+import { InFileSearch } from '../../components/in-file-search'
 import { getBookmarkedLines, addBookmark, removeBookmark, getBookmarksForFile } from '../../services/bookmarks'
 import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
@@ -118,34 +118,11 @@ export function CodeViewerPage() {
 
   // In-file search state
   const [searchOpen, setSearchOpen] = useState(false)
-  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
-  const [searchCurrentIndex, setSearchCurrentIndex] = useState(-1)
 
-  const handleSearchMatchesChange = useCallback((matches: SearchMatch[], currentIndex: number) => {
-    // Skip line-based scroll in markdown rendered mode — DOM search handles it
-    if (isMarkdown && mdRendered) return
-    setSearchMatches(matches)
-    setSearchCurrentIndex(currentIndex)
-    // Auto-scroll to current match
-    if (matches.length > 0 && currentIndex >= 0) {
-      const match = matches[currentIndex]
-      const scrollContainer = scrollContainerRef.current
-      if (scrollContainer) {
-        const targetTop = match.line * LINE_HEIGHT
-        const containerHeight = scrollContainer.clientHeight
-        const currentScroll = scrollContainer.scrollTop
-        // Only scroll if match is outside visible area
-        if (targetTop < currentScroll || targetTop > currentScroll + containerHeight - 60) {
-          scrollContainer.scrollTo({ top: Math.max(0, targetTop - containerHeight / 3), behavior: 'smooth' })
-        }
-      }
-    }
-  }, [isMarkdown, mdRendered])
-
-  // DOM-based search for rendered markdown
+  // Unified DOM-based search for both raw and rendered markdown
   useEffect(() => {
     const container = scrollContainerRef.current
-    if (!container || !isMarkdown || !mdRendered) return
+    if (!container) return
 
     // Clear previous marks
     container.querySelectorAll('mark[data-md-search]').forEach((mark) => {
@@ -218,9 +195,9 @@ export function CodeViewerPage() {
     } else {
       setMdMatchIndex(-1)
     }
-  }, [mdSearchQuery, searchOpen, isMarkdown, mdRendered])
+  }, [mdSearchQuery, searchOpen])
 
-  // Navigate markdown search matches
+  // Navigate search matches (works for both raw and rendered)
   const mdSearchNavigate = useCallback((direction: 1 | -1) => {
     const container = scrollContainerRef.current
     if (!container) return
@@ -1007,19 +984,12 @@ export function CodeViewerPage() {
         content={file.content}
         visible={searchOpen}
         onClose={() => setSearchOpen(false)}
-        onMatchesChange={handleSearchMatchesChange}
-        onQueryChange={isMarkdown && mdRendered ? setMdSearchQuery : undefined}
-        overrideMatchCount={isMarkdown && mdRendered ? mdMatchCount : undefined}
-        overrideMatchIndex={isMarkdown && mdRendered ? mdMatchIndex : undefined}
-        onNavigate={isMarkdown && mdRendered ? ((d) => mdSearchNavigate(d as 1 | -1)) : undefined}
+        onMatchesChange={() => {}}
+        onQueryChange={setMdSearchQuery}
+        overrideMatchCount={mdMatchCount}
+        overrideMatchIndex={mdMatchIndex}
+        onNavigate={(d) => mdSearchNavigate(d as 1 | -1)}
       />
-
-      {/* Search highlight styles */}
-      {searchMatches.length > 0 && (
-        <style>{searchMatches.map((m, i) => `
-          .line:nth-child(${m.line + 1}) { background: ${i === searchCurrentIndex ? 'rgba(226,185,61,0.25)' : 'rgba(226,185,61,0.1)'} !important; }
-        `).join('')}</style>
-      )}
 
       {/* Content area */}
       <div
