@@ -19,6 +19,7 @@ import { TourDetailPage } from '../../pages/tours/tour-detail'
 import { OpenFileResolverPage } from '../../pages/open/open-file'
 import { OpenTourResolverPage } from '../../pages/open/open-tour'
 import { OpenGitDiffResolverPage } from '../../pages/open/open-git-diff'
+import { WorkspacesPage } from '../../pages/workspaces'
 
 export function DesktopLayout() {
   const navigate = useNavigate()
@@ -87,8 +88,8 @@ export function DesktopLayout() {
             <Route path="open/tour" element={<OpenTourResolverPage />} />
             <Route path="open/git-diff" element={<OpenGitDiffResolverPage />} />
 
-            {/* Fallback */}
-            <Route path="workspaces" element={<FilesLandingPage />} />
+            {/* Workspace selection */}
+            <Route path="workspaces" element={<WorkspacesPage />} />
           </Routes>
         </main>
       </div>

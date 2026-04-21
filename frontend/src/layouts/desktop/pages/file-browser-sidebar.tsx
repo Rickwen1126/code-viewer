@@ -132,6 +132,29 @@ export function FileBrowserSidebar() {
   const { workspace, workspaceReady } = useWorkspace()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // No workspace selected — show prompt instead of loading
+  if (!workspace && workspaceReady) {
+    return (
+      <div style={{ padding: 12, fontSize: 13, color: '#888' }}>
+        <div style={{ marginBottom: 8 }}>No workspace selected</div>
+        <button
+          onClick={() => navigate('/workspaces')}
+          style={{
+            background: 'none',
+            border: '1px solid #444',
+            color: '#569cd6',
+            fontSize: 12,
+            padding: '6px 10px',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          Select Workspace
+        </button>
+      </div>
+    )
+  }
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -199,12 +222,6 @@ export function FileBrowserSidebar() {
     [workspace, showRecent],
   )
 
-  // Skip redirect when a resolver page (/open/*) is handling workspace selection
-  useEffect(() => {
-    if (!workspace && connectionState === 'connected' && !location.pathname.startsWith('/open/')) {
-      navigate('/workspaces', { replace: true })
-    }
-  }, [workspace, connectionState, navigate, location.pathname])
 
   useEffect(() => {
     if (!workspace) return
