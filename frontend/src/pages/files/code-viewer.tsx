@@ -100,9 +100,10 @@ export function CodeViewerPage() {
   const [mdRendered, setMdRendered] = useState(() =>
     localStorage.getItem('code-viewer:md-view-mode') !== 'raw',
   )
-  // Track if search auto-switched from rendered to raw, so we can restore on close
-  const mdSearchSwitchRef = useRef(false)
-  const mdScrollPctRef = useRef(0)
+  // Markdown DOM search state
+  const [mdSearchQuery, setMdSearchQuery] = useState('')
+  const [mdMatchCount, setMdMatchCount] = useState(0)
+  const [mdMatchIndex, setMdMatchIndex] = useState(-1)
 
   const previewKind = getFilePreviewKind(path)
   const isMarkdown = file?.languageId === 'markdown'
@@ -121,6 +122,8 @@ export function CodeViewerPage() {
   const [searchCurrentIndex, setSearchCurrentIndex] = useState(-1)
 
   const handleSearchMatchesChange = useCallback((matches: SearchMatch[], currentIndex: number) => {
+    // Skip line-based scroll in markdown rendered mode — DOM search handles it
+    if (isMarkdown && mdRendered) return
     setSearchMatches(matches)
     setSearchCurrentIndex(currentIndex)
     // Auto-scroll to current match
@@ -137,7 +140,101 @@ export function CodeViewerPage() {
         }
       }
     }
-  }, [])
+  }, [isMarkdown, mdRendered])
+
+  // DOM-based search for rendered markdown
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container || !isMarkdown || !mdRendered) return
+
+    // Clear previous marks
+    container.querySelectorAll('mark[data-md-search]').forEach((mark) => {
+      const parent = mark.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(mark.textContent ?? ''), mark)
+        parent.normalize()
+      }
+    })
+
+    if (!mdSearchQuery || !searchOpen) {
+      setMdMatchCount(0)
+      setMdMatchIndex(-1)
+      return
+    }
+
+    const lowerQuery = mdSearchQuery.toLowerCase()
+    const marks: HTMLElement[] = []
+
+    // Walk all text nodes and wrap matches in <mark>
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+    const textNodes: Text[] = []
+    let node: Text | null
+    while ((node = walker.nextNode() as Text | null)) {
+      if (node.textContent && node.textContent.toLowerCase().includes(lowerQuery)) {
+        textNodes.push(node)
+      }
+    }
+
+    for (const textNode of textNodes) {
+      const text = textNode.textContent ?? ''
+      const lowerText = text.toLowerCase()
+      const parts: (string | { match: string })[] = []
+      let lastIndex = 0
+
+      let idx = lowerText.indexOf(lowerQuery, lastIndex)
+      while (idx !== -1) {
+        if (idx > lastIndex) parts.push(text.slice(lastIndex, idx))
+        parts.push({ match: text.slice(idx, idx + mdSearchQuery.length) })
+        lastIndex = idx + mdSearchQuery.length
+        idx = lowerText.indexOf(lowerQuery, lastIndex)
+      }
+      if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+
+      if (parts.length <= 1) continue
+
+      const frag = document.createDocumentFragment()
+      for (const part of parts) {
+        if (typeof part === 'string') {
+          frag.appendChild(document.createTextNode(part))
+        } else {
+          const mark = document.createElement('mark')
+          mark.setAttribute('data-md-search', '')
+          mark.style.background = 'rgba(226,185,61,0.25)'
+          mark.style.color = 'inherit'
+          mark.style.borderRadius = '2px'
+          mark.textContent = part.match
+          marks.push(mark)
+          frag.appendChild(mark)
+        }
+      }
+      textNode.parentNode?.replaceChild(frag, textNode)
+    }
+
+    setMdMatchCount(marks.length)
+    if (marks.length > 0) {
+      setMdMatchIndex(0)
+      marks[0].style.background = 'rgba(226,185,61,0.6)'
+      marks[0].scrollIntoView({ block: 'center', behavior: 'smooth' })
+    } else {
+      setMdMatchIndex(-1)
+    }
+  }, [mdSearchQuery, searchOpen, isMarkdown, mdRendered])
+
+  // Navigate markdown search matches
+  const mdSearchNavigate = useCallback((direction: 1 | -1) => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const marks = Array.from(container.querySelectorAll('mark[data-md-search]')) as HTMLElement[]
+    if (marks.length === 0) return
+
+    // Reset current highlight
+    marks.forEach((m) => { m.style.background = 'rgba(226,185,61,0.25)' })
+
+    const newIndex = ((mdMatchIndex + direction) % marks.length + marks.length) % marks.length
+    setMdMatchIndex(newIndex)
+    marks[newIndex].style.background = 'rgba(226,185,61,0.6)'
+    marks[newIndex].scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [mdMatchIndex])
 
   // Tour edit state
   const { tourEdit } = useTourEdit()
@@ -780,23 +877,7 @@ export function CodeViewerPage() {
             </button>
           )}
           <button
-            onClick={() => {
-              if (searchOpen) {
-                // Closing search — handled by onClose below
-                setSearchOpen(false)
-                return
-              }
-              // Opening search in rendered markdown — save position, switch to raw
-              if (isMarkdown && mdRendered) {
-                const sc = scrollContainerRef.current
-                if (sc && sc.scrollHeight > sc.clientHeight) {
-                  mdScrollPctRef.current = sc.scrollTop / (sc.scrollHeight - sc.clientHeight)
-                }
-                mdSearchSwitchRef.current = true
-                setMdRendered(false)
-              }
-              setSearchOpen(true)
-            }}
+            onClick={() => setSearchOpen(v => !v)}
             style={{
               background: searchOpen ? '#333' : 'none',
               border: '1px solid #444',
@@ -925,25 +1006,12 @@ export function CodeViewerPage() {
       <InFileSearch
         content={file.content}
         visible={searchOpen}
-        onClose={() => {
-          setSearchOpen(false)
-          // Restore rendered markdown mode if search auto-switched to raw
-          if (mdSearchSwitchRef.current) {
-            mdSearchSwitchRef.current = false
-            setMdRendered(true)
-            // Restore scroll position after rendered markdown layout settles
-            const pct = mdScrollPctRef.current
-            requestAnimationFrame(() => {
-              setTimeout(() => {
-                const sc = scrollContainerRef.current
-                if (sc && sc.scrollHeight > sc.clientHeight) {
-                  sc.scrollTop = pct * (sc.scrollHeight - sc.clientHeight)
-                }
-              }, 50)
-            })
-          }
-        }}
+        onClose={() => setSearchOpen(false)}
         onMatchesChange={handleSearchMatchesChange}
+        onQueryChange={isMarkdown && mdRendered ? setMdSearchQuery : undefined}
+        overrideMatchCount={isMarkdown && mdRendered ? mdMatchCount : undefined}
+        overrideMatchIndex={isMarkdown && mdRendered ? mdMatchIndex : undefined}
+        onNavigate={isMarkdown && mdRendered ? ((d) => mdSearchNavigate(d as 1 | -1)) : undefined}
       />
 
       {/* Search highlight styles */}

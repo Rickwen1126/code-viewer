@@ -11,13 +11,24 @@ interface InFileSearchProps {
   visible: boolean
   onClose: () => void
   onMatchesChange: (matches: SearchMatch[], currentIndex: number) => void
+  onQueryChange?: (query: string) => void
+  /** When set, display this match info instead of internal counts */
+  overrideMatchCount?: number
+  overrideMatchIndex?: number
+  /** When set, call this for next/prev instead of internal navigation */
+  onNavigate?: (direction: 1 | -1) => void
 }
 
-export function InFileSearch({ content, visible, onClose, onMatchesChange }: InFileSearchProps) {
+export function InFileSearch({
+  content, visible, onClose, onMatchesChange,
+  onQueryChange, overrideMatchCount, overrideMatchIndex, onNavigate,
+}: InFileSearchProps) {
   const [query, setQuery] = useState('')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [matches, setMatches] = useState<SearchMatch[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const isOverridden = overrideMatchCount !== undefined
 
   // Focus input when becoming visible
   useEffect(() => {
@@ -28,11 +39,14 @@ export function InFileSearch({ content, visible, onClose, onMatchesChange }: InF
       setMatches([])
       setCurrentIndex(0)
       onMatchesChange([], -1)
+      onQueryChange?.('')
     }
   }, [visible])
 
-  // Find matches whenever query or content changes
+  // Find matches whenever query or content changes (skip if overridden)
   useEffect(() => {
+    if (isOverridden) return
+
     if (!query || !content) {
       setMatches([])
       setCurrentIndex(0)
@@ -59,7 +73,7 @@ export function InFileSearch({ content, visible, onClose, onMatchesChange }: InF
     const idx = found.length > 0 ? 0 : -1
     setCurrentIndex(Math.max(idx, 0))
     onMatchesChange(found, idx)
-  }, [query, content])
+  }, [query, content, isOverridden])
 
   const goTo = useCallback((newIndex: number) => {
     if (matches.length === 0) return
@@ -68,10 +82,20 @@ export function InFileSearch({ content, visible, onClose, onMatchesChange }: InF
     onMatchesChange(matches, wrapped)
   }, [matches, onMatchesChange])
 
-  const goPrev = useCallback(() => goTo(currentIndex - 1), [goTo, currentIndex])
-  const goNext = useCallback(() => goTo(currentIndex + 1), [goTo, currentIndex])
+  const goPrev = useCallback(() => {
+    if (onNavigate) { onNavigate(-1); return }
+    goTo(currentIndex - 1)
+  }, [goTo, currentIndex, onNavigate])
+
+  const goNext = useCallback(() => {
+    if (onNavigate) { onNavigate(1); return }
+    goTo(currentIndex + 1)
+  }, [goTo, currentIndex, onNavigate])
 
   if (!visible) return null
+
+  const displayCount = isOverridden ? overrideMatchCount! : matches.length
+  const displayIndex = isOverridden ? (overrideMatchIndex ?? -1) : currentIndex
 
   return (
     <div
@@ -89,7 +113,10 @@ export function InFileSearch({ content, visible, onClose, onMatchesChange }: InF
         ref={inputRef}
         type="text"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          onQueryChange?.(e.target.value)
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.shiftKey ? goPrev() : goNext()
@@ -111,12 +138,12 @@ export function InFileSearch({ content, visible, onClose, onMatchesChange }: InF
         }}
       />
       <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap', minWidth: 36, textAlign: 'center' }}>
-        {matches.length > 0 ? `${currentIndex + 1}/${matches.length}` : query ? '0/0' : ''}
+        {displayCount > 0 ? `${displayIndex + 1}/${displayCount}` : query ? '0/0' : ''}
       </span>
-      <button onClick={goPrev} disabled={matches.length === 0} style={navBtnStyle}>
+      <button onClick={goPrev} disabled={displayCount === 0} style={navBtnStyle}>
         &#x25B2;
       </button>
-      <button onClick={goNext} disabled={matches.length === 0} style={navBtnStyle}>
+      <button onClick={goNext} disabled={displayCount === 0} style={navBtnStyle}>
         &#x25BC;
       </button>
       <button onClick={onClose} style={navBtnStyle}>
