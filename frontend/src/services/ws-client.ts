@@ -79,10 +79,7 @@ class WsClientService {
     // stale runtime and bootstrap a fresh connection.
     if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
       console.warn(`[WS] Zombie connection detected on ${reason} — forcing reconnect`)
-      this.ws = null
-      this.drainPendingRequests('Connection lost in background')
-      this.reconnectDelay = 1000
-      this.openSocket()
+      this.forceReconnect('Connection lost in background')
       return
     }
 
@@ -109,21 +106,27 @@ class WsClientService {
         dbg(`Ping OK on ${reason} — connection alive`)
       })
       .catch(() => {
+        if (!this.shouldReconnect) return
         console.warn(`[WS] Ping failed on ${reason} — zombie socket, forcing reconnect`)
-        if (this.ws) {
-          this.ws.onclose = null
-          this.ws.onerror = null
-          this.ws.onmessage = null
-          try { this.ws.close() } catch { /* ignore */ }
-          this.ws = null
-        }
-        this.drainPendingRequests('Connection lost in background')
-        this.reconnectDelay = 1000
-        this.openSocket()
+        this.forceReconnect('Connection lost in background')
       })
       .finally(() => {
         this.probing = false
       })
+  }
+
+  /** Tear down the current socket and start a fresh connection. */
+  private forceReconnect(reason: string): void {
+    if (this.ws) {
+      this.ws.onclose = null
+      this.ws.onerror = null
+      this.ws.onmessage = null
+      try { this.ws.close() } catch { /* ignore */ }
+      this.ws = null
+    }
+    this.drainPendingRequests(reason)
+    this.reconnectDelay = 1000
+    this.openSocket()
   }
 
   private shouldReconnectOnPageShow(event: PageTransitionEvent): boolean {

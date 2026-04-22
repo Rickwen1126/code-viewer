@@ -1,0 +1,64 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: Safari Zombie WS Fix 2026-04-22",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 0\n🟡 Suggestions: 3\n✅ Good Practices: 4\n\n### Scope\nCommit `15e9735` — 3 files, +64 -3 lines\n- `frontend/src/services/ws-client.ts` — ping-pong probe for Safari zombie socket detection\n- `backend/src/ws/handler.ts` — pong reply handler\n- `frontend/src/pages/workspaces/index.tsx` — reconnecting UI + button protection\n\n### Focus\nSafari freezes JS context on background, leaving dead sockets that report `readyState=OPEN`. Fix adds a 3s ping probe on `visibilitychange` to detect zombies, plus UI guard to prevent clicks during reconnection."
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 103,
+      "endLine": 127,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "🟡 Zombie cleanup 邏輯重複",
+      "description": "## Problem\n\n`probeConnection` catch 裡的 socket cleanup（L113-122）和 `ensureActiveConnection` 的第一段（L80-86）做的事幾乎一樣：null 掉 socket → drain pending → reset delay → openSocket。差異只在 catch 裡多了 handler nullification（L114-116）。\n\n兩份重複邏輯增加未來改動時漏改一邊的風險。\n\n## Fix\n\n抽成共用方法：\n\n```typescript\nprivate forceReconnect(reason: string): void {\n  if (this.ws) {\n    this.ws.onclose = null\n    this.ws.onerror = null\n    this.ws.onmessage = null\n    try { this.ws.close() } catch { /* ignore */ }\n    this.ws = null\n  }\n  this.drainPendingRequests(reason)\n  this.reconnectDelay = 1000\n  this.openSocket()\n}\n```\n\n然後 `ensureActiveConnection` L80-86 和 `probeConnection` catch 都呼叫 `this.forceReconnect(...)`。\n\n## Rationale\n\nDRY — 這兩段已經是 copy-paste 差異，未來加 debug logging 或 metrics 時只需改一處。handler nullification 在原本的 L80-86 也應該要有（雖然那裡 `readyState !== OPEN` 所以影響較小）。"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 58,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "🟡 disconnect() 期間 probing flag 可能殘留",
+      "description": "## Problem\n\n如果 `probeConnection` 正在等 3s timeout 時，使用者或系統呼叫 `disconnect()`：\n1. `disconnect()` 設 `shouldReconnect = false`、close socket、drain requests\n2. Drain 會 reject ping request → catch 裡嘗試 `this.openSocket()`\n3. 但 `openSocket` 不檢查 `shouldReconnect`（在 `reconnect()` 裡才檢查）\n4. 結果：disconnect 後又開了一個新 socket\n\n`probing` flag 本身會在 `finally` 正常清理，但 catch 裡的 `openSocket()` 是真正的問題。\n\n## Fix\n\n在 `probeConnection` catch 開頭加 guard：\n\n```typescript\n.catch(() => {\n  if (!this.shouldReconnect) return  // disconnected during probe\n  console.warn(`[WS] Ping failed on ${reason} — zombie socket, forcing reconnect`)\n  // ... rest of cleanup\n})\n```\n\n## Rationale\n\n`disconnect()` 是使用者明確的意圖，probe 不應該覆蓋它。雖然在 Code Viewer 的使用場景中很少手動 disconnect，但這是正確性問題。"
+    },
+    {
+      "file": "frontend/src/__tests__/ws-client.test.ts",
+      "line": 345,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "🟡 缺少 ping probe 的單元測試",
+      "description": "## Problem\n\n`ws-client.test.ts` 有 23 個測試涵蓋 connect/disconnect/send/request/reconnect，但沒有覆蓋新增的 `probeConnection` 邏輯。以下場景缺少測試：\n\n1. **Happy path**: visibilitychange 回前景 → socket OPEN + state connected → 發 ping → 收到 pong → 不重連\n2. **Zombie detection**: visibilitychange → ping timeout（3s）→ 強制重連 → state 變 connecting\n3. **Concurrent guard**: 連續兩次 visibilitychange → 只發一次 ping（`probing` flag）\n4. **disconnect during probe**: probe 進行中呼叫 disconnect → 不應觸發重連\n\n## Fix\n\n在 `describe('reconnect')` 區塊新增 probe 相關測試。MockWebSocket 已經有 `simulateMessage` 可以模擬 pong 回覆。\n\n## Rationale\n\n這是 Safari-specific 的 bug fix，無法靠手動測試穩定重現。單元測試是唯一能確保 regression 不回來的方式。而且已有完整的 mock 基礎設施，加測試成本低。"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 89,
+      "endLine": 95,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "✅ 復用 request() 做 ping — 零新基礎設施",
+      "description": "## Good Practice\n\nPing probe 直接用現有的 `request()` 方法，不另建 timer/callback 機制。`request()` 已經有 timeout、pending map、response routing，全部自動享有。\n\n3 行就完成偵測邏輯（L92-94），其餘全是 error handling。這是「用最少的新 code 解決問題」的好範例。"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 113,
+      "endLine": 118,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "✅ catch 裡正確清理 event handlers",
+      "description": "## Good Practice\n\n在 `ws.close()` 之前先 null 掉 `onclose/onerror/onmessage`。如果不這樣做：\n1. `ws.close()` 觸發 `onclose` handler\n2. `onclose` 裡呼叫 `drainPendingRequests`（第二次）\n3. `onclose` 裡呼叫 `this.reconnect()`（第二條重連路徑）\n\n會造成 double-drain + double-reconnect race。這個處理展示了對 WebSocket lifecycle 的正確理解。"
+    },
+    {
+      "file": "frontend/src/pages/workspaces/index.tsx",
+      "line": 118,
+      "endLine": 134,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "✅ Reconnecting banner 條件精準",
+      "description": "## Good Practice\n\n`!wsReady && workspaces.length > 0` — banner 只在「有 cache 的 workspace 列表但 WS 未連線」時顯示。\n\n- 如果沒有 cache（`workspaces.length === 0`）：走原本的 empty state spinner + \"Loading workspaces...\"，不需要額外 banner\n- 如果已連線：不顯示 banner\n\n條件精準避免了 UI 閃爍和重複的 loading 指示器。"
+    },
+    {
+      "file": "backend/src/ws/handler.ts",
+      "line": 245,
+      "endLine": 249,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "✅ Ping handler 放在 relay catch-all 之前",
+      "description": "## Good Practice\n\nPing handler 放在 `relayFrontendToExtension()` 之前攔截。如果放在後面（或不處理），ping 會被轉發給 VS Code extension → extension 不認識 → 忽略 → 前端等 3s timeout → 所有活著的連線都被誤判為 zombie。\n\n位置正確，且 early return 避免進入後續不必要的邏輯。"
+    }
+  ]
+}

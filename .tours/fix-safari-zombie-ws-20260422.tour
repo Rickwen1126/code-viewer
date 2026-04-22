@@ -1,0 +1,42 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Fix: Safari Zombie WebSocket — Ping-Pong Probe + Reconnecting UI",
+  "steps": [
+    {
+      "title": "Context — Safari 的 Zombie Socket 問題",
+      "description": "## 這條 tour 在看什麼\n\n這條 tour 追蹤一個 Safari 專屬 bug 的修復路徑：使用者背景放置手機一段時間後回來，畫面看起來正常但點擊 workspace 毫無反應，要等 30 秒才會報錯。\n\n如果只記住一件事：**Safari 會凍結 JS、靜默殺死 TCP，但不更新 `WebSocket.readyState`，導致前端以為連線還活著。**\n\n## 錨定已知\n\n如果你用過 Chrome DevTools 的 Network tab 看 WebSocket，你會知道瀏覽器在連線斷開時會觸發 `onclose` event。Chrome 確實會這樣做，即使 tab 在背景。但 Safari 不一樣——它直接凍結整個 JS runtime（類似 `kill -STOP`），恢復時 JS 物件還在記憶體裡，但底層 TCP 早就死了。\n\n## 問題的精確路徑\n\n1. Safari 背景 → JS 凍結 → TCP 死亡 → `onclose` 不會觸發\n2. 回到前景 → `visibilitychange` 觸發 → `ensureActiveConnection()` 檢查\n3. `ws.readyState === OPEN`（stale 值）且 `state === 'connected'` → **兩個 if 都跳過**\n4. 使用者點 workspace → `ws.send()` 進黑洞 → 等 30 秒 timeout\n\n## 這條路徑展示的 mental model\n\n**「看起來正常」不代表「真的正常」** — 在分散式系統中，連線狀態是 local 的判斷，不是 ground truth。要用 **end-to-end probe**（發一個要求回覆的訊息）才能確認連線真的活著。這跟 TCP keepalive、load balancer health check 是同一個 pattern。\n\n## 修復涉及三層\n\n- **Frontend ws-client**: 新增 ping probe（偵測層）\n- **Backend handler**: 回覆 pong（配合層）\n- **WorkspacesPage UI**: 顯示 reconnecting 狀態（使用者感知層）"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 74,
+      "endLine": 101,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "ensureActiveConnection — 三段式判斷",
+      "description": "## Insight\n\n**機制**：`visibilitychange` 觸發後進入這個方法，三段 if 依序判斷：\n1. L80: `readyState !== OPEN` → 明確的 zombie，直接重連（原本就有）\n2. L92: `readyState === OPEN && state === 'connected'` → **看起來健康但可能是假的** → 發 ping probe（**新增**）\n3. L97: 其他狀態（disconnected 等）→ 直接重連\n\n**故障模式**：修復前只有第 1 段和第 3 段。Safari 的 zombie socket 同時滿足 `readyState === OPEN` 和 `state === 'connected'`，所以兩段都跳過，什麼事都不做。\n\n**設計取捨**：probe 是非同步的（3 秒 timeout），在等待期間使用者的其他操作可能也會失敗。但這比起修復前的 30 秒黑洞已經好很多。另一個方案是用定期心跳，但那會增加正常使用時的流量和複雜度。\n\n## 白話解析\n\n這段是 zombie socket 偵測的入口。原本只能抓到 `readyState` 已經變成 CLOSED 的死 socket，但 Safari 的 zombie 偽裝成 OPEN，所以需要第二段主動 ping 來驗活。把它想成：醫生不能只看病人「還有心跳」就說沒事，要叫病人回應才能確認意識清醒。\n\n## Code Detail\n\n**這段在幹嘛**：三段 if 構成 zombie 偵測的決策樹，每段處理一種連線狀態。\n\n**為什麼這樣寫**：\n- 好處：probe 只在 `visibilitychange` 時觸發（不是定期），正常使用零開銷\n- 好處：三段互斥，邏輯清晰，每段只做一件事\n- 壞處：probe 到重連之間有最多 3 秒的 gap，這段時間使用者操作仍會失敗\n\n**思考問題**：\n1. 如果 Safari 未來修正了 `readyState` 的 stale 問題，ping probe 會有副作用嗎？\n2. 為什麼 probe timeout 選 3 秒而不是更短（如 1 秒）或更長（如 10 秒）？"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 103,
+      "endLine": 127,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "probeConnection — ping-pong 驗活",
+      "description": "## Insight\n\n**機制**：用現有的 `request()` 方法發送 `type: 'ping'`，設 3 秒 timeout。`request()` 會建立 pending promise，如果 backend 回 pong（帶 `replyTo`），`handleMessage` 自動 resolve。如果 3 秒沒回應，timeout reject → catch 裡強制重連。\n\n**故障模式**：\n- `this.probing` flag 防止重複 probe（Safari 的 `visibilitychange` 可能連續觸發多次）\n- catch 裡手動 null 掉 `onclose/onerror/onmessage`，否則舊 socket 的 `onclose` 會在 `close()` 後觸發，導致 `drainPendingRequests` 被呼叫兩次\n\n**設計取捨**：復用 `request()` 而不是直接 `ws.send()` + 自訂 timer。好處是自動享有 `handleMessage` 的 response routing。壞處是 ping 也佔一個 pending request slot，但這完全可以接受。\n\n## 白話解析\n\n這是實際的「叫病人回應」動作。它借用了既有的 request/response 機制，只是用了超短的 3 秒 timeout。如果回應了就什麼都不做（連線沒問題），沒回應就拔管重連。catch 裡的 handler cleanup 是為了避免「拔管時舊 socket 的死亡通知又觸發一次重連」。\n\n## Code Detail\n\n**這段在幹嘛**：發一個 3 秒 timeout 的 ping request，resolve = 連線活著，reject = zombie → 清理舊 socket → 重連。\n\n**為什麼這樣寫**：\n- 好處：復用 `request()` 不需要額外的 timer/callback 機制\n- 好處：`probing` flag 用最簡單的方式防 race condition\n- 壞處：catch 裡的 socket cleanup（L113-118）跟 `ensureActiveConnection` L80-86 有重複邏輯，未來可以抽成共用方法\n\n**思考問題**：\n1. 如果 `probeConnection` 執行中使用者切到別的 tab 再切回來，會發生什麼？\n2. `finally` 裡 `this.probing = false` 放在 `openSocket()` 之後，有沒有可能新 socket 的 `onopen` 又觸發一次 probe？"
+    },
+    {
+      "file": "backend/src/ws/handler.ts",
+      "line": 245,
+      "endLine": 249,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "Backend ping handler — 最簡回覆",
+      "description": "## Insight\n\n**機制**：收到 `type: 'ping'` 的訊息，回覆 `type: 'pong'` 並帶上 `replyTo: msg.id`。Frontend 的 `handleMessage` 看到 `replyTo` 就會自動 resolve 對應的 pending request。\n\n**故障模式**：如果這段不存在，ping 訊息會掉進 L327 的 `relayFrontendToExtension()`，被轉發給 VS Code extension。Extension 不認識 `ping` → 忽略 → frontend 等 3 秒 timeout → 誤判所有連線都是 zombie。\n\n**設計取捨**：沒有在 shared 裡新增 `MSG_PING` / `MSG_PONG` 常數，直接用 string literal `'ping'`。因為這是純內部 keepalive，不需要跨套件的型別安全。如果未來有更多 keepalive 相關邏輯才值得抽到 shared。\n\n## 白話解析\n\n這就是「病人回應」的那一端。Backend 收到 ping、回 pong，就這樣。重點是它必須在 `relayFrontendToExtension` 之前攔截，否則 ping 會被誤當成要轉發給 VS Code 的指令。\n\n## Code Detail\n\n**這段在幹嘛**：3 行程式碼，攔截 ping → 回 pong → return。\n\n**為什麼這樣寫**：\n- 好處：零複雜度，不影響任何既有 message flow\n- 好處：放在 handler chain 的最前面，不需要經過 workspace/extension 邏輯\n- 壞處：沒有 rate limiting，理論上惡意 frontend 可以 spam ping（但在 LAN 內部署不是問題）\n\n**思考問題**：\n1. 如果 backend 處理其他大量訊息導致 pong 回覆延遲超過 3 秒，frontend 會怎樣？\n2. 這個 ping 放在 frontend handler 裡。Extension 連線需不需要類似的機制？"
+    },
+    {
+      "file": "frontend/src/pages/workspaces/index.tsx",
+      "line": 87,
+      "endLine": 134,
+      "ref": "15e973584635a446878a3fcd20d74cf797070388",
+      "title": "WorkspacesPage — Reconnecting UI 與 button 保護",
+      "description": "## Insight\n\n**機制**：`wsReady = connectionState === 'connected'`（L87）驅動兩件事：\n1. L118-134: 當 `!wsReady && workspaces.length > 0` 時顯示 amber「Reconnecting...」banner\n2. L143: `disabled={!!selectingId || !wsReady}` 阻止在 WS 未連線時點擊\n3. L148: `opacity: !wsReady ? 0.4` 視覺降級提示不可操作\n\n**故障模式**：修復前按鈕不看 `connectionState`，只看 `selectingId`。所以 WS 在重連中，使用者看到 cache 的 workspace 列表，點了 → `request()` 立即 reject → catch → retry 也 reject → 看起來什麼都沒發生。\n\n**設計取捨**：Banner 只在 `workspaces.length > 0` 時顯示（有 cache 的情況）。如果沒有 cache，原本的空 state 已經是 spinner + \"Loading workspaces...\"，不需要額外 banner。\n\n## 白話解析\n\n這是使用者感知層。偵測到 zombie → 重連期間，使用者需要知道「為什麼點了沒反應」。Amber banner + 按鈕灰化提供了這個資訊。一旦 WS 重新連上，`connectionState` 變 `connected` → `wsReady` 變 true → banner 消失 → 按鈕恢復。整個流程自動，使用者不需要手動刷新。\n\n## Code Detail\n\n**這段在幹嘛**：用 `connectionState` 控制 UI 的可操作性，防止使用者在 WS 未連線時點擊。\n\n**為什麼這樣寫**：\n- 好處：單一 `wsReady` 變數驅動所有 UI 變化，邏輯集中\n- 好處：Banner 用 Spinner + 文字，跟頁面其他 loading 狀態一致\n- 壞處：所有按鈕同時灰化，不能單獨判斷某個 workspace 是否可用\n\n**思考問題**：\n1. 使用者看到 reconnecting banner 最長要等多久？ping 3s + reconnect handshake ≈ 幾秒？\n2. 如果 backend 掛了（不只是 WS 斷），banner 會永遠顯示嗎？有沒有需要 fallback UI？"
+    }
+  ]
+}
