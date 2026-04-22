@@ -84,6 +84,8 @@ export function WorkspacesPage() {
     })
   }, [connectionState])
 
+  const wsReady = connectionState === 'connected'
+
   async function handleSelectWorkspace(extensionId: string) {
     setSelectingId(extensionId)
     try {
@@ -113,6 +115,24 @@ export function WorkspacesPage() {
         Workspaces
       </h1>
 
+      {!wsReady && workspaces.length > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 12px',
+          marginBottom: 8,
+          background: '#2d2a1e',
+          border: '1px solid #544',
+          borderRadius: 6,
+          fontSize: 13,
+          color: '#cca700',
+        }}>
+          <Spinner size={12} color="#cca700" />
+          Reconnecting...
+        </div>
+      )}
+
       {/* Workspace list — show cached or live, each row independently clickable */}
       {workspaces.map((ws) => {
         const isSelected = isSameWorkspace(currentWorkspace, ws)
@@ -120,7 +140,7 @@ export function WorkspacesPage() {
         <button
           key={ws.extensionId}
           onClick={() => handleSelectWorkspace(ws.extensionId)}
-          disabled={!!selectingId}
+          disabled={!!selectingId || !wsReady}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -133,9 +153,9 @@ export function WorkspacesPage() {
             borderRadius: 8,
             color: '#d4d4d4',
             textAlign: 'left',
-            cursor: selectingId === ws.extensionId ? 'wait' : 'pointer',
+            cursor: !wsReady ? 'default' : selectingId === ws.extensionId ? 'wait' : 'pointer',
             minHeight: 44,
-            opacity: selectingId && selectingId !== ws.extensionId ? 0.5 : 1,
+            opacity: !wsReady ? 0.4 : selectingId && selectingId !== ws.extensionId ? 0.5 : 1,
           }}
         >
           {selectingId === ws.extensionId ? (

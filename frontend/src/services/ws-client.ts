@@ -55,6 +55,7 @@ class WsClientService {
 
   private visibilityHandler: (() => void) | null = null
   private pageShowHandler: ((event: PageTransitionEvent) => void) | null = null
+  private probing = false
 
   private setupVisibilityReconnect(): void {
     if (this.visibilityHandler) return
@@ -85,10 +86,44 @@ class WsClientService {
       return
     }
 
+    // Safari zombie probe: socket reports OPEN but the TCP connection may be
+    // dead after a long background freeze. Send a lightweight ping; if no pong
+    // arrives within 3 s, treat as zombie and force reconnect.
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.state === 'connected') {
+      this.probeConnection(reason)
+      return
+    }
+
     if (this.state !== 'connected' && this.state !== 'connecting') {
       this.reconnectDelay = 1000
       this.openSocket()
     }
+  }
+
+  private probeConnection(reason: string): void {
+    if (this.probing) return
+    this.probing = true
+
+    this.request<Record<string, never>, Record<string, never>>('ping', {}, 3000)
+      .then(() => {
+        dbg(`Ping OK on ${reason} — connection alive`)
+      })
+      .catch(() => {
+        console.warn(`[WS] Ping failed on ${reason} — zombie socket, forcing reconnect`)
+        if (this.ws) {
+          this.ws.onclose = null
+          this.ws.onerror = null
+          this.ws.onmessage = null
+          try { this.ws.close() } catch { /* ignore */ }
+          this.ws = null
+        }
+        this.drainPendingRequests('Connection lost in background')
+        this.reconnectDelay = 1000
+        this.openSocket()
+      })
+      .finally(() => {
+        this.probing = false
+      })
   }
 
   private shouldReconnectOnPageShow(event: PageTransitionEvent): boolean {

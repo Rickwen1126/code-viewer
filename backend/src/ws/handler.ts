@@ -242,6 +242,12 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
           return
         }
 
+        // Handle ping — lightweight keepalive probe from frontend
+        if (msg.type === 'ping') {
+          sendJson(ws, makeMessage('pong', {}, msg.id))
+          return
+        }
+
         // Handle connection.listWorkspaces locally
         if (msg.type === MSG_CONNECTION_LIST_WORKSPACES) {
           const workspaces = manager.listWorkspaces()
