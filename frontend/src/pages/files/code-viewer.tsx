@@ -436,10 +436,10 @@ export function CodeViewerPage() {
     try {
       debugLog('watch:file', 'request', { path, workspace: workspace?.extensionId ?? null })
       const res = await request<{ path: string }, FileReadResultPayload>('file.read', { path })
-      if (res.payload.content && res.payload.content.length > MAX_FILE_SIZE) {
+      if (typeof res.payload.content === 'string' && res.payload.content.length > MAX_FILE_SIZE) {
         setTooLarge(true)
         setFile(null)
-      } else if (res.payload.content) {
+      } else if (typeof res.payload.content === 'string') {
         setFile(res.payload)
         addRecentFile(path, workspace?.extensionId)
         if (workspace) {
@@ -1001,7 +1001,16 @@ export function CodeViewerPage() {
           <MarkdownRenderer content={file.content} />
         ) : (
           <div ref={codeContainerRef}>
-            <CodeBlock code={file.content} language={file.languageId} showLineNumbers wordWrap={wordWrap} highlightLine={highlightLine} bookmarkedLines={bookmarkedLines} onLineNumberClick={handleLineNumberClick} />
+            <CodeBlock
+              code={file.content}
+              language={file.languageId}
+              filePath={path}
+              showLineNumbers
+              wordWrap={wordWrap}
+              highlightLine={highlightLine}
+              bookmarkedLines={bookmarkedLines}
+              onLineNumberClick={handleLineNumberClick}
+            />
           </div>
         )}
       </div>

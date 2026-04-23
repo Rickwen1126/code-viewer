@@ -76,6 +76,23 @@ const handlers: Record<string, Handler> = {
   'tour.finalize': handleTourFinalize,
   'tour.delete': handleTourDelete,
   'tour.getFileAtRef': handleTourGetFileAtRef,
+  'codeblock.fallback': async (msg) => {
+    const payload = (typeof msg.payload === 'object' && msg.payload !== null) ? msg.payload as {
+      filePath?: string
+      language?: string
+      mappedLanguage?: string
+      codeLength?: number
+      error?: string
+    } : {}
+    console.error('[CodeViewer] codeblock.fallback received', {
+      messageId: msg.id,
+      filePath: payload.filePath,
+      language: payload.language,
+      mappedLanguage: payload.mappedLanguage,
+      codeLength: payload.codeLength,
+      error: payload.error,
+    })
+  },
   'watch.set': async (msg) => {
     const payload = msg.payload as WatchSetPayload
     dbg('watch.set', Array.isArray(payload.watches) ? payload.watches : [])

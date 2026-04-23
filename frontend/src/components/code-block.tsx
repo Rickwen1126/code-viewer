@@ -1,5 +1,6 @@
 import ShikiHighlighter from 'react-shiki'
 import { useState, useRef, useCallback, useMemo } from 'react'
+import { wsClient } from '../services/ws-client'
 
 interface SelectionRange {
   start: { line: number; character: number }
@@ -9,6 +10,7 @@ interface SelectionRange {
 interface CodeBlockProps {
   code: string
   language: string
+  filePath?: string
   showLineNumbers?: boolean
   wordWrap?: boolean
   highlightLine?: number | null
@@ -38,6 +40,8 @@ const LANGUAGE_MAP: Record<string, string> = {
   'cuda-cpp': 'text',
   dockercompose: 'yaml',
   juliamarkdown: 'markdown',
+  plaintext: 'text',
+  text: 'text',
   ignore: 'text',
   'search-result': 'text',
   'code-text-binary': 'text',
@@ -66,7 +70,18 @@ function createLineTransformer(startLine: number, bookmarked?: Set<number>) {
   }
 }
 
-export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = false, highlightLine, bookmarkedLines, onLineNumberClick, startLine = 1, selectionHighlight }: CodeBlockProps) {
+export function CodeBlock({
+  code,
+  language,
+  filePath,
+  showLineNumbers = false,
+  wordWrap = false,
+  highlightLine,
+  bookmarkedLines,
+  onLineNumberClick,
+  startLine = 1,
+  selectionHighlight,
+}: CodeBlockProps) {
   const safeCode = code ?? ''
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem('code-viewer:font-size')
@@ -87,6 +102,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
     [maxLineNumber],
   )
   const bookmarkSignature = Array.from(bookmarkedLines ?? []).sort((a, b) => a - b).join(',')
+  const fallbackRef = useRef<`${string}` | null>(null)
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const transformers = useMemo(
@@ -126,6 +142,50 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
     wordWrap ? 'code-wrap-mode' : undefined,
     showLineNumbers ? 'code-line-numbers' : undefined,
   ].filter(Boolean).join(' ') || undefined
+
+  const mappedLanguage = mapLanguage(language)
+  let renderedCode: JSX.Element
+  try {
+    renderedCode = (
+      <ShikiHighlighter
+        key={wordWrap && showLineNumbers ? `${mappedLanguage}:${startLine}:${bookmarkSignature}` : undefined}
+        language={mappedLanguage}
+        theme="dark-plus"
+        showLanguage={false}
+        addDefaultStyles={false}
+        as="div"
+        style={{ padding: '0.5em' }}
+        transformers={transformers}
+      >
+        {safeCode}
+      </ShikiHighlighter>
+    )
+  } catch (err) {
+    const signature = `${language}|${mappedLanguage}|${safeCode.length}`
+    if (fallbackRef.current !== signature) {
+      console.error('[CodeViewer] CodeBlock fallback to plaintext', {
+        filePath,
+        language,
+        mappedLanguage,
+        codeLength: safeCode.length,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      wsClient.send('codeblock.fallback', {
+        filePath,
+        language,
+        mappedLanguage,
+        codeLength: safeCode.length,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      fallbackRef.current = signature
+    }
+
+    renderedCode = (
+      <pre style={{ margin: 0, padding: '0.5em', whiteSpace: 'pre', overflow: 'auto', color: '#d4d4d4' }}>
+        <code>{safeCode}</code>
+      </pre>
+    )
+  }
 
   return (
     <div
@@ -199,18 +259,7 @@ export function CodeBlock({ code, language, showLineNumbers = false, wordWrap = 
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        <ShikiHighlighter
-          key={wordWrap && showLineNumbers ? `${language}:${startLine}:${bookmarkSignature}` : undefined}
-          language={mapLanguage(language)}
-          theme="dark-plus"
-          showLanguage={false}
-          addDefaultStyles={false}
-          as="div"
-          style={{ padding: '0.5em' }}
-          transformers={transformers}
-        >
-          {safeCode}
-        </ShikiHighlighter>
+        {renderedCode}
       </div>
       {/* Highlight overlay for Go to Definition target */}
       {highlightLine != null && highlightLine >= 0 && (
