@@ -32,6 +32,10 @@ class WsClientService {
   private reconnectDelay = 1000
   private maxReconnectDelay = 30000
   private shouldReconnect = true
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private connectTimer: ReturnType<typeof setTimeout> | null = null
+  private openEpoch = 0
+  private consecutiveFailures = 0
   private pendingRequests = new Map<
     string,
     {
@@ -60,10 +64,12 @@ class WsClientService {
   private setupVisibilityReconnect(): void {
     if (this.visibilityHandler) return
     this.visibilityHandler = () => {
+      console.log(`[ws] visibilitychange: ${document.visibilityState}, ws=${this.ws?.readyState}, state=${this.state}`)
       if (document.visibilityState !== 'visible') return
       this.ensureActiveConnection('foreground')
     }
     this.pageShowHandler = (event) => {
+      console.log(`[ws] pageshow: persisted=${event.persisted}, ws=${this.ws?.readyState}, state=${this.state}`)
       if (!this.shouldReconnectOnPageShow(event)) return
       this.ensureActiveConnection('pageshow')
     }
@@ -77,8 +83,10 @@ class WsClientService {
     // Safari can restore a page from BFCache with a dead socket and without a
     // matching onclose/visibility transition. Treat any non-open socket as a
     // stale runtime and bootstrap a fresh connection.
-    if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
-      console.warn(`[WS] Zombie connection detected on ${reason} — forcing reconnect`)
+    // Only treat CLOSING (2) / CLOSED (3) as zombie — CONNECTING (0) is normal,
+    // the socket is still being established and should not be killed.
+    if (this.ws && this.ws.readyState > WebSocket.OPEN) {
+      console.warn(`[WS] Zombie connection detected on ${reason} (readyState=${this.ws.readyState}) — forcing reconnect`)
       this.forceReconnect('Connection lost in background')
       return
     }
@@ -92,7 +100,9 @@ class WsClientService {
     }
 
     if (this.state !== 'connected' && this.state !== 'connecting') {
-      this.reconnectDelay = 1000
+      // Cap backoff on foreground resume — responsive without resetting the full
+      // exponential backoff (which causes rapid-fire retries when backend is down).
+      this.reconnectDelay = Math.min(this.reconnectDelay, 2000)
       this.openSocket()
     }
   }
@@ -117,7 +127,9 @@ class WsClientService {
 
   /** Tear down the current socket and start a fresh connection. */
   private forceReconnect(reason: string): void {
+    if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
     if (this.ws) {
+      this.ws.onopen = null
       this.ws.onclose = null
       this.ws.onerror = null
       this.ws.onmessage = null
@@ -141,6 +153,9 @@ class WsClientService {
 
   disconnect(): void {
     this.shouldReconnect = false
+    this.openEpoch++  // Invalidate any in-flight health probe
+    if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
+    if (this.reconnectTimer !== null) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
     if (this.ws) {
       this.ws.close()
       this.ws = null
@@ -233,8 +248,34 @@ class WsClientService {
   }
 
   private openSocket(): void {
+    // Cancel any pending reconnect timer to prevent double-openSocket race
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
+    const epoch = ++this.openEpoch
     this.setState('connecting')
 
+    // Probe backend HTTP endpoint before creating WebSocket.
+    // Avoids the 5s connect-timeout loop when backend is unreachable.
+    // Uses mode:'no-cors' — works cross-origin without backend CORS headers.
+    const healthUrl = this.url.replace(/^ws(s?)/, 'http$1').replace(/\/ws\/.*$/, '/health')
+    fetch(healthUrl, { mode: 'no-cors', signal: AbortSignal.timeout(3000) })
+      .then(() => {
+        if (this.openEpoch !== epoch || !this.shouldReconnect) return
+        this.wireSocket()
+      })
+      .catch(() => {
+        if (this.openEpoch !== epoch || !this.shouldReconnect) return
+        this.consecutiveFailures++
+        console.warn(`[ws] backend unreachable (#${this.consecutiveFailures}) — will retry in ${Math.round(this.reconnectDelay / 1000)}s`)
+        this.reconnect()
+      })
+  }
+
+  /** Create the actual WebSocket and wire up event handlers. */
+  private wireSocket(): void {
     try {
       this.ws = new WebSocket(this.url)
     } catch {
@@ -242,12 +283,39 @@ class WsClientService {
       return
     }
 
+    const socket = this.ws
+
+    // Safari can leave a WebSocket stuck in CONNECTING forever without firing
+    // any event. If no onopen/onclose fires within 5s, treat as failed.
+    this.connectTimer = setTimeout(() => {
+      this.connectTimer = null
+      if (this.ws !== socket) return
+      if (socket.readyState === WebSocket.CONNECTING) {
+        this.consecutiveFailures++
+        console.warn(`[ws] connect timeout (#${this.consecutiveFailures}, 5s stuck in CONNECTING) — forcing reconnect`)
+        socket.onopen = null
+        socket.onclose = null
+        socket.onerror = null
+        socket.onmessage = null
+        try { socket.close() } catch { /* ignore */ }
+        this.ws = null
+        this.reconnect()
+      }
+    }, 5000)
+
     this.ws.onopen = () => {
+      if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
+      if (this.consecutiveFailures > 0) {
+        console.log(`[ws] connected after ${this.consecutiveFailures} failed attempt(s)`)
+      }
+      this.consecutiveFailures = 0
       this.reconnectDelay = 1000
       this.setState('connected')
     }
 
     this.ws.onclose = () => {
+      if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
+      if (this.ws !== socket) return  // stale onclose from old socket
       this.ws = null
       this.drainPendingRequests('WebSocket connection closed')
       if (this.shouldReconnect) {
@@ -269,7 +337,8 @@ class WsClientService {
   private reconnect(): void {
     this.setState('reconnecting')
 
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
       if (this.shouldReconnect) {
         this.openSocket()
       }
@@ -324,7 +393,8 @@ class WsClientService {
 
   private setState(state: ConnectionState): void {
     if (this.state === state) return
-    dbg('state:', this.state, '→', state)
+    const listenerCount = this.stateListeners.size
+    console.log(`[ws] state: ${this.state} → ${state} (${listenerCount} listeners)`)
     this.state = state
     this.stateListeners.forEach((listener) => listener(state))
   }
