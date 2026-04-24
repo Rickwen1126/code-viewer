@@ -6,6 +6,14 @@ export default defineConfig({
   server: {
     port: 4801,
     host: true,
+    proxy: {
+      // Proxy WebSocket through the same port as the page.
+      // Safari blocks cross-port WebSocket after background kill/restore.
+      '/ws': {
+        target: 'http://localhost:4800',
+        ws: true,
+      },
+    },
   },
   build: {
     rollupOptions: {

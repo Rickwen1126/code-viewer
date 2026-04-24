@@ -86,6 +86,7 @@ function resetClient() {
   client.pageShowHandler = null
   client.openEpoch = 0
   client.consecutiveFailures = 0
+  client.wsConnectTimeouts = 0
   client.reconnectTimer = null
   client.connectTimer = null
   MockWebSocket.instances = []

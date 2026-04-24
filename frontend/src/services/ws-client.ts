@@ -36,6 +36,7 @@ class WsClientService {
   private connectTimer: ReturnType<typeof setTimeout> | null = null
   private openEpoch = 0
   private consecutiveFailures = 0
+  private wsConnectTimeouts = 0
   private pendingRequests = new Map<
     string,
     {
@@ -261,7 +262,7 @@ class WsClientService {
     // Avoids the 5s connect-timeout loop when backend is unreachable.
     // Uses mode:'no-cors' — works cross-origin without backend CORS headers.
     const healthUrl = this.url.replace(/^ws(s?)/, 'http$1').replace(/\/ws\/.*$/, '/health')
-    fetch(healthUrl, { mode: 'no-cors', signal: AbortSignal.timeout(3000) })
+    fetch(healthUrl, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(3000) })
       .then(() => {
         if (this.openEpoch !== epoch || !this.shouldReconnect) return
         this.wireSocket()
@@ -269,6 +270,7 @@ class WsClientService {
       .catch(() => {
         if (this.openEpoch !== epoch || !this.shouldReconnect) return
         this.consecutiveFailures++
+        this.wsConnectTimeouts = 0 // different kind of failure — reset WS counter
         console.warn(`[ws] backend unreachable (#${this.consecutiveFailures}) — will retry in ${Math.round(this.reconnectDelay / 1000)}s`)
         this.reconnect()
       })
@@ -292,6 +294,7 @@ class WsClientService {
       if (this.ws !== socket) return
       if (socket.readyState === WebSocket.CONNECTING) {
         this.consecutiveFailures++
+        this.wsConnectTimeouts++
         console.warn(`[ws] connect timeout (#${this.consecutiveFailures}, 5s stuck in CONNECTING) — forcing reconnect`)
         socket.onopen = null
         socket.onclose = null
@@ -299,6 +302,22 @@ class WsClientService {
         socket.onmessage = null
         try { socket.close() } catch { /* ignore */ }
         this.ws = null
+
+        // Safari blocks cross-port WebSocket after background kill/restore.
+        // Health check passes but WS is stuck — page reload resets browser state.
+        if (this.wsConnectTimeouts >= 3) {
+          try {
+            const key = 'ws-recovery-ts'
+            const lastReload = Number(sessionStorage.getItem(key) || '0')
+            if (Date.now() - lastReload > 60000) {
+              sessionStorage.setItem(key, String(Date.now()))
+              console.warn('[ws] Safari WebSocket stuck — reloading page to recover')
+              window.location.reload()
+              return
+            }
+          } catch { /* sessionStorage may be unavailable */ }
+        }
+
         this.reconnect()
       }
     }, 5000)
@@ -309,6 +328,7 @@ class WsClientService {
         console.log(`[ws] connected after ${this.consecutiveFailures} failed attempt(s)`)
       }
       this.consecutiveFailures = 0
+      this.wsConnectTimeouts = 0
       this.reconnectDelay = 1000
       this.setState('connected')
     }

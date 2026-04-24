@@ -4,9 +4,13 @@ import './index.css'
 import App from './app'
 import { wsClient } from './services/ws-client'
 
-// Auto-derive WS URL from current page host so mobile devices work over LAN
+// Auto-derive WS URL from current page host so mobile devices work over LAN.
+// In dev mode, use same-origin WebSocket (proxied by Vite to :4800).
+// Safari blocks cross-port WebSocket connections after background kill/restore.
 const wsUrl = import.meta.env.VITE_WS_URL
-  ?? `ws://${window.location.hostname}:4800/ws/frontend`
+  ?? (import.meta.env.DEV
+    ? `ws://${window.location.hostname}:${window.location.port}/ws/frontend`
+    : `ws://${window.location.hostname}:4800/ws/frontend`)
 wsClient.connect(wsUrl)
 
 createRoot(document.getElementById('root')!).render(
