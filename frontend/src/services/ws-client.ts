@@ -34,7 +34,6 @@ class WsClientService {
   private shouldReconnect = true
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectTimer: ReturnType<typeof setTimeout> | null = null
-  private openEpoch = 0
   private consecutiveFailures = 0
   private wsConnectTimeouts = 0
   private pendingRequests = new Map<
@@ -154,7 +153,6 @@ class WsClientService {
 
   disconnect(): void {
     this.shouldReconnect = false
-    this.openEpoch++  // Invalidate any in-flight health probe
     if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
     if (this.reconnectTimer !== null) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
     if (this.ws) {
@@ -254,30 +252,7 @@ class WsClientService {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
-
-    const epoch = ++this.openEpoch
     this.setState('connecting')
-
-    // Probe backend HTTP endpoint before creating WebSocket.
-    // Avoids the 5s connect-timeout loop when backend is unreachable.
-    // Uses mode:'no-cors' — works cross-origin without backend CORS headers.
-    const healthUrl = this.url.replace(/^ws(s?)/, 'http$1').replace(/\/ws\/.*$/, '/health')
-    fetch(healthUrl, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(3000) })
-      .then(() => {
-        if (this.openEpoch !== epoch || !this.shouldReconnect) return
-        this.wireSocket()
-      })
-      .catch(() => {
-        if (this.openEpoch !== epoch || !this.shouldReconnect) return
-        this.consecutiveFailures++
-        this.wsConnectTimeouts = 0 // different kind of failure — reset WS counter
-        console.warn(`[ws] backend unreachable (#${this.consecutiveFailures}) — will retry in ${Math.round(this.reconnectDelay / 1000)}s`)
-        this.reconnect()
-      })
-  }
-
-  /** Create the actual WebSocket and wire up event handlers. */
-  private wireSocket(): void {
     try {
       this.ws = new WebSocket(this.url)
     } catch {

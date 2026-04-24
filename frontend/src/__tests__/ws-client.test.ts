@@ -50,7 +50,6 @@ class MockWebSocket {
 }
 
 vi.stubGlobal('WebSocket', MockWebSocket)
-vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
 // ---------------------------------------------------------------------------
 // Import the singleton AFTER stubbing WebSocket so the module picks it up.
@@ -84,7 +83,6 @@ function resetClient() {
   client.pendingRequests = new Map()
   client.visibilityHandler = null
   client.pageShowHandler = null
-  client.openEpoch = 0
   client.consecutiveFailures = 0
   client.wsConnectTimeouts = 0
   client.reconnectTimer = null
@@ -100,7 +98,6 @@ describe('WsClientService', () => {
   beforeEach(() => {
     resetClient()
     vi.useFakeTimers()
-    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response)
   })
 
   afterEach(() => {
@@ -111,10 +108,8 @@ describe('WsClientService', () => {
   // ── connect ──────────────────────────────────────────────────────────────
 
   describe('connect', () => {
-    it('should create WebSocket with the correct URL', async () => {
+    it('should create WebSocket with the correct URL', () => {
       wsClient.connect('ws://localhost:4800')
-      // Flush async health probe before WebSocket is created
-      await vi.advanceTimersByTimeAsync(0)
       expect(MockWebSocket.instances).toHaveLength(1)
       expect(MockWebSocket.instances[0].url).toBe('ws://localhost:4800')
     })
@@ -194,9 +189,9 @@ describe('WsClientService', () => {
       expect(msg.replyTo).toBe('original-id-123')
     })
 
-    it('should not throw when not yet connected', () => {
+    it('should not throw when socket is not yet open', () => {
       wsClient.connect('ws://localhost:4800')
-      // ws is null while health probe is in-flight — send should be a no-op
+      // readyState is still CONNECTING — send should be a no-op
       expect(() => wsClient.send('ping', {})).not.toThrow()
     })
   })
@@ -424,9 +419,8 @@ describe('WsClientService', () => {
       vi.stubGlobal('WebSocket', NeverOpenSocket)
 
       try {
-        // connect() → openSocket() → health check → wireSocket() → new NeverOpenSocket
+        // connect() → openSocket() → new NeverOpenSocket → reconnectDelay stays 1000
         wsClient.connect('ws://localhost:4800')
-        await vi.advanceTimersByTimeAsync(0) // flush health probe
         expect(MockWebSocket.instances).toHaveLength(1)
 
         // First close: reconnect() uses delay=1000, then sets it to 2000
@@ -501,67 +495,4 @@ describe('WsClientService', () => {
     })
   })
 
-  // ── health probe ──────────────────────────────────────────────────────────
-
-  describe('health probe', () => {
-    it('should skip WebSocket creation and reconnect when health probe fails', async () => {
-      vi.mocked(fetch).mockRejectedValue(new Error('network error'))
-
-      wsClient.connect('ws://localhost:4800')
-      // Flush the rejected fetch promise
-      await vi.advanceTimersByTimeAsync(0)
-
-      // No WebSocket should have been created
-      expect(MockWebSocket.instances).toHaveLength(0)
-      // State should be reconnecting (waiting for backoff)
-      expect(wsClient.getState()).toBe('reconnecting')
-      expect(client.consecutiveFailures).toBe(1)
-    })
-
-    it('should increment consecutiveFailures on each health probe failure', async () => {
-      vi.mocked(fetch).mockRejectedValue(new Error('network error'))
-
-      wsClient.connect('ws://localhost:4800')
-      await vi.advanceTimersByTimeAsync(0) // 1st failure
-
-      // Advance past reconnect delay (1s) to trigger second attempt
-      await vi.advanceTimersByTimeAsync(1001) // 2nd failure
-
-      expect(client.consecutiveFailures).toBe(2)
-      expect(MockWebSocket.instances).toHaveLength(0)
-    })
-
-    it('should reset consecutiveFailures on successful connect', async () => {
-      // First: fail the health check
-      vi.mocked(fetch).mockRejectedValueOnce(new Error('network error'))
-
-      wsClient.connect('ws://localhost:4800')
-      await vi.advanceTimersByTimeAsync(0) // health check fails
-      expect(client.consecutiveFailures).toBe(1)
-
-      // Second: let health check pass and socket connect
-      vi.mocked(fetch).mockResolvedValue({ ok: true } as Response)
-      await vi.advanceTimersByTimeAsync(1001) // reconnect timer fires → success
-      await vi.runAllTimersAsync() // flush socket open
-
-      expect(client.consecutiveFailures).toBe(0)
-      expect(wsClient.getState()).toBe('connected')
-    })
-
-    it('should not create WebSocket if disconnect() was called during health probe', async () => {
-      // Delay the fetch resolution so we can call disconnect() first
-      let resolveFetch: () => void
-      vi.mocked(fetch).mockReturnValue(new Promise(r => { resolveFetch = () => r({ ok: true } as Response) }))
-
-      wsClient.connect('ws://localhost:4800')
-      wsClient.disconnect()
-
-      // Now resolve the health probe — should be ignored due to epoch mismatch
-      resolveFetch!()
-      await vi.advanceTimersByTimeAsync(0)
-
-      expect(MockWebSocket.instances).toHaveLength(0)
-      expect(wsClient.getState()).toBe('disconnected')
-    })
-  })
 })
