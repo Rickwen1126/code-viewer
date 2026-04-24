@@ -62,3 +62,17 @@ export function writeSavedFileScroll(
     // ignore
   }
 }
+
+export function writeElementFileScroll(
+  workspace: WorkspaceLike | null | undefined,
+  path: string,
+  element: { scrollTop: number } | null | undefined,
+  contentLength: number,
+): void {
+  if (!element) return
+  writeSavedFileScroll(workspace, path, {
+    scrollTop: element.scrollTop,
+    contentLength,
+    timestamp: Date.now(),
+  })
+}

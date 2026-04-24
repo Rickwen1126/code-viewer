@@ -1,5 +1,6 @@
 import ShikiHighlighter from 'react-shiki'
 import { useState, useRef, useCallback, useMemo } from 'react'
+import type { ReactElement } from 'react'
 import { wsClient } from '../services/ws-client'
 
 interface SelectionRange {
@@ -144,7 +145,7 @@ export function CodeBlock({
   ].filter(Boolean).join(' ') || undefined
 
   const mappedLanguage = mapLanguage(language)
-  let renderedCode: JSX.Element
+  let renderedCode: ReactElement
   try {
     renderedCode = (
       <ShikiHighlighter

@@ -3,6 +3,7 @@ import {
   getLegacyWorkspaceFileScrollKey,
   getWorkspaceFileScrollKey,
   readSavedFileScroll,
+  writeElementFileScroll,
   writeSavedFileScroll,
   type FileScrollSnapshot,
 } from '../services/file-scroll'
@@ -39,6 +40,7 @@ describe('file-scroll storage', () => {
 
   beforeEach(() => {
     storage.clear()
+    vi.useRealTimers()
   })
 
   it('builds stable and legacy keys separately', () => {
@@ -67,5 +69,18 @@ describe('file-scroll storage', () => {
     storage.set('code-viewer:scroll:ext-123:src/app.tsx', JSON.stringify(snapshot))
 
     expect(readSavedFileScroll(workspace, path)).toEqual(snapshot)
+  })
+
+  it('flushes the current DOM scroll position immediately', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(987654321)
+
+    writeElementFileScroll(workspace, path, { scrollTop: 456 }, 2048)
+
+    expect(readSavedFileScroll(workspace, path)).toEqual({
+      scrollTop: 456,
+      contentLength: 2048,
+      timestamp: 987654321,
+    })
   })
 })

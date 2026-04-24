@@ -11,7 +11,7 @@ import {
   zeroBasedToOneBasedLine,
 } from '../../services/file-location'
 import { writeCurrentFileForWorkspace } from '../../services/current-file'
-import { readSavedFileScroll, writeSavedFileScroll } from '../../services/file-scroll'
+import { readSavedFileScroll, writeElementFileScroll } from '../../services/file-scroll'
 import {
   getDetourAnchor,
   mergeDetourState,
@@ -286,6 +286,15 @@ export function CodeViewerPage() {
   const queryLocation = parseFileLocationQuery(searchParams)
   const detourAnchor = getDetourAnchor(location.state)
   const targetLine = oneBasedToZeroBasedLine(queryLocation.line)
+  const persistCurrentScroll = useCallback(() => {
+    if (previewKind || !workspace || !path) return
+    writeElementFileScroll(
+      workspace,
+      path,
+      scrollContainerRef.current,
+      file?.content?.length ?? 0,
+    )
+  }, [file, path, previewKind, workspace])
 
   // Persist current file path immediately on navigation
   useEffect(() => {
@@ -373,17 +382,15 @@ export function CodeViewerPage() {
     let timer: ReturnType<typeof setTimeout>
     const handler = () => {
       clearTimeout(timer)
-      timer = setTimeout(() => {
-        writeSavedFileScroll(workspace, path, {
-          scrollTop: container.scrollTop,
-          contentLength: file?.content?.length ?? 0,
-          timestamp: Date.now(),
-        })
-      }, 500)
+      timer = setTimeout(persistCurrentScroll, 500)
     }
     container.addEventListener('scroll', handler, { passive: true })
-    return () => { clearTimeout(timer); container.removeEventListener('scroll', handler) }
-  }, [path, workspace, file, previewKind])
+    return () => {
+      clearTimeout(timer)
+      persistCurrentScroll()
+      container.removeEventListener('scroll', handler)
+    }
+  }, [path, workspace, previewKind, persistCurrentScroll])
 
   // Restore semantic target location first, then fall back to saved scroll.
   useEffect(() => {
@@ -396,10 +403,24 @@ export function CodeViewerPage() {
     restoreStateRef.current = restoreKey
 
     if (targetLine != null) {
-      requestAnimationFrame(() => {
-        scrollToLine(targetLine)
+      let secondFrame = 0
+      let cancelled = false
+      const run = (behavior: ScrollBehavior = 'auto') => {
+        if (!cancelled) scrollToLine(targetLine, behavior)
+      }
+      const firstFrame = requestAnimationFrame(() => {
+        run('auto')
+        secondFrame = requestAnimationFrame(() => run('auto'))
       })
-      return
+      const fallbackTimer = window.setTimeout(() => run('auto'), 100)
+      const settledTimer = window.setTimeout(() => run('smooth'), 300)
+      return () => {
+        cancelled = true
+        cancelAnimationFrame(firstFrame)
+        if (secondFrame) cancelAnimationFrame(secondFrame)
+        clearTimeout(fallbackTimer)
+        clearTimeout(settledTimer)
+      }
     }
 
     const saved = readSavedFileScroll(workspace, path)
@@ -558,6 +579,7 @@ export function CodeViewerPage() {
 
   // Navigate to a file at a given line
   function navigateToFile(targetPath: string, line: number) {
+    persistCurrentScroll()
     navigate(
       buildFileLocationUrl(targetPath, { line: zeroBasedToOneBasedLine(line) }),
       { state: mergeDetourState(detourAnchor) },
@@ -565,11 +587,11 @@ export function CodeViewerPage() {
   }
 
   // Scroll to a line and briefly highlight it
-  function scrollToLine(line: number) {
+  function scrollToLine(line: number, behavior: ScrollBehavior = 'smooth') {
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
     const targetScrollTop = line * LINE_HEIGHT
-    scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' })
+    scrollContainer.scrollTo({ top: targetScrollTop, behavior })
     setHighlightLine(line)
     setTimeout(() => setHighlightLine(null), 3500)
   }
