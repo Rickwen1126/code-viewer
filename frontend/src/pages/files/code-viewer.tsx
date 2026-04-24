@@ -288,6 +288,7 @@ export function CodeViewerPage() {
   const targetLine = oneBasedToZeroBasedLine(queryLocation.line)
   const persistCurrentScroll = useCallback(() => {
     if (previewKind || !workspace || !path) return
+    if (file?.path && file.path !== path) return
     writeElementFileScroll(
       workspace,
       path,
@@ -396,6 +397,9 @@ export function CodeViewerPage() {
   useEffect(() => {
     if (previewKind) return
     if (!file || !workspace || !scrollContainerRef.current) return
+    // During route changes React can briefly render the new path with the previous file state.
+    // Do not consume the restore key until the loaded file actually matches the route.
+    if (file.path !== path) return
     const restoreKey = buildFileRestoreKey(workspace.rootPath, path, {
       line: queryLocation.line,
     })
