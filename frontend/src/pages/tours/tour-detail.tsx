@@ -357,6 +357,48 @@ export function TourDetailPage() {
         </span>
       </div>
 
+      {/* Step actions */}
+      <div style={{
+        padding: '6px 16px',
+        borderBottom: confirmDelete ? 'none' : '1px solid #333',
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: 8,
+        flexWrap: 'wrap',
+        flexShrink: 0,
+      }}>
+        <button onClick={startEditStep} style={actionBtnStyle}>
+          Edit
+        </button>
+        <button onClick={() => setConfirmDelete(true)} style={{ ...actionBtnStyle, color: '#f48771', borderColor: '#5a3030' }}>
+          Delete
+        </button>
+        <button onClick={handleAddStepsHere} style={{ ...actionBtnStyle, color: '#569cd6', borderColor: '#264f78' }}>
+          + Add step after
+        </button>
+      </div>
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div style={{ padding: '0 16px 10px', borderBottom: '1px solid #333', flexShrink: 0 }}>
+          <div style={{ background: '#2a2020', border: '1px solid #5a3030', borderRadius: 6, padding: 12 }}>
+            <div style={{ fontSize: 13, color: '#f48771', marginBottom: 8 }}>Delete this step?</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleDeleteStep}
+                disabled={deleting}
+                style={{ ...actionBtnStyle, background: '#5a3030', color: '#f48771', borderColor: '#5a3030' }}
+              >
+                {deleting ? '...' : 'Yes, delete'}
+              </button>
+              <button onClick={() => setConfirmDelete(false)} style={actionBtnStyle}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step content — scrollable */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
         {/* Step title */}
@@ -426,40 +468,6 @@ export function TourDetailPage() {
             ) : (
               <div style={{ padding: '8px 16px', color: '#888', fontSize: 13 }}>Could not load code snippet</div>
             )}
-          </div>
-        )}
-
-        {/* Step actions: Edit / Delete / Add steps here */}
-        <div style={{ padding: '0 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={startEditStep} style={actionBtnStyle}>
-            Edit
-          </button>
-          <button onClick={() => setConfirmDelete(true)} style={{ ...actionBtnStyle, color: '#f48771', borderColor: '#5a3030' }}>
-            Delete
-          </button>
-          <button onClick={handleAddStepsHere} style={{ ...actionBtnStyle, color: '#569cd6', borderColor: '#264f78' }}>
-            + Add step after
-          </button>
-        </div>
-
-        {/* Delete confirmation */}
-        {confirmDelete && (
-          <div style={{ padding: '0 16px 16px' }}>
-            <div style={{ background: '#2a2020', border: '1px solid #5a3030', borderRadius: 6, padding: 12 }}>
-              <div style={{ fontSize: 13, color: '#f48771', marginBottom: 8 }}>Delete this step?</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={handleDeleteStep}
-                  disabled={deleting}
-                  style={{ ...actionBtnStyle, background: '#5a3030', color: '#f48771', borderColor: '#5a3030' }}
-                >
-                  {deleting ? '...' : 'Yes, delete'}
-                </button>
-                <button onClick={() => setConfirmDelete(false)} style={actionBtnStyle}>
-                  Cancel
-                </button>
-              </div>
-            </div>
           </div>
         )}
       </div>

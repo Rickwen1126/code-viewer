@@ -4,24 +4,26 @@ import { CodeBlock } from './code-block'
 
 interface MarkdownRendererProps {
   content: string
+  codeFontSize?: number
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, codeFontSize }: MarkdownRendererProps) {
   const tokens = useMemo(() => marked.lexer(content), [content])
+  const markdownFontSize = codeFontSize ?? 14
 
   return (
-    <div style={{ padding: '12px 16px', lineHeight: 1.6, fontSize: 14, color: '#d4d4d4' }}>
+    <div style={{ padding: '12px 16px', lineHeight: 1.6, fontSize: markdownFontSize, color: '#d4d4d4' }}>
       {tokens.map((token, i) => (
-        <TokenRenderer key={i} token={token} />
+        <TokenRenderer key={i} token={token} fontSize={markdownFontSize} />
       ))}
     </div>
   )
 }
 
-function TokenRenderer({ token }: { token: Token }) {
+function TokenRenderer({ token, fontSize }: { token: Token; fontSize: number }) {
   switch (token.type) {
     case 'heading':
-      return <HeadingRenderer token={token as Tokens.Heading} />
+      return <HeadingRenderer token={token as Tokens.Heading} fontSize={fontSize} />
     case 'paragraph':
       return (
         <p style={{ marginBottom: 12 }}>
@@ -29,7 +31,7 @@ function TokenRenderer({ token }: { token: Token }) {
         </p>
       )
     case 'code':
-      return <CodeBlockRenderer token={token as Tokens.Code} />
+      return <CodeBlockRenderer token={token as Tokens.Code} fontSize={fontSize} />
     case 'blockquote':
       return (
         <blockquote
@@ -41,16 +43,16 @@ function TokenRenderer({ token }: { token: Token }) {
           }}
         >
           {(token as Tokens.Blockquote).tokens.map((t, i) => (
-            <TokenRenderer key={i} token={t} />
+            <TokenRenderer key={i} token={t} fontSize={fontSize} />
           ))}
         </blockquote>
       )
     case 'list':
-      return <ListRenderer token={token as Tokens.List} />
+      return <ListRenderer token={token as Tokens.List} fontSize={fontSize} />
     case 'hr':
       return <hr style={{ border: 'none', borderTop: '1px solid #333', margin: '16px 0' }} />
     case 'table':
-      return <TableRenderer token={token as Tokens.Table} />
+      return <TableRenderer token={token as Tokens.Table} fontSize={fontSize} />
     case 'space':
       return null
     default:
@@ -62,11 +64,11 @@ function TokenRenderer({ token }: { token: Token }) {
   }
 }
 
-function HeadingRenderer({ token }: { token: Tokens.Heading }) {
+function HeadingRenderer({ token, fontSize }: { token: Tokens.Heading; fontSize: number }) {
   const styles: Record<number, React.CSSProperties> = {
-    1: { fontSize: 24, color: '#569cd6', fontWeight: 'bold', marginBottom: 16 },
-    2: { fontSize: 20, color: '#569cd6', fontWeight: 'bold', marginBottom: 12 },
-    3: { fontSize: 16, color: '#d4d4d4', fontWeight: 'bold', marginBottom: 8 },
+    1: { fontSize: fontSize + 10, color: '#569cd6', fontWeight: 'bold', marginBottom: 16 },
+    2: { fontSize: fontSize + 6, color: '#569cd6', fontWeight: 'bold', marginBottom: 12 },
+    3: { fontSize: fontSize + 2, color: '#d4d4d4', fontWeight: 'bold', marginBottom: 8 },
   }
   const style = styles[token.depth] ?? styles[3]
   const depth = Math.min(token.depth, 6)
@@ -77,15 +79,20 @@ function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   )
 }
 
-function CodeBlockRenderer({ token }: { token: Tokens.Code }) {
+function CodeBlockRenderer({ token, fontSize }: { token: Tokens.Code; fontSize: number }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <CodeBlock code={token.text} language={token.lang || 'text'} showLineNumbers={false} />
+      <CodeBlock
+        code={token.text}
+        language={token.lang || 'text'}
+        showLineNumbers={false}
+        fontSize={fontSize}
+      />
     </div>
   )
 }
 
-function ListRenderer({ token }: { token: Tokens.List }) {
+function ListRenderer({ token, fontSize }: { token: Tokens.List; fontSize: number }) {
   const Tag = token.ordered ? 'ol' : 'ul'
   return (
     <Tag
@@ -101,7 +108,7 @@ function ListRenderer({ token }: { token: Tokens.List }) {
             if (t.type === 'text' && 'tokens' in t && t.tokens) {
               return <InlineRenderer key={j} tokens={t.tokens as Token[]} />
             }
-            return <TokenRenderer key={j} token={t} />
+            return <TokenRenderer key={j} token={t} fontSize={fontSize} />
           })}
         </li>
       ))}
@@ -109,10 +116,10 @@ function ListRenderer({ token }: { token: Tokens.List }) {
   )
 }
 
-function TableRenderer({ token }: { token: Tokens.Table }) {
+function TableRenderer({ token, fontSize }: { token: Tokens.Table; fontSize: number }) {
   return (
     <div style={{ overflowX: 'auto', marginBottom: 12 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: Math.max(fontSize - 1, 8) }}>
         <thead>
           <tr>
             {token.header.map((cell, i) => (

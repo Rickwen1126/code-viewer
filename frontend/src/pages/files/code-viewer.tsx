@@ -20,7 +20,13 @@ import {
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useDocumentVisibility } from '../../hooks/use-visibility'
 import { debugLog } from '../../services/debug'
-import { CodeBlock } from '../../components/code-block'
+import {
+  CodeBlock,
+  CODE_FONT_SIZE_DEFAULT,
+  CODE_FONT_SIZE_MAX,
+  CODE_FONT_SIZE_MIN,
+  CODE_FONT_SIZE_STORAGE_KEY,
+} from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { InFileSearch } from '../../components/in-file-search'
 import { getBookmarkedLines, addBookmark, removeBookmark, getBookmarksForFile } from '../../services/bookmarks'
@@ -52,6 +58,21 @@ const menuItemStyle: React.CSSProperties = {
   fontSize: 12,
   textAlign: 'left',
   cursor: 'pointer',
+}
+
+const menuControlButtonStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '6px 8px',
+  background: '#252526',
+  border: '1px solid #444',
+  color: '#d4d4d4',
+  fontSize: 12,
+  borderRadius: 4,
+  cursor: 'pointer',
+}
+
+function clampCodeFontSize(value: number): number {
+  return Math.round(Math.min(Math.max(value, CODE_FONT_SIZE_MIN), CODE_FONT_SIZE_MAX))
 }
 
 function copyToClipboard(text: string): void {
@@ -96,6 +117,12 @@ export function CodeViewerPage() {
   const [wordWrap, setWordWrap] = useState(() =>
     localStorage.getItem('code-viewer:wrap-enabled') === 'true',
   )
+  const [codeFontSize, setCodeFontSize] = useState(() => {
+    const saved = Number(localStorage.getItem(CODE_FONT_SIZE_STORAGE_KEY))
+    return Number.isFinite(saved) && saved > 0
+      ? clampCodeFontSize(saved)
+      : CODE_FONT_SIZE_DEFAULT
+  })
   const [highlightLine, setHighlightLine] = useState<number | null>(null)
   const [mdRendered, setMdRendered] = useState(() =>
     localStorage.getItem('code-viewer:md-view-mode') !== 'raw',
@@ -236,6 +263,14 @@ export function CodeViewerPage() {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [menuOpen])
+
+  function updateCodeFontSize(delta: number): void {
+    setCodeFontSize((current) => {
+      const next = clampCodeFontSize(current + delta)
+      localStorage.setItem(CODE_FONT_SIZE_STORAGE_KEY, String(next))
+      return next
+    })
+  }
 
   // Load bookmarks when file changes
   useEffect(() => {
@@ -998,6 +1033,36 @@ export function CodeViewerPage() {
                 >
                   Symbols
                 </button>
+                <div style={{ borderTop: '1px solid #333' }} />
+                <div style={{ padding: '8px 12px' }}>
+                  <div style={{ color: '#888', fontSize: 11, marginBottom: 6 }}>
+                    Font Size {codeFontSize}px
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => updateCodeFontSize(-1)}
+                      disabled={codeFontSize <= CODE_FONT_SIZE_MIN}
+                      style={{
+                        ...menuControlButtonStyle,
+                        opacity: codeFontSize <= CODE_FONT_SIZE_MIN ? 0.45 : 1,
+                        cursor: codeFontSize <= CODE_FONT_SIZE_MIN ? 'default' : 'pointer',
+                      }}
+                    >
+                      A-
+                    </button>
+                    <button
+                      onClick={() => updateCodeFontSize(1)}
+                      disabled={codeFontSize >= CODE_FONT_SIZE_MAX}
+                      style={{
+                        ...menuControlButtonStyle,
+                        opacity: codeFontSize >= CODE_FONT_SIZE_MAX ? 0.45 : 1,
+                        cursor: codeFontSize >= CODE_FONT_SIZE_MAX ? 'default' : 'pointer',
+                      }}
+                    >
+                      A+
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1024,7 +1089,7 @@ export function CodeViewerPage() {
         onClick={isMarkdown && mdRendered ? undefined : handleCodeClick}
       >
         {isMarkdown && mdRendered ? (
-          <MarkdownRenderer content={file.content} />
+          <MarkdownRenderer content={file.content} codeFontSize={codeFontSize} />
         ) : (
           <div ref={codeContainerRef}>
             <CodeBlock
@@ -1036,6 +1101,7 @@ export function CodeViewerPage() {
               highlightLine={highlightLine}
               bookmarkedLines={bookmarkedLines}
               onLineNumberClick={handleLineNumberClick}
+              fontSize={codeFontSize}
             />
           </div>
         )}
