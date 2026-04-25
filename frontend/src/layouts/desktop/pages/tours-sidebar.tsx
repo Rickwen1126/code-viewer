@@ -39,6 +39,20 @@ export function ToursSidebar() {
     : null
   const activeStep = searchParams.get('step') ? parseInt(searchParams.get('step')!, 10) : null
 
+  const loadTourSteps = useCallback(async (tourId: string) => {
+    try {
+      const res = await request<{ tourId: string }, TourGetStepsResultPayload>('tour.getSteps', { tourId })
+      setTourSteps(prev => ({ ...prev, [tourId]: res.payload.steps ?? [] }))
+    } catch {
+      setTourSteps(prev => {
+        if (prev[tourId] === undefined) return prev
+        const next = { ...prev }
+        delete next[tourId]
+        return next
+      })
+    }
+  }, [request])
+
   // Auto-expand the active tour from URL and load steps if needed (e.g. after sidebar remount)
   useEffect(() => {
     if (!activeTourId) return
@@ -46,16 +60,9 @@ export function ToursSidebar() {
       setExpandedTourId(activeTourId)
     }
     if (!tourSteps[activeTourId] && connectionState === 'connected') {
-      request<{ tourId: string }, TourGetStepsResultPayload>('tour.getSteps', { tourId: activeTourId })
-        .then(res => {
-          setTourSteps(prev => ({ ...prev, [activeTourId]: res.payload.steps ?? [] }))
-        })
-        .catch(() => {
-          setTourSteps(prev => ({ ...prev, [activeTourId]: [] }))
-        })
+      void loadTourSteps(activeTourId)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTourId, connectionState])
+  }, [activeTourId, connectionState, expandedTourId, loadTourSteps, tourSteps])
 
   useEffect(() => {
     if (connectionState !== 'connected' || !workspace || !workspaceReady) return
@@ -76,17 +83,13 @@ export function ToursSidebar() {
 
   async function handleToggleTour(tourId: string) {
     if (expandedTourId === tourId) {
+      if (activeTourId === tourId) return
       setExpandedTourId(null)
       return
     }
     setExpandedTourId(tourId)
     if (!tourSteps[tourId]) {
-      try {
-        const res = await request<{ tourId: string }, TourGetStepsResultPayload>('tour.getSteps', { tourId })
-        setTourSteps(prev => ({ ...prev, [tourId]: res.payload.steps ?? [] }))
-      } catch {
-        setTourSteps(prev => ({ ...prev, [tourId]: [] }))
-      }
+      await loadTourSteps(tourId)
     }
   }
 
@@ -274,7 +277,7 @@ export function ToursSidebar() {
                     const isActiveStep = isActive && activeStep === i + 1
                     return (
                       <button
-                        key={i}
+                        key={`${tour.id}:${i}:${step.file}:${step.line}:${step.title ?? ''}`}
                         onClick={() => handleStepClick(tour.id, i)}
                         style={{
                           display: 'flex',
