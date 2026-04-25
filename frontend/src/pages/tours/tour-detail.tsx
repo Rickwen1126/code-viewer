@@ -591,12 +591,26 @@ export function TourDetailPage() {
                 />
               </div>
             ))}
-            <button
-              onClick={() => setEditSections(prev => [...prev, { title: '', content: '' }])}
-              style={{ display: 'block', width: '100%', padding: 10, background: 'none', border: '1px dashed #444', borderRadius: 6, color: '#888', fontSize: 13, cursor: 'pointer' }}
-            >
-              + Add Section
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setEditSections(prev => [...prev, { title: '', content: '' }])}
+                style={addSectionBtnStyle}
+              >
+                + Add Section
+              </button>
+              <button
+                onClick={() => setEditSections(prev => [...prev, { title: 'Review', content: '' }])}
+                style={addSectionBtnStyle}
+              >
+                + Review
+              </button>
+              <button
+                onClick={() => setEditSections(prev => [...prev, { title: 'Question', content: '' }])}
+                style={addSectionBtnStyle}
+              >
+                + Question
+              </button>
+            </div>
           </div>
           <div style={{
             padding: '10px 16px',
@@ -652,6 +666,17 @@ const actionBtnStyle: React.CSSProperties = {
   fontSize: 12,
   padding: '4px 12px',
   borderRadius: 4,
+  cursor: 'pointer',
+}
+
+const addSectionBtnStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '10px 6px',
+  background: 'none',
+  border: '1px dashed #444',
+  borderRadius: 6,
+  color: '#888',
+  fontSize: 13,
   cursor: 'pointer',
 }
 

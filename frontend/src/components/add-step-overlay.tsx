@@ -75,8 +75,8 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
     setSections(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s))
   }
 
-  function addSection() {
-    setSections(prev => [...prev, { title: '', content: '' }])
+  function addSection(title = '') {
+    setSections(prev => [...prev, { title, content: '' }])
   }
 
   function removeSection(index: number) {
@@ -252,22 +252,17 @@ export function AddStepOverlay({ file, tappedLine, onClose, onSaved }: AddStepOv
               </div>
             ))}
 
-            <button
-              onClick={addSection}
-              style={{
-                display: 'block',
-                width: '100%',
-                padding: '10px',
-                background: 'none',
-                border: '1px dashed #444',
-                borderRadius: 6,
-                color: '#888',
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              + Add Section
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => addSection()} style={addSectionBtnStyle}>
+                + Add Section
+              </button>
+              <button onClick={() => addSection('Review')} style={addSectionBtnStyle}>
+                + Review
+              </button>
+              <button onClick={() => addSection('Question')} style={addSectionBtnStyle}>
+                + Question
+              </button>
+            </div>
 
             {error && (
               <div style={{ marginTop: 12, color: '#f48771', fontSize: 13 }}>{error}</div>
@@ -328,6 +323,17 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
   fontFamily: 'inherit',
+}
+
+const addSectionBtnStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '10px 6px',
+  background: 'none',
+  border: '1px dashed #444',
+  borderRadius: 6,
+  color: '#888',
+  fontSize: 13,
+  cursor: 'pointer',
 }
 
 const primaryBtnStyle: React.CSSProperties = {
