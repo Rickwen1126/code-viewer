@@ -236,7 +236,7 @@ export function TourDetailPage() {
       // Adjust current step if needed
       const stepCount = tourData.steps?.length ?? 0
       if (stepCount <= 1) {
-        navigate('/tours')
+        navigate('/tours', { state: { activeTourId: tourId } })
         return
       }
       if (currentStep >= stepCount - 1) {
@@ -267,7 +267,7 @@ export function TourDetailPage() {
   function goTo(index: number) {
     if (!tourData) return
     const clamped = Math.max(0, Math.min(index, tourData.steps.length - 1))
-    navigate(buildTourStepUrl(tourId, clamped + 1), { replace: true })
+    navigate(buildTourStepUrl(tourId, clamped + 1))
     setCurrentStep(clamped)
   }
 
@@ -290,7 +290,7 @@ export function TourDetailPage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div style={{ padding: '10px 12px', borderBottom: '1px solid #333', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <button onClick={() => navigate('/tours')} style={{ background: 'none', border: 'none', color: '#569cd6', fontSize: 14, cursor: 'pointer', padding: '2px 6px 2px 0' }}>
+          <button onClick={() => navigate('/tours', { state: { activeTourId: tourId } })} style={{ background: 'none', border: 'none', color: '#569cd6', fontSize: 14, cursor: 'pointer', padding: '2px 6px 2px 0' }}>
             ← Tours
           </button>
           <span style={{ fontSize: 15, fontWeight: 600, color: '#d4d4d4', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -337,7 +337,7 @@ export function TourDetailPage() {
         }}
       >
         <button
-          onClick={() => navigate('/tours')}
+          onClick={() => navigate('/tours', { state: { activeTourId: tourId } })}
           style={{
             background: 'none',
             border: 'none',

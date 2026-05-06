@@ -1,15 +1,24 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { Copy } from 'lucide-react'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { useTourEdit } from '../../hooks/use-tour-edit'
 import { PullToRefresh } from '../../components/pull-to-refresh'
 import { buildTourStepUrl } from '../../services/semantic-navigation'
-import { getResumeTourStep } from './tour-progress'
 import type { TourListResultPayload, TourCreateResultPayload } from '@code-viewer/shared'
 
 type TourSummary = TourListResultPayload['tours'][number]
+
+interface TourListLocationState {
+  activeTourId?: string
+}
+
+function getTourListActiveTourId(state: unknown): string | null {
+  if (!state || typeof state !== 'object') return null
+  const activeTourId = (state as TourListLocationState).activeTourId
+  return typeof activeTourId === 'string' ? activeTourId : null
+}
 
 function buildTourAbsolutePath(rootPath: string, tourId: string): string {
   return `${rootPath}/.tours/${tourId}.tour`
@@ -44,6 +53,7 @@ export function TourListPage() {
   const { workspace, workspaceReady } = useWorkspace()
   const { tourEdit, setTourEdit } = useTourEdit()
   const navigate = useNavigate()
+  const location = useLocation()
   const [tours, setTours] = useState<TourSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -124,8 +134,15 @@ export function TourListPage() {
     return <div style={{ padding: 16, color: '#f48771' }}>{error}</div>
   }
 
+  const activeTourId = getTourListActiveTourId(location.state)
+
   return (
-    <PullToRefresh onRefresh={loadTours} scrollKey="/tours">
+    <PullToRefresh
+      onRefresh={loadTours}
+      scrollKey="/tours"
+      restoreKey={`${activeTourId ?? ''}:${tours.length}`}
+      anchorSelector={activeTourId ? '[data-scroll-anchor="active-tour"]' : undefined}
+    >
       <div>
       <div style={{ padding: '12px 16px', paddingTop: 'calc(12px + env(safe-area-inset-top))', borderBottom: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 16, fontWeight: 600, color: '#d4d4d4' }}>Code Tours</span>
@@ -204,13 +221,15 @@ export function TourListPage() {
         </div>
       ) : tours.map((tour) => {
         const isEditing = tourEdit?.tourId === tour.id
+        const isActiveTour = activeTourId === tour.id
         return (
           <div
             key={tour.id}
+            data-scroll-anchor={isActiveTour ? 'active-tour' : undefined}
             style={{
               borderBottom: '1px solid #2a2a2a',
               background: isEditing ? '#1a2a3a' : 'none',
-              borderLeft: isEditing ? '3px solid #569cd6' : '3px solid transparent',
+              borderLeft: isEditing || isActiveTour ? '3px solid #569cd6' : '3px solid transparent',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -233,10 +252,9 @@ export function TourListPage() {
                 <Copy size={14} />
               </button>
               <button
-                onClick={() => navigate(buildTourStepUrl(
-                  tour.id,
-                  getResumeTourStep(workspace, tour.id, tour.stepCount),
-                ))}
+                onClick={() => {
+                  navigate(buildTourStepUrl(tour.id, 1))
+                }}
                 style={{
                   flex: 1,
                   padding: '14px 16px 14px 8px',

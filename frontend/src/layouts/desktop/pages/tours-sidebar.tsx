@@ -9,7 +9,6 @@ import { useWebSocket } from '../../../hooks/use-websocket'
 import { useWorkspace } from '../../../hooks/use-workspace'
 import { useTourEdit } from '../../../hooks/use-tour-edit'
 import { buildTourStepUrl } from '../../../services/semantic-navigation'
-import { getResumeTourStep } from '../../../pages/tours/tour-progress'
 import type { TourListResultPayload, TourGetStepsResultPayload, TourCreateResultPayload } from '@code-viewer/shared'
 
 type TourSummary = TourListResultPayload['tours'][number]
@@ -98,10 +97,7 @@ export function ToursSidebar() {
   }
 
   function handleTourClick(tour: TourSummary) {
-    navigate(buildTourStepUrl(
-      tour.id,
-      getResumeTourStep(workspace, tour.id, tour.stepCount),
-    ))
+    navigate(buildTourStepUrl(tour.id, 1))
   }
 
   async function handleCreateTour() {
