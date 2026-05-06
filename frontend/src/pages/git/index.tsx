@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { wsClient } from '../../services/ws-client'
@@ -37,7 +37,79 @@ type GitStatusWithGroups = GitStatusResultPayload & {
   unstagedFiles?: Array<{ path: string; status: string; oldPath?: string }>
 }
 
-function FileRow({ file, onClick }: { file: { path: string; status: string; oldPath?: string }; onClick: () => void }) {
+interface WorkspaceLike {
+  workspaceKey?: string | null
+  extensionId?: string | null
+}
+
+interface SelectedGitDiff {
+  key: string
+  path: string
+  status?: string
+  commit?: string
+  scope?: 'staged' | 'unstaged'
+}
+
+const SELECTED_GIT_DIFF_PREFIX = 'code-viewer:selected-git-diff'
+
+function getSelectedGitDiffStorageKey(workspace: WorkspaceLike | null | undefined): string | null {
+  const workspaceRef = workspace?.workspaceKey ?? workspace?.extensionId
+  return workspaceRef ? `${SELECTED_GIT_DIFF_PREFIX}:${workspaceRef}` : null
+}
+
+function buildGitDiffSelection(
+  path: string,
+  options: { commit?: string; status?: string; scope?: 'staged' | 'unstaged' } = {},
+): SelectedGitDiff {
+  const key = options.commit
+    ? `commit:${options.commit}:${options.status ?? ''}:${path}`
+    : `worktree:${options.scope ?? ''}:${options.status ?? ''}:${path}`
+  return { key, path, status: options.status, commit: options.commit, scope: options.scope }
+}
+
+function readSelectedGitDiff(workspace: WorkspaceLike | null | undefined): SelectedGitDiff | null {
+  const storageKey = getSelectedGitDiffStorageKey(workspace)
+  if (!storageKey) return null
+
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<SelectedGitDiff>
+    if (typeof parsed.key !== 'string' || typeof parsed.path !== 'string') return null
+    return {
+      key: parsed.key,
+      path: parsed.path,
+      status: typeof parsed.status === 'string' ? parsed.status : undefined,
+      commit: typeof parsed.commit === 'string' ? parsed.commit : undefined,
+      scope: parsed.scope === 'staged' || parsed.scope === 'unstaged' ? parsed.scope : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeSelectedGitDiff(
+  workspace: WorkspaceLike | null | undefined,
+  selection: SelectedGitDiff,
+): void {
+  const storageKey = getSelectedGitDiffStorageKey(workspace)
+  if (!storageKey) return
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(selection))
+  } catch {
+    // ignore
+  }
+}
+
+function FileRow({
+  file,
+  selected,
+  onClick,
+}: {
+  file: { path: string; status: string; oldPath?: string }
+  selected?: boolean
+  onClick: () => void
+}) {
   return (
     <button
       onClick={onClick}
@@ -47,8 +119,9 @@ function FileRow({ file, onClick }: { file: { path: string; status: string; oldP
         gap: 10,
         width: '100%',
         padding: '10px 14px',
-        background: 'none',
+        background: selected ? '#252526' : 'none',
         border: 'none',
+        borderLeft: selected ? '2px solid #569cd6' : '2px solid transparent',
         borderBottom: '1px solid #2a2a2a',
         cursor: 'pointer',
         textAlign: 'left',
@@ -85,6 +158,12 @@ export function GitChangesPage() {
   const [expandedCommit, setExpandedCommit] = useState<string | null>(null)
   const [commitFiles, setCommitFiles] = useState<Record<string, Array<{ path: string; status: string }>>>({})
   const [loading, setLoading] = useState(true)
+  const [selectedDiff, setSelectedDiff] = useState<SelectedGitDiff | null>(() => readSelectedGitDiff(workspace))
+  const restoredSelectedCommitRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    setSelectedDiff(readSelectedGitDiff(workspace))
+  }, [workspace])
 
   // Cache-first
   useEffect(() => {
@@ -143,9 +222,7 @@ export function GitChangesPage() {
     void loadCommits()
   }, [visibility, wasHidden, connectionState, workspace, workspaceReady, loadStatusBackground, loadCommits])
 
-  async function handleExpandCommit(hash: string) {
-    if (expandedCommit === hash) { setExpandedCommit(null); return }
-    setExpandedCommit(hash)
+  const loadCommitFiles = useCallback(async (hash: string) => {
     if (!commitFiles[hash]) {
       try {
         const res = await request<{ hash: string }, { hash: string; files: Array<{ path: string; status: string }> }>('git.commitFiles', { hash })
@@ -154,10 +231,34 @@ export function GitChangesPage() {
         setCommitFiles(prev => ({ ...prev, [hash]: [] }))
       }
     }
+  }, [commitFiles, request])
+
+  useEffect(() => {
+    if (!selectedDiff?.commit) return
+    if (restoredSelectedCommitRef.current === selectedDiff.key) return
+    restoredSelectedCommitRef.current = selectedDiff.key
+    setExpandedCommit(selectedDiff.commit)
+    void loadCommitFiles(selectedDiff.commit)
+  }, [loadCommitFiles, selectedDiff])
+
+  async function handleExpandCommit(hash: string) {
+    if (expandedCommit === hash) { setExpandedCommit(null); return }
+    setExpandedCommit(hash)
+    await loadCommitFiles(hash)
   }
 
-  function handleFileClick(path: string, status?: string) {
+  function handleFileClick(path: string, status: string | undefined, scope: 'staged' | 'unstaged') {
+    const selection = buildGitDiffSelection(path, { status, scope })
+    setSelectedDiff(selection)
+    writeSelectedGitDiff(workspace, selection)
     navigate(buildGitDiffUrl(path, { status }))
+  }
+
+  function handleCommitFileClick(path: string, commit: string, status?: string) {
+    const selection = buildGitDiffSelection(path, { commit, status })
+    setSelectedDiff(selection)
+    writeSelectedGitDiff(workspace, selection)
+    navigate(buildGitDiffUrl(path, { commit, status }))
   }
 
   if (loading && !gitStatus) {
@@ -187,7 +288,11 @@ export function GitChangesPage() {
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <PullToRefresh onRefresh={loadStatus} scrollKey="/git">
+        <PullToRefresh
+          onRefresh={loadStatus}
+          scrollKey="/git"
+          restoreKey={`${staged.length}:${unstaged.length}:${commits.length}:${selectedDiff?.commit ? `${selectedDiff.commit}:${commitFiles[selectedDiff.commit] ? 'files' : 'loading'}` : 'worktree'}`}
+        >
           {/* Current worktree changes */}
           {totalChanges === 0 && commits.length === 0 && (
             <div style={{ padding: 16, color: '#888', fontSize: 13 }}>No changes — working tree is clean.</div>
@@ -197,7 +302,17 @@ export function GitChangesPage() {
           {staged.length > 0 && (
             <>
               <SectionHeader title="Staged" count={staged.length} color="#4ec9b0" />
-              {staged.map(file => <FileRow key={'s:' + file.path} file={file} onClick={() => handleFileClick(file.path, file.status)} />)}
+              {staged.map(file => {
+                const selection = buildGitDiffSelection(file.path, { status: file.status, scope: 'staged' })
+                return (
+                  <FileRow
+                    key={'s:' + file.path}
+                    file={file}
+                    selected={selectedDiff?.key === selection.key}
+                    onClick={() => handleFileClick(file.path, file.status, 'staged')}
+                  />
+                )
+              })}
             </>
           )}
 
@@ -205,7 +320,17 @@ export function GitChangesPage() {
           {unstaged.length > 0 && (
             <>
               <SectionHeader title={staged.length > 0 ? 'Unstaged' : 'Changes'} count={unstaged.length} color={staged.length > 0 ? '#e2b93d' : '#d4d4d4'} />
-              {unstaged.map(file => <FileRow key={'u:' + file.path} file={file} onClick={() => handleFileClick(file.path, file.status)} />)}
+              {unstaged.map(file => {
+                const selection = buildGitDiffSelection(file.path, { status: file.status, scope: 'unstaged' })
+                return (
+                  <FileRow
+                    key={'u:' + file.path}
+                    file={file}
+                    selected={selectedDiff?.key === selection.key}
+                    onClick={() => handleFileClick(file.path, file.status, 'unstaged')}
+                  />
+                )
+              })}
             </>
           )}
 
@@ -255,14 +380,15 @@ export function GitChangesPage() {
                         commitFiles[commit.hash].map(file => (
                           <button
                             key={file.path}
-                            onClick={() => navigate(buildGitDiffUrl(file.path, { commit: commit.hash, status: file.status }))}
+                            onClick={() => handleCommitFileClick(file.path, commit.hash, file.status)}
                             style={{
                               display: 'flex',
                               gap: 8,
                               padding: '8px 14px 8px 40px',
                               borderBottom: '1px solid #222',
-                              background: 'none',
+                              background: selectedDiff?.key === buildGitDiffSelection(file.path, { commit: commit.hash, status: file.status }).key ? '#252526' : 'none',
                               border: 'none',
+                              borderLeft: selectedDiff?.key === buildGitDiffSelection(file.path, { commit: commit.hash, status: file.status }).key ? '2px solid #569cd6' : '2px solid transparent',
                               width: '100%',
                               textAlign: 'left',
                               cursor: 'pointer',

@@ -271,7 +271,11 @@ export function FileBrowserPage() {
   const isSearching = searchQuery.trim().length > 0
 
   return (
-    <PullToRefresh onRefresh={loadTree} scrollKey="/files">
+    <PullToRefresh
+      onRefresh={loadTree}
+      scrollKey="/files"
+      restoreKey={`${nodes.length}`}
+    >
       <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         {/* Search bar */}
         <div style={{
