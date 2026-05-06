@@ -23,19 +23,41 @@ export function generateId(): string {
   })
 }
 
+// --- State Machine ---
+
+type TransitionEvent =
+  | 'OPEN_SOCKET'
+  | 'SOCKET_OPEN'
+  | 'SOCKET_CLOSED'
+  | 'DISCONNECT'
+
+const TRANSITIONS: Record<ConnectionState, Partial<Record<TransitionEvent, ConnectionState>>> = {
+  disconnected: { OPEN_SOCKET: 'connecting' },
+  connecting: { SOCKET_OPEN: 'connected', SOCKET_CLOSED: 'reconnecting', DISCONNECT: 'disconnected' },
+  connected: { OPEN_SOCKET: 'connecting', SOCKET_CLOSED: 'reconnecting', DISCONNECT: 'disconnected' },
+  reconnecting: { OPEN_SOCKET: 'connecting', DISCONNECT: 'disconnected' },
+}
+
+// --- Service ---
+
 class WsClientService {
   private ws: WebSocket | null = null
   private url: string = ''
-  private listeners = new Map<string, Set<MessageListener>>()
-  private stateListeners = new Set<(state: ConnectionState) => void>()
+  private epoch = 0
   private state: ConnectionState = 'disconnected'
-  private reconnectDelay = 1000
-  private maxReconnectDelay = 30000
-  private shouldReconnect = true
+  private intentionalClose = false
+
+  // Timers
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectDelay = 1000
+  private maxReconnectDelay = 30000
   private consecutiveFailures = 0
   private wsConnectTimeouts = 0
+
+  // Session state (survives transport reconnects, cleared on intentional disconnect)
+  private listeners = new Map<string, Set<MessageListener>>()
+  private stateListeners = new Set<(state: ConnectionState) => void>()
   private pendingRequests = new Map<
     string,
     {
@@ -45,122 +67,28 @@ class WsClientService {
     }
   >()
 
-  connect(url: string): void {
-    // Idempotent guard: skip if already connecting/connected/reconnecting
-    if (this.state === 'connecting' || this.state === 'connected' || this.state === 'reconnecting') return
-    this.url = url
-    this.shouldReconnect = true
-    this.reconnectDelay = 1000
-    this.openSocket()
-
-    // Instant reconnect when page comes back to foreground (Safari kills WS in background)
-    this.setupVisibilityReconnect()
-  }
-
+  // Visibility handlers
   private visibilityHandler: (() => void) | null = null
   private pageShowHandler: ((event: PageTransitionEvent) => void) | null = null
   private probing = false
 
-  private setupVisibilityReconnect(): void {
-    if (this.visibilityHandler) return
-    this.visibilityHandler = () => {
-      console.log(`[ws] visibilitychange: ${document.visibilityState}, ws=${this.ws?.readyState}, state=${this.state}`)
-      if (document.visibilityState !== 'visible') return
-      this.ensureActiveConnection('foreground')
-    }
-    this.pageShowHandler = (event) => {
-      console.log(`[ws] pageshow: persisted=${event.persisted}, ws=${this.ws?.readyState}, state=${this.state}`)
-      if (!this.shouldReconnectOnPageShow(event)) return
-      this.ensureActiveConnection('pageshow')
-    }
-    document.addEventListener('visibilitychange', this.visibilityHandler)
-    window.addEventListener('pageshow', this.pageShowHandler)
-  }
+  // --- Public API (unchanged) ---
 
-  private ensureActiveConnection(reason: 'foreground' | 'pageshow'): void {
-    if (!this.shouldReconnect) return
-
-    // Safari can restore a page from BFCache with a dead socket and without a
-    // matching onclose/visibility transition. Treat any non-open socket as a
-    // stale runtime and bootstrap a fresh connection.
-    // Only treat CLOSING (2) / CLOSED (3) as zombie — CONNECTING (0) is normal,
-    // the socket is still being established and should not be killed.
-    if (this.ws && this.ws.readyState > WebSocket.OPEN) {
-      console.warn(`[WS] Zombie connection detected on ${reason} (readyState=${this.ws.readyState}) — forcing reconnect`)
-      this.forceReconnect('Connection lost in background')
-      return
-    }
-
-    // Safari zombie probe: socket reports OPEN but the TCP connection may be
-    // dead after a long background freeze. Send a lightweight ping; if no pong
-    // arrives within 3 s, treat as zombie and force reconnect.
-    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.state === 'connected') {
-      this.probeConnection(reason)
-      return
-    }
-
-    if (this.state !== 'connected' && this.state !== 'connecting') {
-      // Cap backoff on foreground resume — responsive without resetting the full
-      // exponential backoff (which causes rapid-fire retries when backend is down).
-      this.reconnectDelay = Math.min(this.reconnectDelay, 2000)
-      this.openSocket()
-    }
-  }
-
-  private probeConnection(reason: string): void {
-    if (this.probing) return
-    this.probing = true
-
-    this.request<Record<string, never>, Record<string, never>>('ping', {}, 3000)
-      .then(() => {
-        dbg(`Ping OK on ${reason} — connection alive`)
-      })
-      .catch(() => {
-        if (!this.shouldReconnect) return
-        console.warn(`[WS] Ping failed on ${reason} — zombie socket, forcing reconnect`)
-        this.forceReconnect('Connection lost in background')
-      })
-      .finally(() => {
-        this.probing = false
-      })
-  }
-
-  /** Tear down the current socket and start a fresh connection. */
-  private forceReconnect(reason: string): void {
-    if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
-    if (this.ws) {
-      this.ws.onopen = null
-      this.ws.onclose = null
-      this.ws.onerror = null
-      this.ws.onmessage = null
-      try { this.ws.close() } catch { /* ignore */ }
-      this.ws = null
-    }
-    this.drainPendingRequests(reason)
+  connect(url: string): void {
+    if (this.state !== 'disconnected') return
+    this.url = url
+    this.intentionalClose = false
     this.reconnectDelay = 1000
     this.openSocket()
-  }
-
-  private shouldReconnectOnPageShow(event: PageTransitionEvent): boolean {
-    if (event.persisted) return true
-    try {
-      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-      return nav?.type === 'back_forward'
-    } catch {
-      return false
-    }
+    this.setupVisibilityReconnect()
   }
 
   disconnect(): void {
-    this.shouldReconnect = false
-    if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
-    if (this.reconnectTimer !== null) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
-    if (this.ws) {
-      this.ws.close()
-      this.ws = null
-    }
+    this.intentionalClose = true
+    this.clearTimers()
+    this.setConnection(null)
     this.drainPendingRequests('Disconnected')
-    this.setState('disconnected')
+    this.transition('DISCONNECT')
   }
 
   send<T>(type: string, payload: T, replyTo?: string): string {
@@ -246,58 +174,74 @@ class WsClientService {
     return this.state
   }
 
+  // --- Transport layer ---
+
+  private setConnection(socket: WebSocket | null): void {
+    if (this.ws) {
+      this.ws.onopen = null
+      this.ws.onclose = null
+      this.ws.onerror = null
+      this.ws.onmessage = null
+      try { this.ws.close() } catch { /* ignore */ }
+    }
+    this.ws = socket
+  }
+
   private openSocket(): void {
-    // Cancel any pending reconnect timer to prevent double-openSocket race
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
-    this.setState('connecting')
+
+    if (!this.transition('OPEN_SOCKET')) return
+
+    this.epoch++
+    const socketEpoch = this.epoch
+
+    let socket: WebSocket
     try {
-      this.ws = new WebSocket(this.url)
+      socket = new WebSocket(this.url)
     } catch {
-      this.reconnect()
+      this.scheduleReconnect()
       return
     }
 
-    const socket = this.ws
+    this.ws = socket
 
-    // Safari can leave a WebSocket stuck in CONNECTING forever without firing
-    // any event. If no onopen/onclose fires within 5s, treat as failed.
     this.connectTimer = setTimeout(() => {
       this.connectTimer = null
-      if (this.ws !== socket) return
-      if (socket.readyState === WebSocket.CONNECTING) {
-        this.consecutiveFailures++
-        this.wsConnectTimeouts++
-        console.warn(`[ws] connect timeout (#${this.consecutiveFailures}, 5s stuck in CONNECTING) — forcing reconnect`)
-        socket.onopen = null
-        socket.onclose = null
-        socket.onerror = null
-        socket.onmessage = null
-        try { socket.close() } catch { /* ignore */ }
-        this.ws = null
+      if (this.epoch !== socketEpoch) return
+      if (socket.readyState !== WebSocket.CONNECTING) return
 
-        // Safari blocks cross-port WebSocket after background kill/restore.
-        // Health check passes but WS is stuck — page reload resets browser state.
-        if (this.wsConnectTimeouts >= 3) {
-          try {
-            const key = 'ws-recovery-ts'
-            const lastReload = Number(sessionStorage.getItem(key) || '0')
-            if (Date.now() - lastReload > 60000) {
-              sessionStorage.setItem(key, String(Date.now()))
-              console.warn('[ws] Safari WebSocket stuck — reloading page to recover')
-              window.location.reload()
-              return
-            }
-          } catch { /* sessionStorage may be unavailable */ }
-        }
+      this.consecutiveFailures++
+      this.wsConnectTimeouts++
+      console.warn(`[ws] connect timeout (#${this.consecutiveFailures}, 5s stuck in CONNECTING) — forcing reconnect`)
 
-        this.reconnect()
+      this.setConnection(null)
+      this.drainPendingRequests('Connect timeout')
+
+      if (this.wsConnectTimeouts >= 3) {
+        try {
+          const key = 'ws-recovery-ts'
+          const lastReload = Number(sessionStorage.getItem(key) || '0')
+          if (Date.now() - lastReload > 60000) {
+            sessionStorage.setItem(key, String(Date.now()))
+            console.warn('[ws] Safari WebSocket stuck — reloading page to recover')
+            window.location.reload()
+            return
+          }
+        } catch { /* sessionStorage may be unavailable */ }
       }
+
+      this.transition('SOCKET_CLOSED')
+      this.scheduleReconnect()
     }, 5000)
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.epoch !== socketEpoch) {
+        dbg(`onopen ignored (epoch ${socketEpoch} !== ${this.epoch})`)
+        return
+      }
       if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
       if (this.consecutiveFailures > 0) {
         console.log(`[ws] connected after ${this.consecutiveFailures} failed attempt(s)`)
@@ -305,42 +249,122 @@ class WsClientService {
       this.consecutiveFailures = 0
       this.wsConnectTimeouts = 0
       this.reconnectDelay = 1000
-      this.setState('connected')
+      this.transition('SOCKET_OPEN')
     }
 
-    this.ws.onclose = () => {
+    socket.onclose = () => {
+      if (this.epoch !== socketEpoch) {
+        dbg(`onclose ignored (epoch ${socketEpoch} !== ${this.epoch})`)
+        return
+      }
       if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
-      if (this.ws !== socket) return  // stale onclose from old socket
       this.ws = null
       this.drainPendingRequests('WebSocket connection closed')
-      if (this.shouldReconnect) {
-        this.reconnect()
+
+      if (this.intentionalClose) {
+        this.transition('DISCONNECT')
       } else {
-        this.setState('disconnected')
+        this.transition('SOCKET_CLOSED')
+        this.scheduleReconnect()
       }
     }
 
-    this.ws.onerror = () => {
-      // onclose will fire after onerror, so no extra handling needed
+    socket.onerror = () => {
+      // onclose will fire after onerror
     }
 
-    this.ws.onmessage = (event: MessageEvent) => {
+    socket.onmessage = (event: MessageEvent) => {
+      if (this.epoch !== socketEpoch) return
       this.handleMessage(event)
     }
   }
 
-  private reconnect(): void {
-    this.setState('reconnecting')
-
+  private scheduleReconnect(): void {
+    if (this.intentionalClose) return
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
-      if (this.shouldReconnect) {
-        this.openSocket()
-      }
+      if (this.intentionalClose) return
+      this.openSocket()
     }, this.reconnectDelay)
 
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
   }
+
+  private forceReconnect(reason: string): void {
+    this.clearTimers()
+    this.setConnection(null)
+    this.drainPendingRequests(reason)
+    this.reconnectDelay = 1000
+    this.openSocket()
+  }
+
+  // --- Visibility handlers ---
+
+  private setupVisibilityReconnect(): void {
+    if (this.visibilityHandler) return
+    this.visibilityHandler = () => {
+      console.log(`[ws] visibilitychange: ${document.visibilityState}, ws=${this.ws?.readyState}, state=${this.state}`)
+      if (document.visibilityState !== 'visible') return
+      this.ensureActiveConnection('foreground')
+    }
+    this.pageShowHandler = (event) => {
+      console.log(`[ws] pageshow: persisted=${event.persisted}, ws=${this.ws?.readyState}, state=${this.state}`)
+      if (!this.shouldReconnectOnPageShow(event)) return
+      this.ensureActiveConnection('pageshow')
+    }
+    document.addEventListener('visibilitychange', this.visibilityHandler)
+    window.addEventListener('pageshow', this.pageShowHandler)
+  }
+
+  private ensureActiveConnection(reason: 'foreground' | 'pageshow'): void {
+    if (this.intentionalClose) return
+
+    if (this.ws && this.ws.readyState > WebSocket.OPEN) {
+      console.warn(`[WS] Zombie connection detected on ${reason} (readyState=${this.ws.readyState}) — forcing reconnect`)
+      this.forceReconnect('Connection lost in background')
+      return
+    }
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.state === 'connected') {
+      this.probeConnection(reason)
+      return
+    }
+
+    if (this.state !== 'connected' && this.state !== 'connecting') {
+      this.reconnectDelay = Math.min(this.reconnectDelay, 2000)
+      this.openSocket()
+    }
+  }
+
+  private probeConnection(reason: string): void {
+    if (this.probing) return
+    this.probing = true
+
+    this.request<Record<string, never>, Record<string, never>>('ping', {}, 3000)
+      .then(() => {
+        dbg(`Ping OK on ${reason} — connection alive`)
+      })
+      .catch(() => {
+        if (this.intentionalClose) return
+        console.warn(`[WS] Ping failed on ${reason} — zombie socket, forcing reconnect`)
+        this.forceReconnect('Connection lost in background')
+      })
+      .finally(() => {
+        this.probing = false
+      })
+  }
+
+  private shouldReconnectOnPageShow(event: PageTransitionEvent): boolean {
+    if (event.persisted) return true
+    try {
+      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      return nav?.type === 'back_forward'
+    } catch {
+      return false
+    }
+  }
+
+  // --- Session layer ---
 
   private handleMessage(event: MessageEvent): void {
     let message: WsMessage
@@ -351,7 +375,6 @@ class WsClientService {
       return
     }
 
-    // Resolve pending request if this is a reply
     if (message.replyTo) {
       const pending = this.pendingRequests.get(message.replyTo)
       if (pending) {
@@ -370,7 +393,6 @@ class WsClientService {
       }
     }
 
-    // Dispatch to type listeners (push messages)
     dbg('←', message.type, message.id.slice(0, 8))
     const set = this.listeners.get(message.type)
     if (set) {
@@ -386,12 +408,24 @@ class WsClientService {
     this.pendingRequests.clear()
   }
 
-  private setState(state: ConnectionState): void {
-    if (this.state === state) return
+  // --- Infrastructure ---
+
+  private transition(event: TransitionEvent): boolean {
+    const next = TRANSITIONS[this.state]?.[event]
+    if (!next) {
+      dbg(`transition ignored: ${this.state} + ${event}`)
+      return false
+    }
     const listenerCount = this.stateListeners.size
-    console.log(`[ws] state: ${this.state} → ${state} (${listenerCount} listeners)`)
-    this.state = state
-    this.stateListeners.forEach((listener) => listener(state))
+    console.log(`[ws] state: ${this.state} → ${next} (${listenerCount} listeners)`)
+    this.state = next
+    this.stateListeners.forEach((listener) => listener(next))
+    return true
+  }
+
+  private clearTimers(): void {
+    if (this.connectTimer !== null) { clearTimeout(this.connectTimer); this.connectTimer = null }
+    if (this.reconnectTimer !== null) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
   }
 }
 
