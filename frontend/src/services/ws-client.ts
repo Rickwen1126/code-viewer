@@ -86,6 +86,7 @@ class WsClientService {
   disconnect(): void {
     this.intentionalClose = true
     this.clearTimers()
+    this.epoch++
     this.setConnection(null)
     this.drainPendingRequests('Disconnected')
     this.transition('DISCONNECT')
@@ -177,7 +178,7 @@ class WsClientService {
   // --- Transport layer ---
 
   private setConnection(socket: WebSocket | null): void {
-    if (this.ws) {
+    if (this.ws && this.ws !== socket) {
       this.ws.onopen = null
       this.ws.onclose = null
       this.ws.onerror = null
@@ -206,7 +207,7 @@ class WsClientService {
       return
     }
 
-    this.ws = socket
+    this.setConnection(socket)
 
     this.connectTimer = setTimeout(() => {
       this.connectTimer = null
@@ -292,6 +293,7 @@ class WsClientService {
 
   private forceReconnect(reason: string): void {
     this.clearTimers()
+    this.epoch++
     this.setConnection(null)
     this.drainPendingRequests(reason)
     this.reconnectDelay = 1000
