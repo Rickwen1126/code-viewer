@@ -1,0 +1,38 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Backend Frontend Stale Detection",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 在看什麼\n\n這條 tour 是在看：**backend 如何偵測並清除 zombie frontend 連線留下的 orphan entry**。\n\n如果先記不住細節，先抓住每個 step 只是在回答「orphan frontend entry 怎麼被發現、怎麼被清掉、清掉時怎麼通知相關模組」。\n\n## 背景\n\nCode Viewer 的 frontend（手機 PWA）透過 WebSocket 連到 backend。Safari 背景凍結 → TCP 死掉 → frontend 建新連線，但舊連線的 TCP close frame 送不到 backend → backend 的 `onClose` 不觸發 → `manager.frontends` 殘留 orphan entry。\n\n這跟 extension heartbeat 是同一個問題的不同面向：extension 已有 ping-pong 偵測 stale，但 frontend 之前完全沒有。\n\n## 錨定已知\n\n如果你已經看過 extension 的 heartbeat（`manager.ts` 的 `startHeartbeat`），這次的改動是在同一個 interval 裡加上 frontend 的清理。不同的是 frontend 不需要 stale → remove 兩階段，超時直接清掉。\n\n## 走完能建立什麼\n\n理解 relay 架構中「backend 不信任 TCP close」的防禦模式：任何通過不穩定網路的 client 都需要 activity-based 偵測，不能只靠 transport 層的 close event。"
+    },
+    {
+      "file": "backend/src/ws/manager.ts",
+      "line": 14,
+      "endLine": 20,
+      "title": "FrontendEntry 加 lastActivity",
+      "description": "## Insight\n\n**機制**：`lastActivity` 記錄 frontend 最後一次發送任何訊息的時間。這是 activity-based stale 偵測的基礎 — 不主動 ping frontend，而是觀察它有沒有在說話。\n\n**故障模式**：如果沒有 `lastActivity`，backend 只能靠 TCP `onClose` 知道 frontend 斷了。但 zombie socket 的 TCP 可能幾小時都不會 close（取決於 OS 的 TCP keepalive 設定）。\n\n**設計取捨**：選 activity-based 而非 ping-based，因為 frontend 已經會定期發 ping（visibilitychange probe）和各種 request。不用額外發 ping 就有足夠的活動信號。\n\n## 白話\n\n這個欄位就是 frontend 的「最後簽到時間」。只要 frontend 在說話，backend 就知道它還活著。超過 5 分鐘沒說話，backend 就把它當死人處理。\n\n## Code Detail\n\n**這段在幹嘛**：在 `FrontendEntry` interface 加入 `lastActivity: number` 欄位，用 `Date.now()` timestamp 記錄。\n\n**為什麼這樣寫**：\n- 好處：復用已有的訊息流作為活動信號，零額外網路開銷\n- 好處：跟 extension 的 `lastHeartbeat` 對稱，維護者看得懂\n- 壞處：如果 frontend 長時間只收不發（例如只看 file watcher push），會被誤判為 stale\n\n**思考問題**：\n1. 什麼情況下 frontend 會超過 5 分鐘不發任何訊息但仍然是活的？\n2. Extension 用兩階段（stale → remove），frontend 直接 remove，什麼條件下這個設計會出問題？"
+    },
+    {
+      "file": "backend/src/ws/handler.ts",
+      "line": 245,
+      "endLine": 245,
+      "title": "Activity 追蹤位置",
+      "description": "## Insight\n\n**機制**：在 frontend `onMessage` handler 的最前面（JSON parse 成功後、任何 routing 之前）呼叫 `updateFrontendActivity`。這確保任何合法訊息都會更新活動時間 — 包括 ping、listWorkspaces、selectWorkspace、relay messages。\n\n**故障模式**：如果把 activity update 放在各個 handler 裡面（ping handler 裡一次、selectWorkspace 裡一次...），漏一個就是 bug。Frontend 可能因為只用了某個沒有 activity update 的 handler 而被誤判 stale。\n\n**設計取捨**：放在 routing 之前 = 一個地方 cover 所有 message type。代價是即使是無效的 message type 也會更新 activity，但這不影響正確性 — 只要 frontend 在說話就代表活著。\n\n## 白話\n\n這行就是 frontend 的簽到機。不管 frontend 說了什麼（ping、選 workspace、請求檔案），只要是合法的 JSON 訊息，就蓋一個「我還活著」的章。放在最前面是為了不漏掉任何一種訊息。\n\n## Code Detail\n\n**這段在幹嘛**：一行呼叫，在所有 message routing 之前更新 `lastActivity`。\n\n**為什麼這樣寫**：\n- 好處：單一位置，不可能漏 — 跟 BANK-002 學到的「routing 層統一兜底」是同一個 pattern\n- 好處：parse 失敗的訊息不會更新 activity（early return 在前面）\n- 壞處：無法區分「frontend 主動發訊息」和「frontend 回覆 backend push」— 但目前 frontend 不回覆 push，所以不是問題\n\n**思考問題**：\n1. 如果未來加了 frontend 自動回覆 backend push 的機制（例如 ack），activity update 的語義會改變嗎？\n2. 跟 extension 的 activity tracking 比較：extension 是用 pong 回覆更新 `lastHeartbeat`，frontend 是用任何訊息更新 `lastActivity`。各自的優缺點？"
+    },
+    {
+      "file": "backend/src/ws/manager.ts",
+      "line": 137,
+      "endLine": 153,
+      "title": "Heartbeat interval 裡的 frontend 清掃",
+      "description": "## Insight\n\n**機制**：搭在既有的 30 秒 heartbeat interval 裡，掃描所有 frontend，超過 5 分鐘無活動就清除。用 collect-then-delete pattern（先收集到 `staleFrontends[]` 再統一刪除），跟 extension 的清理風格一致。\n\n**故障模式**：\n1. 如果直接在 `for...of` 迭代中 `delete`（JS Map 允許但風格不一致），review 時容易被誤判為 bug。\n2. 清除 orphan 後要呼叫 `onFrontendRemovedCallback` 通知外部模組（watch set sync），漏了會導致 extension 繼續 watch 沒人需要的檔案。\n\n**設計取捨**：5 分鐘 timeout 跟 extension 的「5 分鐘 stale 後移除」對齊。Frontend 跳過 stale 階段直接 remove，因為 frontend entry 不持有 workspace data — 沒有其他 client 依賴它的存在。\n\n## 白話\n\n這段是定時巡邏：每 30 秒掃一次所有 frontend，超過 5 分鐘沒說話的就清掉。清掉時順便嘗試關閉底層 socket（可能失敗，因為 TCP 已死），然後通知外部模組。\n\n## Code Detail\n\n**這段在幹嘛**：在 `startHeartbeat` 的 `setInterval` 裡，extension 清理邏輯之後，加入 frontend 的 stale 掃描。\n\n**為什麼這樣寫**：\n- 好處：復用既有 interval，不新增 timer — 簡單、可預測\n- 好處：`ws.close(1001, 'Stale')` 包在 try-catch 裡 — zombie socket 的 close 可能拋錯\n- 壞處：30 秒 interval + 5 分鐘 timeout 意味著最壞情況下 orphan 會存在 5 分 30 秒\n\n**思考問題**：\n1. `ws.close(1001, 'Stale')` 對一個 TCP 已死的 socket 會發生什麼？close frame 會被 buffer 在哪裡？\n2. 為什麼是 5 分鐘不是 2 分鐘？如果改成 2 分鐘，什麼場景會出問題？"
+    },
+    {
+      "file": "backend/src/ws/handler.ts",
+      "line": 343,
+      "endLine": 346,
+      "title": "Callback 接線：清理 orphan 時同步 watch set",
+      "description": "## Insight\n\n**機制**：`manager.ts` 負責清理 orphan entry，但 `syncEffectiveWatchSet` 定義在 `handler.ts`（module-private）。用 callback pattern 解耦：manager 在清理時呼叫 `onFrontendRemovedCallback`，handler 在模組載入時註冊 callback。\n\n**故障模式**：如果沒有這個 callback，orphan frontend 被清除後，extension 會繼續 watch 已經沒人需要的檔案。不影響正確性（多推一些 update），但浪費 extension 的資源（file watcher、git status polling）。Watch set 會在下一個活的 frontend sync 時自動修正。\n\n**設計取捨**：callback 而非 event emitter — 只有一個 consumer，不需要 pub/sub 的複雜度。callback 而非直接 import — manager 不應該依賴 handler 的內部函式，方向應該是 handler → manager。\n\n## 白話\n\n正常 frontend 斷線時，`onClose` handler 會通知 extension「這個 frontend 不看了」。但 orphan 的 `onClose` 不會觸發，所以清理邏輯需要補做同樣的通知。這個 callback 就是那個補丁。\n\n## Code Detail\n\n**這段在幹嘛**：在 `handler.ts` 模組載入時，向 manager 註冊一個 callback，當 stale frontend 被清除時呼叫 `syncEffectiveWatchSet`。\n\n**為什麼這樣寫**：\n- 好處：dependency 方向正確（handler → manager），manager 不知道 handler 的存在\n- 好處：模組載入時自動註冊，不需要手動 init\n- 壞處：callback 是 module-level side effect，不容易從 manager 的角度追蹤「誰在聽」\n\n**思考問題**：\n1. 如果未來有第二個模組也需要在 frontend 被清除時做事，callback pattern 夠用嗎？什麼時候該升級成 event emitter？\n2. 正常 `onClose`（handler.ts:331-337）和 stale sweep 的清理路徑做的事有什麼差異？有沒有遺漏？"
+    }
+  ]
+}
