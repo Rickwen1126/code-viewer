@@ -49,6 +49,8 @@ function TokenRenderer({ token, fontSize }: { token: Token; fontSize: number }) 
       )
     case 'list':
       return <ListRenderer token={token as Tokens.List} fontSize={fontSize} />
+    case 'checkbox':
+      return <CheckboxRenderer token={token as { checked: boolean }} />
     case 'hr':
       return <hr style={{ border: 'none', borderTop: '1px solid #333', margin: '16px 0' }} />
     case 'table':
@@ -62,6 +64,22 @@ function TokenRenderer({ token, fontSize }: { token: Token; fontSize: number }) 
       }
       return null
   }
+}
+
+function CheckboxRenderer({ token }: { token: { checked: boolean } }) {
+  return (
+    <input
+      type="checkbox"
+      checked={token.checked}
+      readOnly
+      disabled
+      style={{
+        margin: '0.35em 0 0',
+        accentColor: '#569cd6',
+        flexShrink: 0,
+      }}
+    />
+  )
 }
 
 function HeadingRenderer({ token, fontSize }: { token: Tokens.Heading; fontSize: number }) {
@@ -94,16 +112,25 @@ function CodeBlockRenderer({ token, fontSize }: { token: Tokens.Code; fontSize: 
 
 function ListRenderer({ token, fontSize }: { token: Tokens.List; fontSize: number }) {
   const Tag = token.ordered ? 'ol' : 'ul'
+  const isTaskList = !token.ordered && token.items.some((item) => item.task)
   return (
     <Tag
       style={{
         paddingLeft: 24,
         marginBottom: 12,
-        listStyleType: token.ordered ? 'decimal' : 'disc',
+        listStyleType: token.ordered ? 'decimal' : isTaskList ? 'none' : 'disc',
       }}
     >
       {token.items.map((item, i) => (
-        <li key={i} style={{ marginBottom: 4 }}>
+        <li
+          key={i}
+          style={{
+            marginBottom: 4,
+            ...(item.task
+              ? { display: 'flex', alignItems: 'flex-start', gap: 8 }
+              : undefined),
+          }}
+        >
           {item.tokens.map((t, j) => {
             if (t.type === 'text' && 'tokens' in t && t.tokens) {
               return <InlineRenderer key={j} tokens={t.tokens as Token[]} />
@@ -173,6 +200,8 @@ function InlineRenderer({ tokens }: { tokens: Token[] }) {
               return <InlineRenderer key={i} tokens={token.tokens as Token[]} />
             }
             return <span key={i}>{(token as Tokens.Text).text}</span>
+          case 'checkbox':
+            return <CheckboxRenderer key={i} token={token as { checked: boolean }} />
           case 'strong':
             return (
               <strong key={i} style={{ fontWeight: 'bold', color: '#d4d4d4' }}>
