@@ -53,3 +53,6 @@ experiments/
 # Progress / plugin artifacts
 .progress/
 .superpowers/
+
+# Playwright MCP logs
+.playwright-mcp/
