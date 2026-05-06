@@ -1,0 +1,50 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Deep Dive: ws-client Singleton — State Machine + Epoch 重構",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 在看什麼\n\n這條 tour 帶你走過 ws-client.ts 的結構性重構：從散落的 flag-based 控制，改成 state machine + epoch + 單一寫入入口。\n\n如果先記不住細節，先抓住每個 step 只是在回答「多個 async writer 競爭同一個 mutable reference 時，怎麼從結構上消除 race condition？」\n\n## 錨定已知\n\n如果你知道 TCP 狀態機（SYN_SENT → ESTABLISHED → ...），這裡的 TRANSITIONS table 就是同一件事。如果你用過 Socket.io，它的 Manager（transport）/ Socket（session）分層就是這裡 Transport / Session 分層的參照。\n\n## 為什麼值得讀\n\n重構前的 ws-client 有 6 個散落的 boolean flag 控制行為（shouldReconnect、probing、reconnectTimer !== null ...），狀態空間是 2^6 = 64 種組合，每輪 patch 修一個路徑冒兩個。重構後收斂成 4 個合法狀態 × 4 個事件，非法轉換直接 ignore。\n\n走完後你能建立的 mental model：「用轉換表取代 flag soup」+「用 epoch 取代散落的 reference 比對」+「生命週期綁定原則決定清理邊界」。這三個 pattern 可直接遷移到任何 long-lived connection 管理（gRPC stream、SSE、MQTT、DB pool）。\n\n## Review 結果摘要\n\n- Critical: 0\n- Medium（已修）: 2 — (1) openSocket 直接 assign this.ws 繞過 setConnection (2) forceReconnect/disconnect 未先遞增 epoch 導致同步 onclose flicker\n- Low: 1 — disconnect 觸發 double-drain（idempotent，不影響正確性）\n- Nit: 2 — TRANSITIONS 未定義 disconnected+DISCONNECT（已被 guard 擋住）、visibility listeners 未在 disconnect 移除（非 regression）"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 34,
+      "endLine": 39,
+      "ref": "06fdd66d353de19b7c9b0a4c411e3decde89970d",
+      "title": "State Machine — 轉換表",
+      "description": "## Insight\n\n**機制**：4 個狀態 × 4 個事件的查表。任何 `transition(event)` 呼叫先查表，沒定義的組合直接 return false + debug log。所有行為從 state 推導，不從 flag 組合推導。\n\n**故障模式**：拿掉轉換表回到 flag soup → 每個 flag 組合是一個未測試的 code path（2^N 爆炸）。加新 flag 時舊 guard 不自動覆蓋新 flag 交互。\n\n**設計取捨**：State machine 犧牲「靈活性」換「可證明性」。Transport 層只有 4 個狀態夠用，不需要 flag 的 2^N 表達力。如果未來需要更多狀態（如 `authenticating`），加一行到表裡就好。\n\n---\n\n白話：這張表就是整個 ws-client 的紅綠燈——所有方法想改狀態都必須經過這裡，表裡沒定義的轉換直接被擋住。重構前是 4 個交警各舉旗，現在是一個紅綠燈所有人看同一個。\n\n---\n\n## Code Detail\n\n**這段在幹嘛**：定義 4 個合法狀態��每個狀態可接受的事件。`OPEN_SOCKET` 從 `connected` 合法是為了支持 `forceReconnect`（zombie 偵測後直接建新 socket）。\n\n**好處**：\n- 非法轉換不需要在每個方法裡各自 guard\n- 加新狀態是 O(1) 改動（加一行）\n- 可觀測：debug log 自動記錄所有被 ignore 的轉換\n\n**壞處**：\n- 必須預先列舉所���合法轉換，漏了就默默被擋住\n- 不適合需要條件式轉換的場景（如「只有在 pending requests 為空時才允許」）\n\n**思考問題**：\n1. 為什麼 `reconnecting` 沒有 `SOCKET_CLOSED`？什麼情境下會從 reconnecting 收到 SOCKET_CLOSED？\n2. 如果要加一個 `authenticating` 狀態（socket open 後要 handshake 才算 connected），需要改哪些？"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 180,
+      "endLine": 189,
+      "ref": "06fdd66d353de19b7c9b0a4c411e3decde89970d",
+      "title": "Single Write Entry — setConnection",
+      "description": "## Insight\n\n**機制**：所有 `this.ws` 的替換走這一個入口。替換時先清理舊 socket 的 4 個 event handler 再 close，避免舊 handler 在 close 過程中被觸發後繼續執行。`this.ws !== socket` guard 防止對自己做 cleanup。\n\n**故障模式**：不走 setConnection → 舊 socket 的 onclose 仍然掛著 → socket.close() 觸發 onclose → handler 讀到新 socket 的 epoch 以為是當代事件 → 狀態被污染。\n\n**設計取捨**：setConnection 不管「為什麼要換」，只管「換的時候清乾淨」。語意是 transport-level primitive，不含 session 邏輯（不 drain pending、不改 state）。\n\n---\n\n白話：它其實就是在做「舊燈泡拔掉、新燈泡裝上」。重構前有 4 個地方各自做拔裝動作（forceReconnect / disconnect / onclose / connect timeout），每個做法微妙不同。現在統一到一處，漏清一個 handler 的機率從 4 倍降到 1 倍。\n\n---\n\n## Code Detail\n\n**這段在幹嘛**：清 4 個 event handler → close 舊 socket → assign 新 socket。\n\n**好處**：\n- 集中清理邏輯，不怕某個呼叫點漏清 onmessage\n- `!== socket` guard 讓 openSocket 可以安全呼叫 `setConnection(newSocket)` ��不誤殺新建的 socket\n\n**壞處**：\n- `this.ws = null` 在 onclose handler 裡還是直接寫（因為 onclose 時 socket 已經 closed，不需要 close 第二次）——setConnection 不是 100% exclusive writer\n\n**思考問題**：\n1. 為什麼要先設 `onclose = null` 再 `close()`，而不是反過來？\n2. 如果 close() 拋 exception（已 close 的 socket），為什麼用 try/catch 而不是 readyState 檢查？"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 197,
+      "endLine": 200,
+      "ref": "06fdd66d353de19b7c9b0a4c411e3decde89970d",
+      "title": "Epoch — 世代辨識",
+      "description": "## Insight\n\n**機制**：每次 `openSocket` 遞增 `this.epoch` 並 capture 成 `socketEpoch`。所有該 socket 的 event handler（onopen、onclose、onmessage）在執行前比對 `this.epoch !== socketEpoch`，不符則丟棄。\n\n**故障模式**：不用 epoch → 每個 handler 要各自 capture `const localWs = this.ws` 做 reference 比對。忘了 capture（或 capture 在錯的時間點）→ 舊 socket 的延遲 onclose 穿透到新 socket 的狀態。這正是重構前 `problem.md` 時序 A（ws1.onclose 延遲觸發殺掉 ws2）的根因。\n\n**設計取捨**：epoch 是「集中檢查，一處做對」vs reference 比對是「散落檢查，處處不能錯」。代價是多一個 monotonic counter 和每個 handler 開頭一行 if。\n\n---\n\n白話：epoch 就是 socket 的身分證號碼。每建一個新 socket 號碼 +1，所有事件到達時先出示身分證。號碼不對的事件不管內容直接丟掉。重構前沒有統一身分證，只能靠「記住舊 socket 長什麼樣子」來辨認——但記住本身就容易出錯。\n\n---\n\n## Code Detail\n\n**這段在幹嘛**：`transition('OPEN_SOCKET')` 先確認狀態合法，再遞增 epoch 並鎖定當前值。\n\n**好處**：\n- 所有 stale event 一律被 epoch 擋住，不需要在每個 handler 寫不同的 guard\n- Debug log 自動印出「epoch X !== Y」��方便追蹤哪代事件被丟棄\n- 與 `forceReconnect`/`disconnect` 的 `epoch++` 搭配：主動關閉前先讓所有在途事件過期\n\n**壞處**：\n- `onclose` handler 裡的 `this.ws = null` 仍然直接��（epoch 過了才會到這行，所以安全，但看起來���一致）\n\n**思考問題**：\n1. 為什麼 `forceReconnect` 要在 `setConnection(null)` 之前先 `epoch++`？如果順序反了會怎樣？\n2. JavaScript number 的安全整數範圍是 2^53。每秒 reconnect 一次，epoch 要多久才會溢位？"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 256,
+      "endLine": 270,
+      "ref": "06fdd66d353de19b7c9b0a4c411e3decde89970d",
+      "title": "Transport / Session 分層 — onclose 決策點",
+      "description": "## Insight\n\n**機制**：`onclose` 只做 transport 清理（null ws、drain pending、清 timer），然後根據 `intentionalClose` 分流：主動關閉 → `DISCONNECT`（回到 disconnected）；transport 斷線 → `SOCKET_CLOSED` + `scheduleReconnect`。Session 狀態（listeners、stateListeners）不動。\n\n**故障模式**：重構前 `onclose` 同時清 transport + session（`drainPendingRequests` 把等待中的 request 全部 reject）。500ms 後新 socket 建好，但 pending 已被清 → consumer 收到 error → user 手動重試。\n\n**設計取捨**：本次保留 `drainPendingRequests` 在 onclose（因為 pending 都是已送出的 request，server 端的 socket 已死不會回覆）。真正的「session 不動」體現在：subscription listeners、stateListeners、workspace 綁定在 disconnect 才清。如果未來要做 request retry（斷線後 pending 等重連自動重送），改動點只在這一處。\n\n---\n\n白話：這裡是整個重構的關鍵決策點。`intentionalClose` 區分「使用者按了離開」和「網路自己斷了」。前者清乾淨回到初始狀態；後者只清 transport 資源然後排隊重連���session 繼續活著。\n\n---\n\n## Code Detail\n\n**這段在幹嘛**：onclose handler — epoch 驗證 → 清 timer → null ws → drain → 分流（disconnect vs reconnect）。\n\n**好處**：\n- 決策邏輯集中在一處，不散落在多個 handler\n- `intentionalClose` 是 boolean 而非 multi-flag 判斷，語意清晰\n- 為未來 request-retry 預留了改動空間（只需在 drain 前加條件）\n\n**壞處**：\n- `this.ws = null` 是 onclose 裡唯一的直接 assign（不走 setConnection）——因為此時 socket 已 closed，再 close 一次無意義\n- drain + scheduleReconnect 的順序決定了 consumer 先收到 rejection 再看到 reconnecting 狀態（可能有微妙的 UI timing 差異）\n\n**思考問題**：\n1. 如果要實作「pending request 等重連後自動重送」，需要改哪裡？會引入什麼新的邊界條件？\n2. 為什麼 `intentionalClose` 用 boolean 而不是一個 `closeReason` enum？什麼情境下你會需要 enum？"
+    },
+    {
+      "file": "frontend/src/services/ws-client.ts",
+      "line": 415,
+      "endLine": 426,
+      "ref": "06fdd66d353de19b7c9b0a4c411e3decde89970d",
+      "title": "transition() — 統一控制面",
+      "description": "## Insight\n\n**機制**：查 TRANSITIONS 表 → 有定義就改 state + 通知 listeners + return true；沒定義就 debug log + return false。回傳 boolean 讓呼叫方可以 early return（如 `openSocket` 的 `if (!this.transition('OPEN_SOCKET')) return`）。\n\n**故障模式**：如果 transition 只改 state 不回傳 boolean → `openSocket` 在非法狀態下繼續執行 → 建出無人管的 orphan socket → epoch 混亂。\n\n**設計取捨**：transition 是純 infrastructure，不含業務邏輯（不做 drain、不做 timer 管理）。這讓它可以被任何層呼叫而不擔心副作用。代價：呼叫方必須自己處理 return false 的後果。\n\n---\n\n白話：transition() 是紅綠燈本身。它只做兩件��：查表和廣播���不會幫你踩煞車或打方向燈——那是呼叫方的責任。return false 等於紅燈，呼叫方看到紅燈就停。\n\n---\n\n## Code Detail\n\n**這段在幹嘛**：單一方法處理所有狀態變更 + listener 通知。\n\n**好處**：\n- 所有狀態變更都通過同一個 console.log（可觀測性）\n- return boolean 讓呼叫方可以 gate 後續邏輯\n- listener 通知在 state 已更新之後（listeners 看到的是新 state）\n\n**壞處**：\n- listener callback 是同步執行，如果某��� listener 拋 exception 會影響後續 listeners\n- 沒有 `previousState` 傳給 listener（消費者無法知道���從哪個狀態來的）\n\n**思考問題**：\n1. 如果 stateListeners 改成 async（如 debounced UI update），transition 的語意會怎麼變？\n2. React 的 `useSyncExternalStore` 要求 `getSnapshot()` 在 subscribe callback 裡呼叫時返回新值。現在的實作滿足這個條件嗎？"
+    }
+  ]
+}
