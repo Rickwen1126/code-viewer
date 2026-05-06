@@ -3,7 +3,7 @@
  * Forked from pages/files/file-browser.tsx — same data logic, compact layout, no pull-to-refresh.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router'
+import { useNavigate } from 'react-router'
 import { useWebSocket } from '../../../hooks/use-websocket'
 import { cacheService } from '../../../services/cache'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../../services/file-location'
@@ -44,7 +44,7 @@ function getExpandedDirs(): Set<string> {
 }
 
 function saveExpandedDirs(dirs: Set<string>): void {
-  try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...dirs])) } catch {}
+  try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...dirs])) } catch { /* localStorage may be unavailable */ }
 }
 
 // Desktop tree node — compact sizing, hover states
@@ -131,30 +131,7 @@ export function FileBrowserSidebar() {
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
   const navigate = useNavigate()
-  const location = useLocation()
 
-  // No workspace selected — show prompt instead of loading
-  if (!workspace && workspaceReady) {
-    return (
-      <div style={{ padding: 12, fontSize: 13, color: '#888' }}>
-        <div style={{ marginBottom: 8 }}>No workspace selected</div>
-        <button
-          onClick={() => navigate('/workspaces')}
-          style={{
-            background: 'none',
-            border: '1px solid #444',
-            color: '#569cd6',
-            fontSize: 12,
-            padding: '6px 10px',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >
-          Select Workspace
-        </button>
-      </div>
-    )
-  }
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -218,7 +195,6 @@ export function FileBrowserSidebar() {
   const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [nodes, workspace, showRecent])
   const bookmarks = useMemo(
     () => workspace ? getBookmarks(workspace.extensionId) : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [workspace, showRecent],
   )
 
@@ -260,6 +236,30 @@ export function FileBrowserSidebar() {
     setSearchQuery('')
     setShowRecent(false)
     navigate(buildFileRoutePath(path))
+  }
+
+  // Keep this after every hook. Returning before later hooks changes the hook
+  // count when workspace readiness changes and crashes React.
+  if (!workspace && workspaceReady) {
+    return (
+      <div style={{ padding: 12, fontSize: 13, color: '#888' }}>
+        <div style={{ marginBottom: 8 }}>No workspace selected</div>
+        <button
+          onClick={() => navigate('/workspaces')}
+          style={{
+            background: 'none',
+            border: '1px solid #444',
+            color: '#569cd6',
+            fontSize: 12,
+            padding: '6px 10px',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          Select Workspace
+        </button>
+      </div>
+    )
   }
 
   if (loading && nodes.length === 0) {
