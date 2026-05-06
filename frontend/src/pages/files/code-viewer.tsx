@@ -99,6 +99,37 @@ interface TouchPos {
   character: number
 }
 
+interface FileReturnPosition {
+  path: string
+  line?: number
+  scrollTop: number
+  contentLength: number
+}
+
+interface FileReturnState {
+  codeViewerFileReturn?: FileReturnPosition
+}
+
+function getFileReturnPosition(state: unknown): FileReturnPosition | null {
+  if (!state || typeof state !== 'object') return null
+  const candidate = (state as FileReturnState).codeViewerFileReturn
+  if (!candidate || typeof candidate.path !== 'string') return null
+  if (typeof candidate.scrollTop !== 'number' || !Number.isFinite(candidate.scrollTop)) return null
+  if (typeof candidate.contentLength !== 'number' || !Number.isFinite(candidate.contentLength)) return null
+  if (candidate.line !== undefined && (typeof candidate.line !== 'number' || !Number.isFinite(candidate.line))) return null
+  return candidate
+}
+
+function mergeFileReturnState(
+  state: unknown,
+  position: FileReturnPosition,
+): FileReturnState {
+  return {
+    ...(state && typeof state === 'object' ? state as Record<string, unknown> : {}),
+    codeViewerFileReturn: position,
+  }
+}
+
 export function CodeViewerPage() {
   const { '*': rawPath } = useParams()
   const path = rawPath ? decodeURIComponent(rawPath) : ''
@@ -320,6 +351,7 @@ export function CodeViewerPage() {
   const restoreStateRef = useRef('')
   const queryLocation = parseFileLocationQuery(searchParams)
   const detourAnchor = getDetourAnchor(location.state)
+  const fileReturnPosition = getFileReturnPosition(location.state)
   const targetLine = oneBasedToZeroBasedLine(queryLocation.line)
   const persistCurrentScroll = useCallback(() => {
     if (previewKind || !workspace || !path) return
@@ -331,6 +363,24 @@ export function CodeViewerPage() {
       file?.content?.length ?? 0,
     )
   }, [file, path, previewKind, workspace])
+  const persistCurrentHistoryPosition = useCallback((line?: number) => {
+    if (typeof window === 'undefined') return
+    if (previewKind || !path) return
+    const currentState = window.history.state as { usr?: unknown } | null
+    const currentUserState = currentState?.usr
+    window.history.replaceState(
+      {
+        ...currentState,
+        usr: mergeFileReturnState(currentUserState, {
+          path,
+          line,
+          scrollTop: scrollContainerRef.current?.scrollTop ?? 0,
+          contentLength: file?.content?.length ?? 0,
+        }),
+      },
+      '',
+    )
+  }, [file, path, previewKind])
 
   // Persist current file path immediately on navigation
   useEffect(() => {
@@ -437,9 +487,42 @@ export function CodeViewerPage() {
     if (file.path !== path) return
     const restoreKey = buildFileRestoreKey(workspace.rootPath, path, {
       line: queryLocation.line,
-    })
+    }) + (
+      fileReturnPosition?.path === path
+        ? `:return:${fileReturnPosition.line ?? 'scroll'}:${Math.round(fileReturnPosition.scrollTop)}`
+        : ''
+    )
     if (restoreStateRef.current === restoreKey) return
     restoreStateRef.current = restoreKey
+
+    const returnLine = fileReturnPosition?.path === path ? fileReturnPosition.line : undefined
+    if (returnLine != null) {
+      let secondFrame = 0
+      let cancelled = false
+      const run = (behavior: ScrollBehavior = 'auto') => {
+        if (!cancelled) scrollToLine(returnLine, behavior)
+      }
+      const firstFrame = requestAnimationFrame(() => {
+        run('auto')
+        secondFrame = requestAnimationFrame(() => run('auto'))
+      })
+      const fallbackTimer = window.setTimeout(() => run('auto'), 100)
+      const settledTimer = window.setTimeout(() => run('smooth'), 300)
+      return () => {
+        cancelled = true
+        cancelAnimationFrame(firstFrame)
+        if (secondFrame) cancelAnimationFrame(secondFrame)
+        clearTimeout(fallbackTimer)
+        clearTimeout(settledTimer)
+      }
+    }
+
+    if (fileReturnPosition?.path === path) {
+      requestAnimationFrame(() => {
+        scrollContainerRef.current?.scrollTo({ top: fileReturnPosition.scrollTop })
+      })
+      return
+    }
 
     if (targetLine != null) {
       let secondFrame = 0
@@ -473,7 +556,7 @@ export function CodeViewerPage() {
         scrollContainerRef.current?.scrollTo({ top: scrollTop })
       })
     } catch { /* ignore */ }
-  }, [file, path, workspace, targetLine, previewKind])
+  }, [file, path, workspace, targetLine, previewKind, fileReturnPosition, queryLocation.line])
 
   // Cleanup: purge scroll entries older than 7 days (once on mount)
   useEffect(() => {
@@ -617,8 +700,9 @@ export function CodeViewerPage() {
   }
 
   // Navigate to a file at a given line
-  function navigateToFile(targetPath: string, line: number) {
+  function navigateToFile(targetPath: string, line: number, sourceLine?: number) {
     persistCurrentScroll()
+    persistCurrentHistoryPosition(sourceLine)
     navigate(
       buildFileLocationUrl(targetPath, { line: zeroBasedToOneBasedLine(line) }),
       { state: mergeDetourState(detourAnchor) },
@@ -650,7 +734,7 @@ export function CodeViewerPage() {
       if (locations.length === 0) return
 
       const loc = locations[0]
-      navigateToFile(loc.path, loc.range.start.line)
+      navigateToFile(loc.path, loc.range.start.line, pos.line)
     } catch {
       // Ignore
     }
