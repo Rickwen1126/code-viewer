@@ -1173,7 +1173,7 @@ export function CodeViewerPage() {
         onClick={isMarkdown && mdRendered ? undefined : handleCodeClick}
       >
         {isMarkdown && mdRendered ? (
-          <MarkdownRenderer content={file.content} codeFontSize={codeFontSize} />
+          <MarkdownRenderer content={file.content} codeFontSize={codeFontSize} wordWrap={wordWrap} />
         ) : (
           <div ref={codeContainerRef}>
             <CodeBlock

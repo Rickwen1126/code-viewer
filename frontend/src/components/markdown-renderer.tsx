@@ -5,14 +5,15 @@ import { CodeBlock } from './code-block'
 interface MarkdownRendererProps {
   content: string
   codeFontSize?: number
+  wordWrap?: boolean
 }
 
-export function MarkdownRenderer({ content, codeFontSize }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, codeFontSize, wordWrap = false }: MarkdownRendererProps) {
   const tokens = useMemo(() => marked.lexer(content), [content])
   const markdownFontSize = codeFontSize ?? 14
 
   return (
-    <div style={{ padding: '12px 16px', lineHeight: 1.6, fontSize: markdownFontSize, color: '#d4d4d4' }}>
+    <div style={{ padding: '12px 16px', lineHeight: 1.6, fontSize: markdownFontSize, color: '#d4d4d4', ...(wordWrap ? { overflowWrap: 'break-word', wordBreak: 'break-word' } : undefined) }}>
       {tokens.map((token, i) => (
         <TokenRenderer key={i} token={token} fontSize={markdownFontSize} />
       ))}
@@ -121,24 +122,37 @@ function ListRenderer({ token, fontSize }: { token: Tokens.List; fontSize: numbe
         listStyleType: token.ordered ? 'decimal' : isTaskList ? 'none' : 'disc',
       }}
     >
-      {token.items.map((item, i) => (
-        <li
-          key={i}
-          style={{
-            marginBottom: 4,
-            ...(item.task
-              ? { display: 'flex', alignItems: 'flex-start', gap: 8 }
-              : undefined),
-          }}
-        >
-          {item.tokens.map((t, j) => {
-            if (t.type === 'text' && 'tokens' in t && t.tokens) {
-              return <InlineRenderer key={j} tokens={t.tokens as Token[]} />
-            }
-            return <TokenRenderer key={j} token={t} fontSize={fontSize} />
-          })}
-        </li>
-      ))}
+      {token.items.map((item, i) => {
+        if (item.task) {
+          const inlineTokens = item.tokens.filter((t) => t.type !== 'list')
+          const nestedLists = item.tokens.filter((t) => t.type === 'list')
+          return (
+            <li key={i} style={{ marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                {inlineTokens.map((t, j) => {
+                  if (t.type === 'text' && 'tokens' in t && t.tokens) {
+                    return <InlineRenderer key={j} tokens={t.tokens as Token[]} />
+                  }
+                  return <TokenRenderer key={j} token={t} fontSize={fontSize} />
+                })}
+              </div>
+              {nestedLists.map((t, j) => (
+                <TokenRenderer key={`nested-${j}`} token={t} fontSize={fontSize} />
+              ))}
+            </li>
+          )
+        }
+        return (
+          <li key={i} style={{ marginBottom: 4 }}>
+            {item.tokens.map((t, j) => {
+              if (t.type === 'text' && 'tokens' in t && t.tokens) {
+                return <InlineRenderer key={j} tokens={t.tokens as Token[]} />
+              }
+              return <TokenRenderer key={j} token={t} fontSize={fontSize} />
+            })}
+          </li>
+        )
+      })}
     </Tag>
   )
 }
