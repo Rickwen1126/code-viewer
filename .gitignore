@@ -54,5 +54,8 @@ experiments/
 .progress/
 .superpowers/
 
+# Code Viewer generated artifacts
+.codeviewer/
+
 # Playwright MCP logs
 .playwright-mcp/

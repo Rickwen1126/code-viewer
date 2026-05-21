@@ -60,6 +60,12 @@ export const MSG_FILE_PREVIEW_RESULT = 'file.preview.result' as const
 export const MSG_FILE_TREE_CHANGED = 'file.treeChanged' as const
 export const MSG_FILE_CONTENT_CHANGED = 'file.contentChanged' as const
 
+// Annotation domain
+export const MSG_ANNOTATION_GENERATE = 'annotation.generate' as const
+export const MSG_ANNOTATION_GENERATE_RESULT = 'annotation.generate.result' as const
+export const MSG_ANNOTATION_STATUS = 'annotation.status' as const
+export const MSG_ANNOTATION_STATUS_RESULT = 'annotation.status.result' as const
+
 // LSP domain
 export const MSG_LSP_HOVER = 'lsp.hover' as const
 export const MSG_LSP_HOVER_RESULT = 'lsp.hover.result' as const
@@ -241,6 +247,37 @@ export interface FileTreeChangedPayload {
 export interface FileContentChangedPayload {
   path: string
   isDirty: boolean
+}
+
+// Annotation
+export interface AnnotationGeneratePayload {
+  path: string
+  force?: boolean
+}
+
+export interface AnnotationGenerateResultPayload {
+  path: string
+  annotationPath: string
+  target: {
+    bindingId: string
+    acquired: 'reused' | 'spawned'
+    paneId?: string
+    paneTarget?: string
+    pid?: string
+    targetScopeKey?: string
+  }
+  submitted: true
+}
+
+export interface AnnotationStatusPayload {
+  path: string
+}
+
+export interface AnnotationStatusResultPayload {
+  path: string
+  annotationPath: string
+  exists: boolean
+  updatedAt?: number
 }
 
 // LSP

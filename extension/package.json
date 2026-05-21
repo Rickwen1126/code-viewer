@@ -2,7 +2,7 @@
   "name": "code-viewer-extension",
   "displayName": "Code Viewer",
   "description": "Mobile Code Viewer VS Code Extension",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "private": true,
   "engines": {
     "vscode": "^1.100.0"
@@ -42,6 +42,21 @@
           "type": "boolean",
           "default": false,
           "description": "Enable verbose Code Viewer debug logging"
+        },
+        "codeViewer.tmuxAdapterCommand": {
+          "type": "string",
+          "default": "tmux-adapter",
+          "description": "tmux-adapter CLI command used for Code Viewer annotation generation."
+        },
+        "codeViewer.tmuxAdapterStateRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Optional tmux-adapter state root. Empty uses tmux-adapter default."
+        },
+        "codeViewer.annotationSpawnProfile": {
+          "type": "string",
+          "default": "code-viewer-codex-annotation",
+          "description": "tmux-adapter spawn profile for annotation generation."
         }
       }
     }

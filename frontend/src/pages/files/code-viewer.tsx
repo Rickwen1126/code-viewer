@@ -39,6 +39,10 @@ import { createObjectUrlFromBase64, formatPreviewSize } from '../../services/fil
 import type {
   FileReadResultPayload,
   FilePreviewResultPayload,
+  AnnotationGeneratePayload,
+  AnnotationGenerateResultPayload,
+  AnnotationStatusPayload,
+  AnnotationStatusResultPayload,
   LspDefinitionResultPayload,
   LspReferencesResultPayload,
   LspDocumentSymbolResultPayload,
@@ -110,6 +114,9 @@ interface FileReturnState {
   codeViewerFileReturn?: FileReturnPosition
 }
 
+type AnnotationMode = 'original' | 'annotated'
+type AnnotationPhase = 'idle' | 'submitting' | 'waiting' | 'ready' | 'error'
+
 function getFileReturnPosition(state: unknown): FileReturnPosition | null {
   if (!state || typeof state !== 'object') return null
   const candidate = (state as FileReturnState).codeViewerFileReturn
@@ -162,8 +169,18 @@ export function CodeViewerPage() {
   const [mdSearchQuery, setMdSearchQuery] = useState('')
   const [mdMatchCount, setMdMatchCount] = useState(0)
   const [mdMatchIndex, setMdMatchIndex] = useState(-1)
+  const [annotationMode, setAnnotationMode] = useState<AnnotationMode>('original')
+  const [annotationPath, setAnnotationPath] = useState<string | null>(null)
+  const [annotationExists, setAnnotationExists] = useState(false)
+  const [annotationPhase, setAnnotationPhase] = useState<AnnotationPhase>('idle')
+  const [annotationError, setAnnotationError] = useState<string | null>(null)
+  const annotationPollSeqRef = useRef(0)
 
   const previewKind = getFilePreviewKind(path)
+  const activeFilePath = annotationMode === 'annotated' && annotationExists && annotationPath
+    ? annotationPath
+    : path
+  const isAnnotationView = activeFilePath !== path
   const isMarkdown = file?.languageId === 'markdown'
 
   // References list state (T041)
@@ -311,7 +328,7 @@ export function CodeViewerPage() {
 
   // Line number click — Step+ ON: open add-step overlay; OFF: toggle bookmark
   const handleLineNumberClick = useCallback((lineNum: number) => {
-    if (!workspace || !path || !file) return
+    if (!workspace || !path || !file || isAnnotationView) return
 
     if (tourEdit && stepModeActive) {
       // Step+ is ON: open add step overlay
@@ -334,7 +351,7 @@ export function CodeViewerPage() {
       showToast(`Bookmarked line ${lineNum}`)
     }
     if (navigator.vibrate) navigator.vibrate(50)
-  }, [workspace, path, file, bookmarkedLines, tourEdit, stepModeActive])
+  }, [workspace, path, file, bookmarkedLines, tourEdit, stepModeActive, isAnnotationView])
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -354,6 +371,7 @@ export function CodeViewerPage() {
   const fileReturnPosition = getFileReturnPosition(location.state)
   const targetLine = oneBasedToZeroBasedLine(queryLocation.line)
   const persistCurrentScroll = useCallback(() => {
+    if (isAnnotationView) return
     if (previewKind || !workspace || !path) return
     if (file?.path && file.path !== path) return
     writeElementFileScroll(
@@ -362,9 +380,10 @@ export function CodeViewerPage() {
       scrollContainerRef.current,
       file?.content?.length ?? 0,
     )
-  }, [file, path, previewKind, workspace])
+  }, [file, path, previewKind, workspace, isAnnotationView])
   const persistCurrentHistoryPosition = useCallback((line?: number) => {
     if (typeof window === 'undefined') return
+    if (isAnnotationView) return
     if (previewKind || !path) return
     const currentState = window.history.state as { usr?: unknown } | null
     const currentUserState = currentState?.usr
@@ -380,7 +399,7 @@ export function CodeViewerPage() {
       },
       '',
     )
-  }, [file, path, previewKind])
+  }, [file, path, previewKind, isAnnotationView])
 
   // Persist current file path immediately on navigation
   useEffect(() => {
@@ -396,6 +415,15 @@ export function CodeViewerPage() {
     setPreviewUrl(null)
     setTooLarge(false)
     setLoading(true)
+  }, [activeFilePath, previewKind])
+
+  useEffect(() => {
+    annotationPollSeqRef.current += 1
+    setAnnotationMode('original')
+    setAnnotationPath(null)
+    setAnnotationExists(false)
+    setAnnotationPhase('idle')
+    setAnnotationError(null)
   }, [path, previewKind])
 
   // Redirect to workspace selection if no workspace ever selected
@@ -408,13 +436,13 @@ export function CodeViewerPage() {
   // Cache-first: immediately show cached file content
   useEffect(() => {
     if (!path || !workspace || previewKind) return
-    cacheService.getFileContent(workspace.extensionId, path).then(cached => {
+    cacheService.getFileContent(workspace.extensionId, activeFilePath).then(cached => {
       if (cached) {
         setFile(cached)
         setLoading(false)
       }
     })
-  }, [path, workspace, previewKind])
+  }, [path, activeFilePath, workspace, previewKind])
 
   // Background fetch on connect (no spinner if we have cached data)
   useEffect(() => {
@@ -426,7 +454,7 @@ export function CodeViewerPage() {
     }
     const unsub = wsClient.subscribe('file.contentChanged', (msg) => {
       const payload = msg.payload as { path: string }
-      if (payload.path === path) {
+      if (payload.path === activeFilePath) {
         debugLog('watch:file', 'event', { source: 'push', path: payload.path })
         if (previewKind) {
           loadPreview()
@@ -436,7 +464,12 @@ export function CodeViewerPage() {
       }
     })
     return unsub
-  }, [path, workspace, workspaceReady, connectionState, previewKind])
+  }, [path, activeFilePath, workspace, workspaceReady, connectionState, previewKind])
+
+  useEffect(() => {
+    if (!path || !workspaceReady || previewKind || connectionState !== 'connected') return
+    void refreshAnnotationStatus(false)
+  }, [path, workspaceReady, connectionState, previewKind])
 
   const wasHiddenRef = useRef(visibility !== 'visible')
   useEffect(() => {
@@ -447,9 +480,9 @@ export function CodeViewerPage() {
 
     if (!wasHiddenRef.current || !path || !workspace || !workspaceReady || connectionState !== 'connected') return
     wasHiddenRef.current = false
-    debugLog('watch:file', 'resume-reload', { path, workspace: workspace.extensionId })
+    debugLog('watch:file', 'resume-reload', { path: activeFilePath, workspace: workspace.extensionId })
     void (previewKind ? loadPreview() : loadFileBackground())
-  }, [visibility, path, workspace, workspaceReady, connectionState, previewKind])
+  }, [visibility, path, activeFilePath, workspace, workspaceReady, connectionState, previewKind])
 
   useEffect(() => {
     if (!preview) return
@@ -462,7 +495,7 @@ export function CodeViewerPage() {
 
   // Scroll position: debounced save
   useEffect(() => {
-    if (previewKind) return
+    if (previewKind || isAnnotationView) return
     const container = scrollContainerRef.current
     if (!container || !workspace || !path) return
     let timer: ReturnType<typeof setTimeout>
@@ -476,11 +509,11 @@ export function CodeViewerPage() {
       persistCurrentScroll()
       container.removeEventListener('scroll', handler)
     }
-  }, [path, workspace, previewKind, persistCurrentScroll])
+  }, [path, workspace, previewKind, persistCurrentScroll, isAnnotationView])
 
   // Restore semantic target location first, then fall back to saved scroll.
   useEffect(() => {
-    if (previewKind) return
+    if (previewKind || isAnnotationView) return
     if (!file || !workspace || !scrollContainerRef.current) return
     // During route changes React can briefly render the new path with the previous file state.
     // Do not consume the restore key until the loaded file actually matches the route.
@@ -556,7 +589,7 @@ export function CodeViewerPage() {
         scrollContainerRef.current?.scrollTo({ top: scrollTop })
       })
     } catch { /* ignore */ }
-  }, [file, path, workspace, targetLine, previewKind, fileReturnPosition, queryLocation.line])
+  }, [file, path, workspace, targetLine, previewKind, fileReturnPosition, queryLocation.line, isAnnotationView])
 
   // Cleanup: purge scroll entries older than 7 days (once on mount)
   useEffect(() => {
@@ -574,19 +607,19 @@ export function CodeViewerPage() {
   }, [])
 
   // Background load: silently update, no spinner
-  async function loadFileBackground() {
-    if (!path) return
+  async function loadFileBackground(targetPath = activeFilePath) {
+    if (!targetPath) return
     try {
-      debugLog('watch:file', 'request', { path, workspace: workspace?.extensionId ?? null })
-      const res = await request<{ path: string }, FileReadResultPayload>('file.read', { path })
+      debugLog('watch:file', 'request', { path: targetPath, workspace: workspace?.extensionId ?? null })
+      const res = await request<{ path: string }, FileReadResultPayload>('file.read', { path: targetPath })
       if (typeof res.payload.content === 'string' && res.payload.content.length > MAX_FILE_SIZE) {
         setTooLarge(true)
         setFile(null)
       } else if (typeof res.payload.content === 'string') {
         setFile(res.payload)
-        addRecentFile(path, workspace?.extensionId)
+        if (targetPath === path) addRecentFile(path, workspace?.extensionId)
         if (workspace) {
-          cacheService.setFileContent(workspace.extensionId, path, {
+          cacheService.setFileContent(workspace.extensionId, targetPath, {
             path: res.payload.path,
             content: res.payload.content,
             languageId: res.payload.languageId,
@@ -599,7 +632,7 @@ export function CodeViewerPage() {
     } catch {
       // If no data at all, try cache
       if (!file && workspace) {
-        const cached = await cacheService.getFileContent(workspace.extensionId, path)
+        const cached = await cacheService.getFileContent(workspace.extensionId, targetPath)
         if (cached) setFile(cached)
       }
     } finally {
@@ -620,6 +653,141 @@ export function CodeViewerPage() {
       setPreviewError(error instanceof Error ? error.message : 'Preview unavailable')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function refreshAnnotationStatus(updatePhase = true): Promise<AnnotationStatusResultPayload | null> {
+    if (!path || previewKind) return null
+    debugLog('annotation', 'status.request', {
+      path,
+      updatePhase,
+      workspace: workspace?.extensionId ?? null,
+    })
+    try {
+      const res = await request<AnnotationStatusPayload, AnnotationStatusResultPayload>(
+        'annotation.status',
+        { path },
+        5000,
+      )
+      setAnnotationPath(res.payload.annotationPath)
+      setAnnotationExists(res.payload.exists)
+      debugLog('annotation', 'status.response', {
+        requestId: res.replyTo,
+        path: res.payload.path,
+        annotationPath: res.payload.annotationPath,
+        exists: res.payload.exists,
+        updatedAt: res.payload.updatedAt ?? null,
+      })
+      if (res.payload.exists) {
+        setAnnotationPhase('ready')
+        setAnnotationError(null)
+      } else if (updatePhase) {
+        setAnnotationPhase('idle')
+      }
+      return res.payload
+    } catch (error) {
+      console.error('[annotation] status.failed', {
+        path,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      if (updatePhase) {
+        setAnnotationPhase('error')
+        setAnnotationError(error instanceof Error ? error.message : 'Annotation status unavailable')
+      }
+      return null
+    }
+  }
+
+  async function pollAnnotationStatus(sourcePath: string, expectedAnnotationPath: string, seq: number) {
+    debugLog('annotation', 'poll.start', { sourcePath, expectedAnnotationPath, seq })
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise(resolve => window.setTimeout(resolve, attempt === 0 ? 700 : 1500))
+      if (annotationPollSeqRef.current !== seq) return
+      try {
+        debugLog('annotation', 'poll.tick', { sourcePath, expectedAnnotationPath, seq, attempt })
+        const res = await request<AnnotationStatusPayload, AnnotationStatusResultPayload>(
+          'annotation.status',
+          { path: sourcePath },
+          5000,
+        )
+        if (annotationPollSeqRef.current !== seq) return
+        setAnnotationPath(res.payload.annotationPath)
+        setAnnotationExists(res.payload.exists)
+        debugLog('annotation', 'poll.response', {
+          requestId: res.replyTo,
+          sourcePath,
+          annotationPath: res.payload.annotationPath,
+          exists: res.payload.exists,
+          attempt,
+        })
+        if (res.payload.exists) {
+          setAnnotationPhase('ready')
+          setAnnotationError(null)
+          setAnnotationMode('annotated')
+          debugLog('annotation', 'artifact.load.start', {
+            sourcePath,
+            annotationPath: res.payload.annotationPath || expectedAnnotationPath,
+          })
+          await loadFileBackground(res.payload.annotationPath || expectedAnnotationPath)
+          debugLog('annotation', 'artifact.load.done', {
+            sourcePath,
+            annotationPath: res.payload.annotationPath || expectedAnnotationPath,
+          })
+          showToast('Annotation ready')
+          return
+        }
+      } catch (error) {
+        console.warn('[annotation] poll.status.failed', {
+          sourcePath,
+          attempt,
+          message: error instanceof Error ? error.message : String(error),
+        })
+        // Keep polling; transient relay/extension reconnects can happen on mobile.
+      }
+    }
+    if (annotationPollSeqRef.current !== seq) return
+    console.error('[annotation] poll.timeout', { sourcePath, expectedAnnotationPath, seq })
+    setAnnotationPhase('error')
+    setAnnotationError('Annotation artifact not found')
+  }
+
+  async function generateAnnotation() {
+    if (!path || previewKind || annotationPhase === 'submitting' || annotationPhase === 'waiting') return
+    const seq = annotationPollSeqRef.current + 1
+    annotationPollSeqRef.current = seq
+    debugLog('annotation', 'generate.start', {
+      path,
+      seq,
+      workspace: workspace?.extensionId ?? null,
+      annotationExists,
+    })
+    setAnnotationPhase('submitting')
+    setAnnotationError(null)
+    try {
+      const res = await request<AnnotationGeneratePayload, AnnotationGenerateResultPayload>(
+        'annotation.generate',
+        { path, force: true },
+        30000,
+      )
+      setAnnotationPath(res.payload.annotationPath)
+      setAnnotationExists(false)
+      setAnnotationPhase('waiting')
+      debugLog('annotation', 'generate.submitted', {
+        requestId: res.replyTo,
+        path: res.payload.path,
+        annotationPath: res.payload.annotationPath,
+        target: res.payload.target,
+      })
+      showToast(`Annotation ${res.payload.target.acquired}`)
+      void pollAnnotationStatus(path, res.payload.annotationPath, seq)
+    } catch (error) {
+      console.error('[annotation] generate.failed', {
+        path,
+        seq,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      setAnnotationPhase('error')
+      setAnnotationError(error instanceof Error ? error.message : 'Annotation request failed')
     }
   }
 
@@ -671,6 +839,7 @@ export function CodeViewerPage() {
 
   // Handle tap on code: show popover with hover info + actions
   function handleCodeClick(e: React.MouseEvent) {
+    if (isAnnotationView) return
     // Ignore if user is selecting text (has active selection)
     const sel = window.getSelection()
     if (sel && sel.toString().length > 0) return
@@ -780,6 +949,17 @@ export function CodeViewerPage() {
   }
 
   const fileName = path.split('/').pop() ?? path
+  const annotationBusy = annotationPhase === 'submitting' || annotationPhase === 'waiting'
+  const annotationStatusLabel = annotationPhase === 'submitting'
+    ? 'Submitting'
+    : annotationPhase === 'waiting'
+      ? 'Waiting'
+      : annotationPhase === 'ready'
+        ? 'Annotated'
+        : annotationPhase === 'error'
+          ? 'Annotation error'
+          : null
+  const stackFileActions = annotationExists || isAnnotationView
 
   if (previewKind) {
     return (
@@ -929,7 +1109,7 @@ export function CodeViewerPage() {
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header — two rows: filename on top, buttons below */}
       <div style={{ padding: '6px 12px', borderBottom: '1px solid #333', flexShrink: 0 }}>
         {/* Row 1: filename */}
@@ -956,7 +1136,7 @@ export function CodeViewerPage() {
           </div>
         </div>
         {/* Row 2: metadata + buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, color: '#888' }}>{file.languageId}</span>
           {file.isDirty && (
             <span
@@ -976,7 +1156,81 @@ export function CodeViewerPage() {
               &#x2605;{bookmarkedLines.size}
             </span>
           )}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
+          {annotationStatusLabel && (
+            <span
+              style={{
+                fontSize: 10,
+                color: annotationPhase === 'error' ? '#f48771' : '#9cdcfe',
+                background: annotationPhase === 'error' ? '#3b1f1a' : '#1f3442',
+                padding: '1px 6px',
+                borderRadius: 4,
+              }}
+              title={annotationError ?? undefined}
+            >
+              {annotationStatusLabel}
+            </span>
+          )}
+          <div style={{
+            marginLeft: stackFileActions ? 0 : 'auto',
+            display: 'flex',
+            gap: 4,
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            flexWrap: 'wrap',
+            width: stackFileActions ? '100%' : undefined,
+            maxWidth: '100%',
+          }}>
+          {(annotationExists || isAnnotationView) && (
+            <div style={{ display: 'flex', height: 24, border: '1px solid #444', borderRadius: 4, overflow: 'hidden' }}>
+              <button
+                onClick={() => setAnnotationMode('original')}
+                style={{
+                  background: annotationMode === 'original' ? '#333' : 'none',
+                  border: 'none',
+                  borderRight: '1px solid #444',
+                  color: annotationMode === 'original' ? '#d4d4d4' : '#888',
+                  fontSize: 11,
+                  padding: '0 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                Original
+              </button>
+              <button
+                onClick={() => annotationExists && setAnnotationMode('annotated')}
+                disabled={!annotationExists}
+                style={{
+                  background: annotationMode === 'annotated' ? '#333' : 'none',
+                  border: 'none',
+                  color: annotationMode === 'annotated' ? '#d4d4d4' : '#888',
+                  fontSize: 11,
+                  padding: '0 8px',
+                  cursor: annotationExists ? 'pointer' : 'default',
+                  opacity: annotationExists ? 1 : 0.45,
+                }}
+              >
+                Annotated
+              </button>
+            </div>
+          )}
+          {!annotationExists && !isAnnotationView && (
+            <button
+              onClick={generateAnnotation}
+              disabled={annotationBusy}
+              style={{
+                background: annotationBusy ? '#333' : 'none',
+                border: '1px solid #444',
+                color: annotationBusy ? '#888' : '#d4d4d4',
+                fontSize: 11,
+                padding: '0 8px',
+                height: 24,
+                borderRadius: 4,
+                cursor: annotationBusy ? 'default' : 'pointer',
+              }}
+            >
+              {annotationBusy ? '...' : 'Annotate'}
+            </button>
+          )}
           {isMarkdown && (
             <button
               onClick={() => setMdRendered((v) => {
@@ -1117,6 +1371,24 @@ export function CodeViewerPage() {
                 >
                   Symbols
                 </button>
+                <button
+                  onClick={() => {
+                    void generateAnnotation()
+                    setMenuOpen(false)
+                  }}
+                  disabled={annotationBusy}
+                  style={{
+                    ...menuItemStyle,
+                    opacity: annotationBusy ? 0.45 : 1,
+                    cursor: annotationBusy ? 'default' : 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!annotationBusy) (e.currentTarget as HTMLElement).style.background = '#2a2d2e'
+                  }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  {annotationExists ? 'Regen Annotation' : 'Generate Annotation'}
+                </button>
                 <div style={{ borderTop: '1px solid #333' }} />
                 <div style={{ padding: '8px 12px' }}>
                   <div style={{ color: '#888', fontSize: 11, marginBottom: 6 }}>
@@ -1170,7 +1442,7 @@ export function CodeViewerPage() {
       <div
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
-        onClick={isMarkdown && mdRendered ? undefined : handleCodeClick}
+        onClick={isAnnotationView || (isMarkdown && mdRendered) ? undefined : handleCodeClick}
       >
         {isMarkdown && mdRendered ? (
           <MarkdownRenderer content={file.content} codeFontSize={codeFontSize} wordWrap={wordWrap} />
@@ -1179,7 +1451,7 @@ export function CodeViewerPage() {
             <CodeBlock
               code={file.content}
               language={file.languageId}
-              filePath={path}
+              filePath={activeFilePath}
               showLineNumbers
               wordWrap={wordWrap}
               highlightLine={highlightLine}
