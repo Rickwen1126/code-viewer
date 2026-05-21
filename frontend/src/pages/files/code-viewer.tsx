@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
-import { wsClient } from '../../services/ws-client'
+import { generateId, wsClient } from '../../services/ws-client'
 import { cacheService } from '../../services/cache'
 import {
   buildFileRestoreKey,
@@ -174,6 +174,8 @@ export function CodeViewerPage() {
   const [annotationExists, setAnnotationExists] = useState(false)
   const [annotationPhase, setAnnotationPhase] = useState<AnnotationPhase>('idle')
   const [annotationError, setAnnotationError] = useState<string | null>(null)
+  const [annotationGenerationId, setAnnotationGenerationId] = useState<string | null>(null)
+  const [annotationSubmittedAt, setAnnotationSubmittedAt] = useState<number | null>(null)
   const annotationPollSeqRef = useRef(0)
 
   const previewKind = getFilePreviewKind(path)
@@ -424,6 +426,8 @@ export function CodeViewerPage() {
     setAnnotationExists(false)
     setAnnotationPhase('idle')
     setAnnotationError(null)
+    setAnnotationGenerationId(null)
+    setAnnotationSubmittedAt(null)
   }, [path, previewKind])
 
   // Redirect to workspace selection if no workspace ever selected
@@ -670,17 +674,25 @@ export function CodeViewerPage() {
         5000,
       )
       setAnnotationPath(res.payload.annotationPath)
-      setAnnotationExists(res.payload.exists)
+      setAnnotationExists(res.payload.ready)
+      setAnnotationGenerationId(res.payload.generationId ?? null)
       debugLog('annotation', 'status.response', {
         requestId: res.replyTo,
+        generationId: res.payload.generationId ?? null,
         path: res.payload.path,
         annotationPath: res.payload.annotationPath,
         exists: res.payload.exists,
+        ready: res.payload.ready,
+        state: res.payload.state,
         updatedAt: res.payload.updatedAt ?? null,
+        diagnostics: res.payload.validation?.diagnostics ?? [],
       })
-      if (res.payload.exists) {
+      if (res.payload.ready) {
         setAnnotationPhase('ready')
         setAnnotationError(null)
+      } else if (res.payload.exists && res.payload.state === 'invalid' && updatePhase) {
+        setAnnotationPhase('error')
+        setAnnotationError(res.payload.validation?.diagnostics.join('; ') || 'Annotation artifact is invalid')
       } else if (updatePhase) {
         setAnnotationPhase('idle')
       }
@@ -698,29 +710,49 @@ export function CodeViewerPage() {
     }
   }
 
-  async function pollAnnotationStatus(sourcePath: string, expectedAnnotationPath: string, seq: number) {
-    debugLog('annotation', 'poll.start', { sourcePath, expectedAnnotationPath, seq })
+  async function pollAnnotationStatus(
+    sourcePath: string,
+    expectedAnnotationPath: string,
+    seq: number,
+    generationId: string,
+    submittedAt: number,
+  ) {
+    let lastStatus: AnnotationStatusResultPayload | null = null
+    debugLog('annotation', 'poll.start', {
+      sourcePath,
+      expectedAnnotationPath,
+      seq,
+      generationId,
+      submittedAt,
+    })
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await new Promise(resolve => window.setTimeout(resolve, attempt === 0 ? 700 : 1500))
       if (annotationPollSeqRef.current !== seq) return
       try {
-        debugLog('annotation', 'poll.tick', { sourcePath, expectedAnnotationPath, seq, attempt })
+        debugLog('annotation', 'poll.tick', { sourcePath, expectedAnnotationPath, seq, attempt, generationId })
         const res = await request<AnnotationStatusPayload, AnnotationStatusResultPayload>(
           'annotation.status',
-          { path: sourcePath },
+          { path: sourcePath, generationId, minUpdatedAt: submittedAt },
           5000,
         )
         if (annotationPollSeqRef.current !== seq) return
+        lastStatus = res.payload
         setAnnotationPath(res.payload.annotationPath)
-        setAnnotationExists(res.payload.exists)
+        setAnnotationExists(res.payload.ready)
+        setAnnotationGenerationId(res.payload.generationId ?? generationId)
         debugLog('annotation', 'poll.response', {
           requestId: res.replyTo,
+          generationId: res.payload.generationId ?? generationId,
           sourcePath,
           annotationPath: res.payload.annotationPath,
           exists: res.payload.exists,
+          ready: res.payload.ready,
+          state: res.payload.state,
           attempt,
+          updatedAt: res.payload.updatedAt ?? null,
+          diagnostics: res.payload.validation?.diagnostics ?? [],
         })
-        if (res.payload.exists) {
+        if (res.payload.ready) {
           setAnnotationPhase('ready')
           setAnnotationError(null)
           setAnnotationMode('annotated')
@@ -746,44 +778,63 @@ export function CodeViewerPage() {
       }
     }
     if (annotationPollSeqRef.current !== seq) return
-    console.error('[annotation] poll.timeout', { sourcePath, expectedAnnotationPath, seq })
+    console.error('[annotation] poll.timeout', {
+      sourcePath,
+      expectedAnnotationPath,
+      seq,
+      generationId,
+      lastState: lastStatus?.state ?? null,
+      diagnostics: lastStatus?.validation?.diagnostics ?? [],
+    })
     setAnnotationPhase('error')
-    setAnnotationError('Annotation artifact not found')
+    setAnnotationError(
+      lastStatus?.validation?.diagnostics.join('; ')
+      || (lastStatus?.state ? `Annotation not ready: ${lastStatus.state}` : 'Annotation artifact not found'),
+    )
   }
 
   async function generateAnnotation() {
     if (!path || previewKind || annotationPhase === 'submitting' || annotationPhase === 'waiting') return
     const seq = annotationPollSeqRef.current + 1
     annotationPollSeqRef.current = seq
+    const generationId = `annotation-${generateId()}`
     debugLog('annotation', 'generate.start', {
       path,
       seq,
+      generationId,
       workspace: workspace?.extensionId ?? null,
       annotationExists,
     })
     setAnnotationPhase('submitting')
     setAnnotationError(null)
+    setAnnotationGenerationId(generationId)
+    setAnnotationSubmittedAt(null)
     try {
       const res = await request<AnnotationGeneratePayload, AnnotationGenerateResultPayload>(
         'annotation.generate',
-        { path, force: true },
+        { path, force: true, generationId },
         30000,
       )
       setAnnotationPath(res.payload.annotationPath)
       setAnnotationExists(false)
       setAnnotationPhase('waiting')
+      setAnnotationGenerationId(res.payload.generationId)
+      setAnnotationSubmittedAt(res.payload.submittedAt)
       debugLog('annotation', 'generate.submitted', {
         requestId: res.replyTo,
+        generationId: res.payload.generationId,
+        submittedAt: res.payload.submittedAt,
         path: res.payload.path,
         annotationPath: res.payload.annotationPath,
         target: res.payload.target,
       })
       showToast(`Annotation ${res.payload.target.acquired}`)
-      void pollAnnotationStatus(path, res.payload.annotationPath, seq)
+      void pollAnnotationStatus(path, res.payload.annotationPath, seq, res.payload.generationId, res.payload.submittedAt)
     } catch (error) {
       console.error('[annotation] generate.failed', {
         path,
         seq,
+        generationId,
         message: error instanceof Error ? error.message : String(error),
       })
       setAnnotationPhase('error')
@@ -959,6 +1010,11 @@ export function CodeViewerPage() {
         : annotationPhase === 'error'
           ? 'Annotation error'
           : null
+  const annotationStatusTitle = [
+    annotationError,
+    annotationGenerationId ? `generation: ${annotationGenerationId}` : null,
+    annotationSubmittedAt ? `submitted: ${new Date(annotationSubmittedAt).toLocaleTimeString()}` : null,
+  ].filter(Boolean).join(' | ') || undefined
   const stackFileActions = annotationExists || isAnnotationView
 
   if (previewKind) {
@@ -1165,7 +1221,7 @@ export function CodeViewerPage() {
                 padding: '1px 6px',
                 borderRadius: 4,
               }}
-              title={annotationError ?? undefined}
+              title={annotationStatusTitle}
             >
               {annotationStatusLabel}
             </span>

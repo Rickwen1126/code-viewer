@@ -1,6 +1,8 @@
 import * as path from 'path'
 import * as vscode from 'vscode'
 import type {
+  AnnotationArtifactState,
+  AnnotationArtifactValidation,
   AnnotationGeneratePayload,
   AnnotationStatusPayload,
   WsMessage,
@@ -11,6 +13,7 @@ import { ensureTarget, sendMessage } from './tmux-adapter-client'
 
 const ANNOTATION_ROOT = '.codeviewer/annotated'
 const SPAWN_READY_DELAY_MS = 2500
+const EMPTY_VALIDATION: AnnotationArtifactValidation = { ok: false, diagnostics: [] }
 
 interface SafeAnnotationPath {
   relativePath: string
@@ -18,6 +21,30 @@ interface SafeAnnotationPath {
   annotationPath: string
   annotationUri: vscode.Uri
 }
+
+interface AnnotationGenerationState {
+  generationId: string
+  requestId: string
+  relativePath: string
+  annotationPath: string
+  submittedAt: number
+  status: Extract<AnnotationArtifactState, 'pending' | 'ready' | 'invalid'>
+  target?: Awaited<ReturnType<typeof ensureTarget>>
+  validation?: AnnotationArtifactValidation
+}
+
+interface AnnotationStatusSnapshot {
+  path: string
+  annotationPath: string
+  exists: boolean
+  ready: boolean
+  state: AnnotationArtifactState
+  generationId?: string
+  updatedAt?: number
+  validation?: AnnotationArtifactValidation
+}
+
+const generationStates = new Map<string, AnnotationGenerationState>()
 
 function sendError(
   requestType: string,
@@ -36,6 +63,83 @@ function annotationDebug(stage: string, data: Record<string, unknown>): void {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function readText(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('utf8')
+}
+
+function countLines(text: string): number {
+  if (text.length === 0) return 0
+  return text.split(/\r?\n/).length
+}
+
+function lastMeaningfulLine(text: string): string | undefined {
+  const lines = text.split(/\r?\n/)
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const trimmed = lines[index].trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  return undefined
+}
+
+function commentPatternFor(relativePath: string): RegExp | undefined {
+  const ext = path.extname(relativePath).toLowerCase()
+  if (['.ts', '.tsx', '.js', '.jsx', '.css', '.scss', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp'].includes(ext)) {
+    return /^\s*(\/\/|\/\*)/m
+  }
+  if (['.py', '.rb', '.sh', '.bash', '.zsh', '.yml', '.yaml', '.toml'].includes(ext)) {
+    return /^\s*#/m
+  }
+  return undefined
+}
+
+export function validateAnnotationArtifactText(
+  sourceText: string,
+  artifactText: string,
+  relativePath: string,
+  stat?: { size?: number; updatedAt?: number },
+): AnnotationArtifactValidation {
+  const diagnostics: string[] = []
+  const sourceLineCount = countLines(sourceText)
+  const artifactLineCount = countLines(artifactText)
+  const trimmedArtifact = artifactText.trim()
+
+  if (trimmedArtifact.length === 0) {
+    diagnostics.push('artifact is empty')
+  }
+  if (/```/.test(artifactText)) {
+    diagnostics.push('artifact contains Markdown fences')
+  }
+  if (sourceLineCount > 1 && artifactLineCount < sourceLineCount) {
+    diagnostics.push('artifact has fewer lines than source')
+  }
+
+  const tail = lastMeaningfulLine(sourceText)
+  if (tail && !artifactText.includes(tail)) {
+    diagnostics.push('artifact does not include the source tail')
+  }
+
+  const commentPattern = commentPatternFor(relativePath)
+  if (commentPattern && !commentPattern.test(artifactText)) {
+    diagnostics.push('artifact has no source-language comment markers')
+  }
+
+  const literalNewlineInComment = artifactText
+    .split(/\r?\n/)
+    .some(line => /^\s*(#|\/\/)/.test(line) && line.includes('\\n'))
+  if (literalNewlineInComment) {
+    diagnostics.push('comment contains literal \\n artifact')
+  }
+
+  return {
+    ok: diagnostics.length === 0,
+    diagnostics,
+    sourceLineCount,
+    artifactLineCount,
+    size: stat?.size,
+    updatedAt: stat?.updatedAt,
+  }
 }
 
 function normalizeWorkspaceRelativePath(requestedPath: unknown): string {
@@ -198,6 +302,98 @@ function buildAnnotationPrompt(
   ].join('\n')
 }
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function normalizeOptionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+async function getAnnotationStatusSnapshot(
+  safePath: SafeAnnotationPath,
+  generationId?: string,
+  minUpdatedAt?: number,
+): Promise<AnnotationStatusSnapshot> {
+  const trackedGeneration = generationStates.get(safePath.relativePath)
+  const effectiveGenerationId = generationId ?? trackedGeneration?.generationId
+
+  let stat: vscode.FileStat
+  try {
+    stat = await vscode.workspace.fs.stat(safePath.annotationUri)
+  } catch {
+    return {
+      path: safePath.relativePath,
+      annotationPath: safePath.annotationPath,
+      exists: false,
+      ready: false,
+      state: 'missing',
+      generationId: effectiveGenerationId,
+      validation: {
+        ...EMPTY_VALIDATION,
+        diagnostics: ['artifact missing'],
+      },
+    }
+  }
+
+  if (stat.type !== vscode.FileType.File) {
+    return {
+      path: safePath.relativePath,
+      annotationPath: safePath.annotationPath,
+      exists: false,
+      ready: false,
+      state: 'invalid',
+      generationId: effectiveGenerationId,
+      updatedAt: stat.mtime,
+      validation: {
+        ok: false,
+        diagnostics: ['annotation path is not a file'],
+        size: stat.size,
+        updatedAt: stat.mtime,
+      },
+    }
+  }
+
+  if (typeof minUpdatedAt === 'number' && stat.mtime < minUpdatedAt) {
+    return {
+      path: safePath.relativePath,
+      annotationPath: safePath.annotationPath,
+      exists: true,
+      ready: false,
+      state: 'pending',
+      generationId: effectiveGenerationId,
+      updatedAt: stat.mtime,
+      validation: {
+        ok: false,
+        diagnostics: ['artifact predates requested generation'],
+        size: stat.size,
+        updatedAt: stat.mtime,
+      },
+    }
+  }
+
+  const [sourceBytes, artifactBytes] = await Promise.all([
+    vscode.workspace.fs.readFile(safePath.sourceUri),
+    vscode.workspace.fs.readFile(safePath.annotationUri),
+  ])
+  const validation = validateAnnotationArtifactText(
+    readText(sourceBytes),
+    readText(artifactBytes),
+    safePath.relativePath,
+    { size: stat.size, updatedAt: stat.mtime },
+  )
+  return {
+    path: safePath.relativePath,
+    annotationPath: safePath.annotationPath,
+    exists: true,
+    ready: validation.ok,
+    state: validation.ok ? 'ready' : 'invalid',
+    generationId: effectiveGenerationId,
+    updatedAt: stat.mtime,
+    validation,
+  }
+}
+
 export async function handleAnnotationGenerate(
   msg: WsMessage,
   sendResponse: (msg: WsMessage) => void,
@@ -205,8 +401,10 @@ export async function handleAnnotationGenerate(
   const requestId = msg.id
   const startedAt = Date.now()
   const payload = msg.payload as AnnotationGeneratePayload
+  const generationId = normalizeOptionalString(payload?.generationId) ?? requestId
   annotationDebug('generate.received', {
     requestId,
+    generationId,
     path: payload?.path,
     force: payload?.force === true,
   })
@@ -231,6 +429,7 @@ export async function handleAnnotationGenerate(
     const message = error instanceof Error ? error.message : String(error)
     console.error('[CodeViewer][annotation] generate.validate.failed', {
       requestId,
+      generationId,
       path: payload?.path,
       message,
     })
@@ -242,6 +441,7 @@ export async function handleAnnotationGenerate(
     const config = readAnnotationConfig()
     annotationDebug('generate.ensure-target.start', {
       requestId,
+      generationId,
       command: config.command,
       stateRoot: config.stateRoot ?? null,
       spawnProfile: config.spawnProfile,
@@ -255,24 +455,39 @@ export async function handleAnnotationGenerate(
     })
     annotationDebug('generate.ensure-target.done', {
       requestId,
+      generationId,
       target,
       elapsedMs: Date.now() - startedAt,
     })
     if (target.acquired === 'spawned') {
       annotationDebug('generate.spawn-ready-delay.start', {
         requestId,
+        generationId,
         delayMs: SPAWN_READY_DELAY_MS,
         bindingId: target.bindingId,
       })
       await delay(SPAWN_READY_DELAY_MS)
       annotationDebug('generate.spawn-ready-delay.done', {
         requestId,
+        generationId,
         bindingId: target.bindingId,
         elapsedMs: Date.now() - startedAt,
       })
     }
+    const submittedAt = Date.now()
+    generationStates.set(safePath.relativePath, {
+      generationId,
+      requestId,
+      relativePath: safePath.relativePath,
+      annotationPath: safePath.annotationPath,
+      submittedAt,
+      status: 'pending',
+      target,
+    })
     annotationDebug('generate.send.start', {
       requestId,
+      generationId,
+      submittedAt,
       bindingId: target.bindingId,
       annotationPath: safePath.annotationPath,
     })
@@ -289,17 +504,21 @@ export async function handleAnnotationGenerate(
     })
     annotationDebug('generate.send.done', {
       requestId,
+      generationId,
       bindingId: target.bindingId,
       elapsedMs: Date.now() - startedAt,
     })
     sendResponse(createMessage('annotation.generate.result', {
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
+      generationId,
+      submittedAt,
       target,
       submitted: true,
     }, msg.id))
     annotationDebug('generate.response.sent', {
       requestId,
+      generationId,
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
       elapsedMs: Date.now() - startedAt,
@@ -307,6 +526,7 @@ export async function handleAnnotationGenerate(
   } catch (error) {
     console.error('[CodeViewer][annotation] generate.adapter.failed', {
       requestId,
+      generationId,
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
       message: error instanceof Error ? error.message : String(error),
@@ -327,7 +547,14 @@ export async function handleAnnotationStatus(
 ): Promise<void> {
   const requestId = msg.id
   const payload = msg.payload as AnnotationStatusPayload
-  annotationDebug('status.received', { requestId, path: payload?.path })
+  const generationId = normalizeOptionalString(payload?.generationId)
+  const minUpdatedAt = normalizeOptionalNumber(payload?.minUpdatedAt)
+  annotationDebug('status.received', {
+    requestId,
+    generationId,
+    minUpdatedAt: minUpdatedAt ?? null,
+    path: payload?.path,
+  })
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
   if (!workspaceFolder) {
     sendError(msg.type, msg.id, sendResponse, 'NOT_FOUND', 'No workspace open')
@@ -340,6 +567,7 @@ export async function handleAnnotationStatus(
   } catch (error) {
     console.error('[CodeViewer][annotation] status.validate.failed', {
       requestId,
+      generationId,
       path: payload?.path,
       message: error instanceof Error ? error.message : String(error),
     })
@@ -354,32 +582,38 @@ export async function handleAnnotationStatus(
   }
 
   try {
-    const stat = await vscode.workspace.fs.stat(safePath.annotationUri)
+    const snapshot = await getAnnotationStatusSnapshot(safePath, generationId, minUpdatedAt)
+    const trackedGeneration = generationStates.get(safePath.relativePath)
+    if (snapshot.generationId && trackedGeneration?.generationId === snapshot.generationId) {
+      trackedGeneration.status = snapshot.ready ? 'ready' : snapshot.state === 'invalid' ? 'invalid' : 'pending'
+      trackedGeneration.validation = snapshot.validation
+    }
     annotationDebug('status.result', {
       requestId,
+      generationId: snapshot.generationId ?? null,
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
-      exists: stat.type === vscode.FileType.File,
-      size: stat.size,
-      mtime: stat.mtime,
+      exists: snapshot.exists,
+      ready: snapshot.ready,
+      state: snapshot.state,
+      updatedAt: snapshot.updatedAt ?? null,
+      diagnostics: snapshot.validation?.diagnostics ?? [],
     })
-    sendResponse(createMessage('annotation.status.result', {
-      path: safePath.relativePath,
-      annotationPath: safePath.annotationPath,
-      exists: stat.type === vscode.FileType.File,
-      updatedAt: stat.mtime,
-    }, msg.id))
-  } catch {
-    annotationDebug('status.result', {
+    sendResponse(createMessage('annotation.status.result', snapshot, msg.id))
+  } catch (error) {
+    console.error('[CodeViewer][annotation] status.check.failed', {
       requestId,
+      generationId,
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
-      exists: false,
+      message: error instanceof Error ? error.message : String(error),
     })
-    sendResponse(createMessage('annotation.status.result', {
-      path: safePath.relativePath,
-      annotationPath: safePath.annotationPath,
-      exists: false,
-    }, msg.id))
+    sendError(
+      msg.type,
+      msg.id,
+      sendResponse,
+      'INVALID_REQUEST',
+      error instanceof Error ? error.message : String(error),
+    )
   }
 }

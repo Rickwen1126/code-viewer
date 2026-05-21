@@ -8,6 +8,10 @@ import {
   MSG_FILE_TREE_RESULT,
   MSG_FILE_TREE_CHANGED,
   MSG_FILE_CONTENT_CHANGED,
+  MSG_ANNOTATION_GENERATE,
+  MSG_ANNOTATION_GENERATE_RESULT,
+  MSG_ANNOTATION_STATUS,
+  MSG_ANNOTATION_STATUS_RESULT,
   MSG_LSP_HOVER,
   MSG_LSP_HOVER_RESULT,
   MSG_LSP_DEFINITION,
@@ -56,6 +60,7 @@ import {
   type WsMessage,
   type ErrorPayload,
   type ErrorCode,
+  type AnnotationGenerateResultPayload,
 } from '../ws-types.js'
 import type {
   FileTreeNode,
@@ -210,6 +215,37 @@ describe('message type constants — file domain', () => {
     expect(MSG_FILE_PREVIEW_RESULT).toBe('file.preview.result')
     expect(MSG_FILE_TREE_CHANGED).toBe('file.treeChanged')
     expect(MSG_FILE_CONTENT_CHANGED).toBe('file.contentChanged')
+  })
+})
+
+describe('message type constants — annotation domain', () => {
+  it('should have correct string values', () => {
+    expect(MSG_ANNOTATION_GENERATE).toBe('annotation.generate')
+    expect(MSG_ANNOTATION_GENERATE_RESULT).toBe('annotation.generate.result')
+    expect(MSG_ANNOTATION_STATUS).toBe('annotation.status')
+    expect(MSG_ANNOTATION_STATUS_RESULT).toBe('annotation.status.result')
+  })
+})
+
+describe('annotation payloads', () => {
+  it('serializes generate result target metadata without making pane identity durable', () => {
+    const payload: AnnotationGenerateResultPayload = {
+      path: 'src/index.ts',
+      annotationPath: '.codeviewer/annotated/src/index.ts',
+      generationId: 'annotation-123',
+      submittedAt: 1779377824000,
+      target: {
+        bindingId: 'codex:codex:abc',
+        acquired: 'reused',
+        paneId: '%1',
+      },
+      submitted: true,
+    }
+    const parsed = JSON.parse(JSON.stringify(payload)) as AnnotationGenerateResultPayload
+    expect(parsed.annotationPath).toBe('.codeviewer/annotated/src/index.ts')
+    expect(parsed.generationId).toBe('annotation-123')
+    expect(parsed.target.acquired).toBe('reused')
+    expect(parsed.submitted).toBe(true)
   })
 })
 

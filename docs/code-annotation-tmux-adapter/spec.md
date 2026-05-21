@@ -192,11 +192,14 @@ Payloads:
 export interface AnnotationGeneratePayload {
   path: string
   force?: boolean
+  generationId?: string
 }
 
 export interface AnnotationGenerateResultPayload {
   path: string
   annotationPath: string
+  generationId: string
+  submittedAt: number
   target: {
     bindingId: string
     acquired: 'reused' | 'spawned'
@@ -210,13 +213,30 @@ export interface AnnotationGenerateResultPayload {
 
 export interface AnnotationStatusPayload {
   path: string
+  generationId?: string
+  minUpdatedAt?: number
+}
+
+export type AnnotationArtifactState = 'missing' | 'pending' | 'ready' | 'invalid' | 'stale'
+
+export interface AnnotationArtifactValidation {
+  ok: boolean
+  diagnostics: string[]
+  sourceLineCount?: number
+  artifactLineCount?: number
+  size?: number
+  updatedAt?: number
 }
 
 export interface AnnotationStatusResultPayload {
   path: string
   annotationPath: string
   exists: boolean
+  ready: boolean
+  state: AnnotationArtifactState
+  generationId?: string
   updatedAt?: number
+  validation?: AnnotationArtifactValidation
 }
 ```
 
@@ -483,12 +503,17 @@ Do not ask Codex to edit arbitrary project files in annotation mode.
 
 ### Completion Model
 
-V1 can be submit-and-poll:
+V1 is submit-and-poll, but status is generation-aware:
 
-1. `annotation.generate` submits the task and returns `submitted: true`.
-2. Frontend periodically calls `annotation.status`.
-3. `annotation.status` checks whether the output artifact exists.
-4. Frontend enables annotated view when `exists: true`.
+1. Frontend creates a `generationId` before calling `annotation.generate`.
+2. `annotation.generate` submits the task and returns `submitted: true`,
+   `generationId`, and `submittedAt`.
+3. Frontend periodically calls `annotation.status` with `generationId` and
+   `minUpdatedAt = submittedAt`.
+4. `annotation.status` checks whether the artifact exists, was updated after
+   this generation was submitted, and passes artifact validation.
+5. Frontend enables annotated view only when `ready: true`, not merely when an
+   old artifact exists.
 
 Later versions can subscribe to tmux-adapter events or provider output, but V1
 should stay small and evidence-driven.
@@ -638,8 +663,9 @@ No product decision is currently blocking implementation.
 
 V1 defaults:
 
-- Completion model: submit-and-poll. `annotation.generate` returns submission
-  evidence; `annotation.status` proves file artifact existence.
+- Completion model: submit-and-poll with generation-aware readiness.
+  `annotation.generate` returns submission evidence; `annotation.status` proves
+  the artifact belongs to the requested generation and passes validation.
 - Artifact format: source-language fork under `.codeviewer/annotated/`, with
   inline comments and the original file extension preserved.
 - Annotation Codex profile: use a small low-reasoning model by default. The

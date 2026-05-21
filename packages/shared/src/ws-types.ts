@@ -253,11 +253,14 @@ export interface FileContentChangedPayload {
 export interface AnnotationGeneratePayload {
   path: string
   force?: boolean
+  generationId?: string
 }
 
 export interface AnnotationGenerateResultPayload {
   path: string
   annotationPath: string
+  generationId: string
+  submittedAt: number
   target: {
     bindingId: string
     acquired: 'reused' | 'spawned'
@@ -271,13 +274,30 @@ export interface AnnotationGenerateResultPayload {
 
 export interface AnnotationStatusPayload {
   path: string
+  generationId?: string
+  minUpdatedAt?: number
+}
+
+export type AnnotationArtifactState = 'missing' | 'pending' | 'ready' | 'invalid' | 'stale'
+
+export interface AnnotationArtifactValidation {
+  ok: boolean
+  diagnostics: string[]
+  sourceLineCount?: number
+  artifactLineCount?: number
+  size?: number
+  updatedAt?: number
 }
 
 export interface AnnotationStatusResultPayload {
   path: string
   annotationPath: string
   exists: boolean
+  ready: boolean
+  state: AnnotationArtifactState
+  generationId?: string
   updatedAt?: number
+  validation?: AnnotationArtifactValidation
 }
 
 // LSP

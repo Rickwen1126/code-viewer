@@ -4,6 +4,50 @@ import { manager } from './manager.js'
 const DEBUG = process.env.CODE_VIEWER_DEBUG === 'true'
 function dbg(...args: unknown[]): void { if (DEBUG) console.log('[relay]', ...args) }
 
+function isAnnotationMessage(type: string): boolean {
+  return type === 'annotation.generate'
+    || type === 'annotation.generate.result'
+    || type === 'annotation.generate.error'
+    || type === 'annotation.status'
+    || type === 'annotation.status.result'
+    || type === 'annotation.status.error'
+}
+
+function annotationPathFromPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const data = payload as { path?: unknown; annotationPath?: unknown; code?: unknown; message?: unknown }
+  if (typeof data.path === 'string') return data.path
+  if (typeof data.annotationPath === 'string') return data.annotationPath
+  return undefined
+}
+
+function annotationGenerationFromPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const data = payload as { generationId?: unknown }
+  return typeof data.generationId === 'string' ? data.generationId : undefined
+}
+
+function annotationStateFromPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const data = payload as { state?: unknown; ready?: unknown }
+  if (typeof data.state === 'string') return data.state
+  if (typeof data.ready === 'boolean') return data.ready ? 'ready' : 'not-ready'
+  return undefined
+}
+
+function annotationDbg(stage: string, msg: WsMessage, extra: Record<string, unknown> = {}): void {
+  if (!DEBUG || !isAnnotationMessage(msg.type)) return
+  console.log('[relay:annotation]', stage, {
+    type: msg.type,
+    id: msg.id,
+    replyTo: msg.replyTo,
+    path: annotationPathFromPayload(msg.payload),
+    generationId: annotationGenerationFromPayload(msg.payload),
+    state: annotationStateFromPayload(msg.payload),
+    ...extra,
+  })
+}
+
 interface PendingRequest {
   frontendId: string
   timeoutHandle: ReturnType<typeof setTimeout>
@@ -57,6 +101,7 @@ export function relayFrontendToExtension(frontendId: string, msg: WsMessage): vo
 
   const extensionId = frontend.selectedExtensionId
   if (!extensionId) {
+    annotationDbg('frontend.no-selected-extension', msg, { frontendId })
     const fe = manager.getFrontend(frontendId)
     if (fe) {
       sendToWs(fe.ws, makeErrorMessage(msg.id, 'NOT_CONNECTED', 'No workspace selected'))
@@ -66,6 +111,7 @@ export function relayFrontendToExtension(frontendId: string, msg: WsMessage): vo
 
   const extension = manager.getExtension(extensionId)
   if (!extension) {
+    annotationDbg('frontend.extension-offline', msg, { frontendId, extensionId })
     const fe = manager.getFrontend(frontendId)
     if (fe) {
       sendToWs(fe.ws, makeErrorMessage(msg.id, 'EXTENSION_OFFLINE', 'Extension is offline'))
@@ -77,6 +123,7 @@ export function relayFrontendToExtension(frontendId: string, msg: WsMessage): vo
   const timeoutHandle = setTimeout(() => {
     if (!pendingRequests.has(msg.id)) return // already handled by response
     pendingRequests.delete(msg.id)
+    annotationDbg('frontend.timeout', msg, { frontendId, extensionId, timeoutMs: RELAY_TIMEOUT_MS })
     const fe = manager.getFrontend(frontendId)
     if (fe) {
       sendToWs(fe.ws, makeErrorMessage(msg.id, 'TIMEOUT', 'Extension did not respond in time'))
@@ -86,6 +133,11 @@ export function relayFrontendToExtension(frontendId: string, msg: WsMessage): vo
   pendingRequests.set(msg.id, { frontendId, timeoutHandle })
 
   dbg(`${msg.type} ${msg.id} → extension (age: ${Date.now() - msg.timestamp}ms)`)
+  annotationDbg('frontend.to-extension', msg, {
+    frontendId,
+    extensionId,
+    ageMs: Date.now() - msg.timestamp,
+  })
   sendToWs(extension.ws, msg)
 }
 
@@ -104,6 +156,10 @@ export function relayExtensionResponseToFrontend(msg: WsMessage): boolean {
   pendingRequests.delete(replyTo)
 
   dbg(`${msg.type} ${msg.id} ← extension (round-trip: ${Date.now() - msg.timestamp}ms)`)
+  annotationDbg('extension.to-frontend', msg, {
+    frontendId: pending.frontendId,
+    roundTripMs: Date.now() - msg.timestamp,
+  })
 
   const frontend = manager.getFrontend(pending.frontendId)
   if (frontend) {
