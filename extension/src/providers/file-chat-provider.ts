@@ -117,7 +117,7 @@ function normalizeMarkedLines(value: unknown): FileChatMarkedLine[] {
     .slice(0, 100)
 }
 
-function readFileChatConfig(): {
+export function readFileChatConfig(): {
   command: string
   stateRoot: string
   spawnProfile: string
@@ -125,8 +125,8 @@ function readFileChatConfig(): {
   const config = vscode.workspace.getConfiguration('codeViewer')
   const command = config.get<string>('tmuxAdapterCommand', 'tmux-adapter').trim() || 'tmux-adapter'
   const stateRoot = config.get<string>('tmuxAdapterStateRoot', '').trim() || DEFAULT_TMUX_ADAPTER_STATE_ROOT
-  const spawnProfile = config.get<string>('annotationSpawnProfile', 'code-viewer-codex-annotation').trim()
-    || 'code-viewer-codex-annotation'
+  const spawnProfile = config.get<string>('fileChatSpawnProfile', 'code-viewer-codex-file-chat').trim()
+    || 'code-viewer-codex-file-chat'
   return { command, stateRoot, spawnProfile }
 }
 

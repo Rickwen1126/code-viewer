@@ -21,6 +21,7 @@ import {
   buildFileChatPrompt,
   extractAssistantMessage,
   fileChatPaths,
+  readFileChatConfig,
   validateFileChatPath,
 } from '../providers/file-chat-provider'
 
@@ -31,6 +32,10 @@ const workspaceFolder = {
 } as any
 
 describe('file chat provider path helpers', () => {
+  it('uses an independent spawn profile by default', () => {
+    expect(readFileChatConfig().spawnProfile).toBe('code-viewer-codex-file-chat')
+  })
+
   it('uses the append-only current thread paths', () => {
     expect(fileChatPaths()).toEqual({
       threadId: 'current',

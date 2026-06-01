@@ -1,7 +1,7 @@
 # File-Aware Temporary Chat Plan
 
 Created: 2026-06-01 22:22
-Last Updated: 2026-06-01 23:15
+Last Updated: 2026-06-02 00:17
 Status: active plan; xhigh survey timed out, main-session recon integrated
 
 ## Goal
@@ -53,6 +53,10 @@ In scope for V1:
 - Message rendering for user question and assistant answer.
 - Automatic current-file context injection.
 - A simple Codex Spark request using `tmux-adapter`.
+- A dedicated Codex target/context via `codeViewer.fileChatSpawnProfile`
+  (`code-viewer-codex-file-chat` by default). This must stay separate from
+  annotation's `codeViewer.annotationSpawnProfile` so ad-hoc chat is not slowed
+  or semantically polluted by long annotation prompts.
 - Minimal run/debug metadata: generation/request id, binding id, target
   acquired state, elapsed time, and error message.
 
@@ -145,12 +149,16 @@ frontend file chat submit
   -> extension file chat provider
   -> read current file content from workspace
   -> build temporary chat prompt
-  -> tmux-adapter ensure-target
+  -> tmux-adapter ensure-target with fileChat spawn profile
   -> tmux-adapter send
   -> Codex appends assistant block to .codeviewer/chat-runs/current/thread.md
   -> frontend polls fileChat.status
   -> frontend reads/displays latest assistant block
 ```
+
+Large file-chat prompts can be tens of thousands of characters. The
+tmux-adapter client should use a longer submit delay for large pasted prompts
+so Codex does not receive an Enter key before the paste is fully settled.
 
 Pros:
 

@@ -5,6 +5,7 @@ import {
   normalizeEnsureTargetOutput,
   normalizeSendOutput,
   parseCommandSpec,
+  submitDelaySecondsFor,
 } from '../providers/tmux-adapter-client'
 
 describe('tmux-adapter client helpers', () => {
@@ -90,5 +91,11 @@ describe('tmux-adapter client helpers', () => {
   it('requires send confirmation', () => {
     expect(normalizeSendOutput({ sent: true })).toBe(true)
     expect(() => normalizeSendOutput({ sent: false })).toThrow(/sent: true/)
+  })
+
+  it('uses a longer submit delay for large pasted prompts', () => {
+    expect(submitDelaySecondsFor(10_000)).toBe('0.05')
+    expect(submitDelaySecondsFor(20_001)).toBe('0.25')
+    expect(submitDelaySecondsFor(50_001)).toBe('0.5')
   })
 })

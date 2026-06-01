@@ -325,6 +325,11 @@ Config additions in `extension/package.json`:
     "type": "string",
     "default": "code-viewer-codex-annotation",
     "description": "tmux-adapter spawn profile for annotation generation."
+  },
+  "codeViewer.fileChatSpawnProfile": {
+    "type": "string",
+    "default": "code-viewer-codex-file-chat",
+    "description": "tmux-adapter spawn profile for Ask About File chat. Keep this separate from annotation generation so chat does not share annotation context."
   }
 }
 ```

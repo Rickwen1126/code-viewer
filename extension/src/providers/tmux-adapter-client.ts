@@ -219,6 +219,12 @@ export async function ensureTarget(options: EnsureTargetOptions): Promise<TmuxAd
   return normalizeEnsureTargetOutput(parseJsonObject(stdout, 'tmux-adapter ensure-target'))
 }
 
+export function submitDelaySecondsFor(messageLength: number): string {
+  if (messageLength > 50_000) return '0.5'
+  if (messageLength > 20_000) return '0.25'
+  return '0.05'
+}
+
 export async function sendMessage(options: SendMessageOptions): Promise<true> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'code-viewer-annotation-'))
   const promptFile = path.join(tmpDir, 'prompt.txt')
@@ -233,7 +239,7 @@ export async function sendMessage(options: SendMessageOptions): Promise<true> {
       '--submit-enters',
       '1',
       '--submit-delay',
-      '0.05',
+      submitDelaySecondsFor(options.message.length),
     ])
     const { stdout } = await execFileAsync(options.command, args)
     return normalizeSendOutput(parseJsonObject(stdout, 'tmux-adapter send'))
