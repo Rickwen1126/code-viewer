@@ -283,6 +283,7 @@ export function CodeViewerPage() {
   const [fileChatButtonPos, setFileChatButtonPos] = useState({ right: 18, bottom: 18 })
   const [isMobileChat, setIsMobileChat] = useState(() => window.innerWidth <= 640)
   const fileChatMessagesRef = useRef<HTMLDivElement>(null)
+  const fileChatScrollTimersRef = useRef<number[]>([])
   const fileChatDragRef = useRef<{
     pointerId: number
     startX: number
@@ -308,6 +309,23 @@ export function CodeViewerPage() {
       ].some(value => value.toLowerCase().includes(normalizedFileChatSearch)))
     : fileChatMessages
 
+  const scrollFileChatToBottom = useCallback(() => {
+    const scrollNow = () => {
+      const container = fileChatMessagesRef.current
+      if (!container) return
+      container.scrollTop = container.scrollHeight
+    }
+    scrollNow()
+    window.requestAnimationFrame(() => {
+      scrollNow()
+      window.requestAnimationFrame(scrollNow)
+    })
+    fileChatScrollTimersRef.current.forEach(timer => window.clearTimeout(timer))
+    fileChatScrollTimersRef.current = [50, 150, 350].map(delay =>
+      window.setTimeout(scrollNow, delay),
+    )
+  }, [])
+
   useEffect(() => {
     const onResize = () => {
       setIsMobileChat(window.innerWidth <= 640)
@@ -319,16 +337,32 @@ export function CodeViewerPage() {
 
   useEffect(() => {
     if (!fileChatOpen) return
-    const scrollToBottom = () => {
-      const container = fileChatMessagesRef.current
-      if (!container) return
-      container.scrollTop = container.scrollHeight
+    scrollFileChatToBottom()
+  }, [
+    fileChatOpen,
+    fileChatMessages.length,
+    fileChatPhase,
+    fileChatError,
+    path,
+    visibleFileChatMessages.length,
+    scrollFileChatToBottom,
+  ])
+
+  useEffect(() => {
+    if (!fileChatOpen) return
+    const container = fileChatMessagesRef.current
+    if (!container || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => scrollFileChatToBottom())
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [fileChatOpen, scrollFileChatToBottom])
+
+  useEffect(() => {
+    return () => {
+      fileChatScrollTimersRef.current.forEach(timer => window.clearTimeout(timer))
+      fileChatScrollTimersRef.current = []
     }
-    window.requestAnimationFrame(() => {
-      scrollToBottom()
-      window.requestAnimationFrame(scrollToBottom)
-    })
-  }, [fileChatOpen, fileChatMessages.length, fileChatPhase, fileChatError, path, visibleFileChatMessages.length])
+  }, [])
 
   useEffect(() => {
     if (!fileChatOpen) return
@@ -1223,11 +1257,7 @@ export function CodeViewerPage() {
       )
       setFileChatMessages(parseFileChatThread(res.payload.threadText))
       setFileChatError(null)
-      window.requestAnimationFrame(() => {
-        const container = fileChatMessagesRef.current
-        if (!container) return
-        container.scrollTop = container.scrollHeight
-      })
+      scrollFileChatToBottom()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load file chat thread'
       setFileChatError(message)
@@ -2331,6 +2361,7 @@ export function CodeViewerPage() {
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
+            overflowAnchor: 'none',
           }}>
             {fileChatMessages.length === 0 ? (
               <div style={{ color: '#888', fontSize: 13, lineHeight: 1.5 }}>
