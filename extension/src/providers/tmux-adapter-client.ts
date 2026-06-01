@@ -1,4 +1,5 @@
 import { execFile } from 'child_process'
+import { existsSync } from 'fs'
 import * as fs from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
@@ -48,22 +49,62 @@ interface SendStdout {
   sent?: unknown
 }
 
-function execFileAsync(command: string, args: string[], cwd?: string): Promise<ExecFileResult> {
-  const commandSpec = parseCommandSpec(command)
+const DEFAULT_TMUX_ADAPTER_REPO = path.join(os.homedir(), 'code', 'tmux-adapter')
+
+interface ParsedCommandSpec {
+  command: string
+  args: string[]
+}
+
+function formatCommandFailure(
+  commandSpec: ParsedCommandSpec,
+  resolvedArgs: string[],
+  cwd: string | undefined,
+  error: Error,
+  stderr: string,
+): Error {
+  return new Error([
+    `${commandSpec.command} ${resolvedArgs.join(' ')} failed`,
+    `cwd=${cwd ?? process.cwd()}`,
+    error.message,
+    stderr ? `stderr=${stderr}` : '',
+  ].filter(Boolean).join('\n'))
+}
+
+function execFileAttempt(commandSpec: ParsedCommandSpec, args: string[], cwd?: string): Promise<ExecFileResult> {
   const resolvedArgs = [...commandSpec.args, ...args]
   return new Promise((resolve, reject) => {
     execFile(commandSpec.command, resolvedArgs, { cwd, timeout: 15000 }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error([
-          `${commandSpec.command} ${resolvedArgs.join(' ')} failed`,
-          `cwd=${cwd ?? process.cwd()}`,
-          error.message,
-          stderr ? `stderr=${stderr}` : '',
-        ].filter(Boolean).join('\n')))
+        reject(formatCommandFailure(commandSpec, resolvedArgs, cwd, error, String(stderr)))
         return
       }
       resolve({ stdout: String(stdout), stderr: String(stderr) })
     })
+  })
+}
+
+function errorLooksLikeMissingExecutable(error: unknown): boolean {
+  return error instanceof Error && /spawn .* ENOENT/.test(error.message)
+}
+
+export function getFallbackTmuxAdapterCommandSpec(commandSpec: ParsedCommandSpec): ParsedCommandSpec | null {
+  if (commandSpec.command !== 'tmux-adapter') return null
+  if (!existsSync(path.join(DEFAULT_TMUX_ADAPTER_REPO, 'pyproject.toml'))) return null
+  return {
+    command: 'uv',
+    args: ['--directory', DEFAULT_TMUX_ADAPTER_REPO, 'run', 'tmux-adapter', ...commandSpec.args],
+  }
+}
+
+function execFileAsync(command: string, args: string[], cwd?: string): Promise<ExecFileResult> {
+  const commandSpec = parseCommandSpec(command)
+  return execFileAttempt(commandSpec, args, cwd).catch(async (error) => {
+    const fallback = getFallbackTmuxAdapterCommandSpec(commandSpec)
+    if (!fallback || !errorLooksLikeMissingExecutable(error)) {
+      throw error
+    }
+    return execFileAttempt(fallback, args, cwd)
   })
 }
 

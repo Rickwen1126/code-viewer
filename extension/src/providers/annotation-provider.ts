@@ -1,3 +1,4 @@
+import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
 import type {
@@ -13,6 +14,7 @@ import { ensureTarget, sendMessage } from './tmux-adapter-client'
 
 const ANNOTATION_ROOT = '.codeviewer/annotated'
 const SPAWN_READY_DELAY_MS = 2500
+const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
 const EMPTY_VALIDATION: AnnotationArtifactValidation = { ok: false, diagnostics: [] }
 
 interface SafeAnnotationPath {
@@ -213,12 +215,12 @@ async function ensureAnnotationParent(annotationUri: vscode.Uri): Promise<void> 
 
 function readAnnotationConfig(): {
   command: string
-  stateRoot?: string
+  stateRoot: string
   spawnProfile: string
 } {
   const config = vscode.workspace.getConfiguration('codeViewer')
   const command = config.get<string>('tmuxAdapterCommand', 'tmux-adapter').trim() || 'tmux-adapter'
-  const stateRoot = config.get<string>('tmuxAdapterStateRoot', '').trim() || undefined
+  const stateRoot = config.get<string>('tmuxAdapterStateRoot', '').trim() || DEFAULT_TMUX_ADAPTER_STATE_ROOT
   const spawnProfile = config.get<string>('annotationSpawnProfile', 'code-viewer-codex-annotation').trim()
     || 'code-viewer-codex-annotation'
   return { command, stateRoot, spawnProfile }

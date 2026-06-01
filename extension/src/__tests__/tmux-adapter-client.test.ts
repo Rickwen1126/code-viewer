@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildTmuxAdapterArgs,
+  getFallbackTmuxAdapterCommandSpec,
   normalizeEnsureTargetOutput,
   normalizeSendOutput,
   parseCommandSpec,
@@ -19,6 +20,24 @@ describe('tmux-adapter client helpers', () => {
       command: 'tool',
       args: ['--path', '/tmp/with space', 'run'],
     })
+  })
+
+  it('builds a uv fallback when bare tmux-adapter is unavailable', () => {
+    expect(getFallbackTmuxAdapterCommandSpec(parseCommandSpec('tmux-adapter'))).toEqual({
+      command: 'uv',
+      args: ['--directory', '/Users/rickwen/code/tmux-adapter', 'run', 'tmux-adapter'],
+    })
+  })
+
+  it('preserves explicit tmux-adapter args when building the uv fallback', () => {
+    expect(getFallbackTmuxAdapterCommandSpec(parseCommandSpec('tmux-adapter --debug --json'))).toEqual({
+      command: 'uv',
+      args: ['--directory', '/Users/rickwen/code/tmux-adapter', 'run', 'tmux-adapter', '--debug', '--json'],
+    })
+  })
+
+  it('does not rewrite already-custom commands', () => {
+    expect(getFallbackTmuxAdapterCommandSpec(parseCommandSpec('uv --directory /tmp/tmux-adapter run tmux-adapter'))).toBeNull()
   })
 
   it('places global state-root before the subcommand', () => {
