@@ -7,9 +7,6 @@ Section source:
 - Plan: `docs/file-aware-chat/plan.md`
 - Code/Surface: `packages/shared/src/ws-types.ts`, `extension/src/providers/file-chat-provider.ts`, `extension/src/extension.ts`, `frontend/src/pages/files/code-viewer.tsx`
 
-- [ ] Build draggable Ask About File UI
-  - Code: `frontend/src/pages/files/code-viewer.tsx`
-  - Acceptance: desktop opens an appropriately sized floating panel or drawer; mobile opens a full-screen chat sheet; composer includes an icon button that inserts all marked reference lines as simple `L<line>: <content>` text.
 - [ ] Runtime verification with visual and data-level evidence
   - Acceptance: real VSIX/runtime smoke shows submit -> target spawned/reused -> pending -> ready -> answer displayed; `.codeviewer/chat-runs/current/thread.md` and `run.jsonl` contain the expected request; source diff remains empty; Playwright screenshots verify desktop/mobile layout and no overlap.
 

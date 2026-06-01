@@ -108,6 +108,28 @@ Section source:
   `extension/src/__tests__/annotation-provider.test.ts`; monorepo
   `pnpm -r typecheck`.
 
+## Completed: File Chat Frontend MVP @2026-06-01-2340
+
+Section source:
+
+- Plan: [docs/file-aware-chat/plan.md](./file-aware-chat/plan.md)
+- Code/Surface: `frontend/src/pages/files/code-viewer.tsx`
+
+- [x] Added a draggable floating Ask About File button on source-file views.
+- [x] Added desktop floating panel and mobile full-screen chat sheet behavior.
+- [x] Added file-scoped temporary message state, composer, submit/waiting/error
+  states, and answer rendering.
+- [x] Added marked-line insert button that injects selected line references as
+  simple `L<line>: <content>` text.
+- [x] Wired frontend submit to `fileChat.send` and polling to
+  `fileChat.status`.
+- [x] Added inline file chat debug display and Copy Debug action for request id,
+  thread path, run log path, and target metadata.
+- [x] Verification: `pnpm --dir frontend typecheck`; targeted Vitest
+  `packages/shared/src/__tests__/models.test.ts` +
+  `extension/src/__tests__/file-chat-provider.test.ts` +
+  `extension/src/__tests__/annotation-provider.test.ts`.
+
 ## Completed: Code Annotation Reliability Infrastructure @2026-05-21-2355
 
 Section source:

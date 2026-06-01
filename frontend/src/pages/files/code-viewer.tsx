@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type PointerEvent } from 'react'
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { generateId, wsClient } from '../../services/ws-client'
@@ -47,6 +47,10 @@ import type {
   AnnotationGenerateResultPayload,
   AnnotationStatusPayload,
   AnnotationStatusResultPayload,
+  FileChatSendPayload,
+  FileChatSendResultPayload,
+  FileChatStatusPayload,
+  FileChatStatusResultPayload,
   LspDefinitionResultPayload,
   LspReferencesResultPayload,
   LspDocumentSymbolResultPayload,
@@ -120,6 +124,7 @@ interface FileReturnState {
 
 type AnnotationMode = 'original' | 'annotated'
 type AnnotationPhase = 'idle' | 'submitting' | 'waiting' | 'ready' | 'error'
+type FileChatPhase = 'idle' | 'submitting' | 'waiting' | 'ready' | 'error'
 
 interface AnnotationDebugInfo {
   feature: 'annotation'
@@ -136,6 +141,23 @@ interface AnnotationDebugInfo {
   diagnostics?: string[]
   error?: string
   capturedAt: number
+}
+
+interface FileChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: number
+}
+
+interface FileChatRunInfo {
+  requestId: string
+  threadPath: string
+  runLogPath: string
+  submittedAt: number
+  target?: FileChatSendResultPayload['target']
+  state?: FileChatStatusResultPayload['state']
+  diagnostics?: string[]
 }
 
 function getFileReturnPosition(state: unknown): FileReturnPosition | null {
@@ -199,6 +221,22 @@ export function CodeViewerPage() {
   const [annotationSubmittedAt, setAnnotationSubmittedAt] = useState<number | null>(null)
   const [annotationDebugInfo, setAnnotationDebugInfo] = useState<AnnotationDebugInfo | null>(null)
   const annotationPollSeqRef = useRef(0)
+  const [fileChatOpen, setFileChatOpen] = useState(false)
+  const [fileChatPhase, setFileChatPhase] = useState<FileChatPhase>('idle')
+  const [fileChatQuestion, setFileChatQuestion] = useState('')
+  const [fileChatError, setFileChatError] = useState<string | null>(null)
+  const [fileChatMessages, setFileChatMessages] = useState<FileChatMessage[]>([])
+  const [fileChatRunInfo, setFileChatRunInfo] = useState<FileChatRunInfo | null>(null)
+  const [fileChatButtonPos, setFileChatButtonPos] = useState({ right: 18, bottom: 18 })
+  const [isMobileChat, setIsMobileChat] = useState(() => window.innerWidth <= 640)
+  const fileChatDragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    startRight: number
+    startBottom: number
+    moved: boolean
+  } | null>(null)
 
   const previewKind = getFilePreviewKind(path)
   const activeFilePath = annotationMode === 'annotated' && annotationExists && annotationPath
@@ -206,6 +244,12 @@ export function CodeViewerPage() {
     : path
   const isAnnotationView = activeFilePath !== path
   const isMarkdown = file?.languageId === 'markdown'
+
+  useEffect(() => {
+    const onResize = () => setIsMobileChat(window.innerWidth <= 640)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // References list state (T041)
   const [referencesOpen, setReferencesOpen] = useState(false)
@@ -398,6 +442,52 @@ export function CodeViewerPage() {
       .map(lineNum => `L${lineNum}: ${lines[lineNum - 1] ?? ''}`)
   }
 
+  function markedReferencePayload(): Array<{ line: number; content: string }> {
+    if (!file) return []
+    const lines = file.content.split('\n')
+    return Array.from(markedReferenceLines)
+      .sort((a, b) => a - b)
+      .map(lineNum => ({ line: lineNum, content: lines[lineNum - 1] ?? '' }))
+  }
+
+  function insertMarkedLinesIntoChat(): void {
+    const text = markedReferenceLineText().join('\n')
+    if (!text) return
+    setFileChatQuestion((current) => current.trim().length > 0 ? `${current.trimEnd()}\n\n${text}` : text)
+    setFileChatOpen(true)
+  }
+
+  function handleFileChatPointerDown(event: PointerEvent<HTMLButtonElement>): void {
+    fileChatDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRight: fileChatButtonPos.right,
+      startBottom: fileChatButtonPos.bottom,
+      moved: false,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handleFileChatPointerMove(event: PointerEvent<HTMLButtonElement>): void {
+    const drag = fileChatDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const dx = event.clientX - drag.startX
+    const dy = event.clientY - drag.startY
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true
+    if (!drag.moved) return
+    const nextRight = Math.max(8, Math.min(window.innerWidth - 56, drag.startRight - dx))
+    const nextBottom = Math.max(8, Math.min(window.innerHeight - 56, drag.startBottom - dy))
+    setFileChatButtonPos({ right: nextRight, bottom: nextBottom })
+  }
+
+  function handleFileChatPointerUp(event: PointerEvent<HTMLButtonElement>): void {
+    const drag = fileChatDragRef.current
+    fileChatDragRef.current = null
+    if (!drag || drag.pointerId !== event.pointerId) return
+    if (!drag.moved) setFileChatOpen(true)
+  }
+
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -472,6 +562,12 @@ export function CodeViewerPage() {
     setAnnotationGenerationId(null)
     setAnnotationSubmittedAt(null)
     setAnnotationDebugInfo(null)
+    setFileChatOpen(false)
+    setFileChatPhase('idle')
+    setFileChatQuestion('')
+    setFileChatError(null)
+    setFileChatMessages([])
+    setFileChatRunInfo(null)
   }, [path, previewKind])
 
   // Redirect to workspace selection if no workspace ever selected
@@ -960,6 +1056,127 @@ export function CodeViewerPage() {
         error: error instanceof Error ? error.message : 'Annotation request failed',
         capturedAt: Date.now(),
       })
+    }
+  }
+
+  async function pollFileChatStatus(sourcePath: string, requestId: string, submittedAt: number): Promise<void> {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise(resolve => window.setTimeout(resolve, attempt === 0 ? 900 : 1500))
+      try {
+        const res = await request<FileChatStatusPayload, FileChatStatusResultPayload>(
+          'fileChat.status',
+          { path: sourcePath, requestId, minUpdatedAt: submittedAt },
+          5000,
+        )
+        setFileChatRunInfo((current) => current?.requestId === requestId
+          ? {
+              ...current,
+              state: res.payload.state,
+              diagnostics: res.payload.diagnostics ?? [],
+            }
+          : current)
+        debugLog('fileChat', 'status.response', {
+          requestId,
+          path: res.payload.path,
+          threadPath: res.payload.threadPath,
+          runLogPath: res.payload.runLogPath,
+          ready: res.payload.ready,
+          state: res.payload.state,
+          diagnostics: res.payload.diagnostics ?? [],
+          attempt,
+        })
+        if (res.payload.ready && res.payload.latestAssistantMessage) {
+          setFileChatPhase('ready')
+          setFileChatError(null)
+          setFileChatMessages((messages) => {
+            if (messages.some(message => message.id === `${requestId}:assistant`)) return messages
+            return [
+              ...messages,
+              {
+                id: `${requestId}:assistant`,
+                role: 'assistant',
+                content: res.payload.latestAssistantMessage ?? '',
+                createdAt: Date.now(),
+              },
+            ]
+          })
+          showToast('File answer ready')
+          return
+        }
+      } catch (error) {
+        console.warn('[fileChat] poll.status.failed', {
+          sourcePath,
+          requestId,
+          attempt,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    setFileChatPhase('error')
+    setFileChatError('File chat answer did not become ready in time')
+  }
+
+  async function submitFileChatQuestion(): Promise<void> {
+    if (!path || !file || fileChatPhase === 'submitting' || fileChatPhase === 'waiting') return
+    const question = fileChatQuestion.trim()
+    if (!question) {
+      setFileChatError('Question is required')
+      return
+    }
+    const requestId = `file-chat-${generateId()}`
+    const markedLines = markedReferencePayload()
+    setFileChatPhase('submitting')
+    setFileChatError(null)
+    setFileChatMessages((messages) => [
+      ...messages,
+      {
+        id: `${requestId}:user`,
+        role: 'user',
+        content: question,
+        createdAt: Date.now(),
+      },
+    ])
+    setFileChatQuestion('')
+    debugLog('fileChat', 'send.start', {
+      requestId,
+      path,
+      markedLineCount: markedLines.length,
+    })
+    try {
+      const res = await request<FileChatSendPayload, FileChatSendResultPayload>(
+        'fileChat.send',
+        { path, question, requestId, markedLines },
+        30000,
+      )
+      setFileChatPhase('waiting')
+      setFileChatRunInfo({
+        requestId: res.payload.requestId,
+        threadPath: res.payload.threadPath,
+        runLogPath: res.payload.runLogPath,
+        submittedAt: res.payload.submittedAt,
+        target: res.payload.target,
+      })
+      debugLog('fileChat', 'send.submitted', {
+        requestId: res.payload.requestId,
+        path: res.payload.path,
+        threadPath: res.payload.threadPath,
+        runLogPath: res.payload.runLogPath,
+        target: res.payload.target,
+      })
+      showToast(`File chat ${res.payload.target.acquired}`)
+      void pollFileChatStatus(path, res.payload.requestId, res.payload.submittedAt)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'File chat request failed'
+      setFileChatPhase('error')
+      setFileChatError(message)
+      setFileChatRunInfo({
+        requestId,
+        threadPath: '.codeviewer/chat-runs/current/thread.md',
+        runLogPath: '.codeviewer/chat-runs/current/run.jsonl',
+        submittedAt: Date.now(),
+        diagnostics: [message],
+      })
+      console.error('[fileChat] send.failed', { path, requestId, message })
     }
   }
 
@@ -1810,6 +2027,248 @@ export function CodeViewerPage() {
             showToast(`Step added to "${tourEdit.tourTitle}"`)
           }}
         />
+      )}
+
+      {/* Ask About File */}
+      {!fileChatOpen && !isAnnotationView && (
+        <button
+          onPointerDown={handleFileChatPointerDown}
+          onPointerMove={handleFileChatPointerMove}
+          onPointerUp={handleFileChatPointerUp}
+          style={{
+            position: 'fixed',
+            right: fileChatButtonPos.right,
+            bottom: fileChatButtonPos.bottom,
+            width: 48,
+            height: 48,
+            borderRadius: '50%',
+            border: fileChatPhase === 'error' ? '1px solid #f48771' : '1px solid #569cd6',
+            background: fileChatPhase === 'waiting' || fileChatPhase === 'submitting' ? '#1f3442' : '#0e639c',
+            color: '#fff',
+            fontSize: 16,
+            fontWeight: 600,
+            cursor: 'grab',
+            zIndex: 70,
+            boxShadow: '0 8px 22px rgba(0,0,0,0.45)',
+            touchAction: 'none',
+          }}
+          title="Ask About File"
+        >
+          ?
+        </button>
+      )}
+
+      {fileChatOpen && !isAnnotationView && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: isMobileChat ? 0 : undefined,
+            right: isMobileChat ? undefined : 18,
+            bottom: isMobileChat ? undefined : 18,
+            width: isMobileChat ? '100vw' : 420,
+            height: isMobileChat ? '100dvh' : 'min(620px, calc(100vh - 36px))',
+            maxWidth: '100vw',
+            background: '#1e1e1e',
+            border: isMobileChat ? 'none' : '1px solid #444',
+            borderRadius: isMobileChat ? 0 : 8,
+            boxShadow: '0 12px 34px rgba(0,0,0,0.55)',
+            zIndex: 80,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 12px',
+            borderBottom: '1px solid #333',
+            flexShrink: 0,
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: '#d4d4d4', fontSize: 13, fontWeight: 600 }}>Ask About File</div>
+              <div style={{ color: '#888', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {fileName}
+              </div>
+            </div>
+            {fileChatPhase !== 'idle' && (
+              <span style={{
+                color: fileChatPhase === 'error' ? '#f48771' : '#9cdcfe',
+                background: fileChatPhase === 'error' ? '#3b1f1a' : '#1f3442',
+                borderRadius: 4,
+                padding: '2px 6px',
+                fontSize: 11,
+              }}>
+                {fileChatPhase}
+              </span>
+            )}
+            <button
+              onClick={() => setFileChatOpen(false)}
+              style={{
+                background: 'none',
+                border: '1px solid #444',
+                color: '#d4d4d4',
+                width: 28,
+                height: 28,
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={{
+            flex: 1,
+            overflow: 'auto',
+            padding: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}>
+            {fileChatMessages.length === 0 ? (
+              <div style={{ color: '#888', fontSize: 13, lineHeight: 1.5 }}>
+                Current file is attached automatically.
+              </div>
+            ) : (
+              fileChatMessages.map((message) => (
+                <div
+                  key={message.id}
+                  style={{
+                    alignSelf: message.role === 'user' ? 'flex-end' : 'stretch',
+                    maxWidth: message.role === 'user' ? '88%' : '100%',
+                    background: message.role === 'user' ? '#264f78' : '#252526',
+                    border: message.role === 'user' ? '1px solid #326a9d' : '1px solid #333',
+                    color: '#d4d4d4',
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {message.content}
+                </div>
+              ))
+            )}
+            {(fileChatPhase === 'submitting' || fileChatPhase === 'waiting') && (
+              <div style={{ color: '#9cdcfe', fontSize: 12 }}>
+                {fileChatPhase === 'submitting' ? 'Submitting...' : 'Waiting for answer...'}
+              </div>
+            )}
+            {fileChatError && (
+              <div style={{ color: '#f48771', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                {fileChatError}
+              </div>
+            )}
+            {fileChatRunInfo && (
+              <div style={{
+                color: '#888',
+                fontSize: 11,
+                borderTop: '1px solid #333',
+                paddingTop: 8,
+                lineHeight: 1.4,
+              }}>
+                <div>request: {fileChatRunInfo.requestId}</div>
+                <div>thread: {fileChatRunInfo.threadPath}</div>
+                <div>log: {fileChatRunInfo.runLogPath}</div>
+                {fileChatRunInfo.target && (
+                  <div>target: {fileChatRunInfo.target.acquired} {fileChatRunInfo.target.bindingId}</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #333', padding: 10, flexShrink: 0 }}>
+            <textarea
+              value={fileChatQuestion}
+              onChange={(event) => setFileChatQuestion(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                  event.preventDefault()
+                  void submitFileChatQuestion()
+                }
+              }}
+              rows={isMobileChat ? 4 : 3}
+              placeholder="Ask about this file"
+              style={{
+                width: '100%',
+                resize: 'vertical',
+                minHeight: 72,
+                maxHeight: 160,
+                boxSizing: 'border-box',
+                background: '#111',
+                border: '1px solid #444',
+                borderRadius: 6,
+                color: '#d4d4d4',
+                padding: 8,
+                fontSize: 13,
+                lineHeight: 1.45,
+                outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+              <button
+                onClick={insertMarkedLinesIntoChat}
+                disabled={markedReferenceLines.size === 0}
+                style={{
+                  width: 32,
+                  height: 30,
+                  borderRadius: 4,
+                  border: '1px solid #444',
+                  background: markedReferenceLines.size > 0 ? '#252526' : '#1b1b1b',
+                  color: markedReferenceLines.size > 0 ? '#9cdcfe' : '#666',
+                  cursor: markedReferenceLines.size > 0 ? 'pointer' : 'default',
+                }}
+                title="Insert marked lines"
+              >
+                +
+              </button>
+              <button
+                onClick={() => {
+                  if (fileChatRunInfo) {
+                    copyToClipboard(JSON.stringify(fileChatRunInfo, null, 2))
+                    showToast('File chat debug info copied')
+                  }
+                }}
+                disabled={!fileChatRunInfo}
+                style={{
+                  height: 30,
+                  padding: '0 8px',
+                  borderRadius: 4,
+                  border: '1px solid #444',
+                  background: fileChatRunInfo ? '#252526' : '#1b1b1b',
+                  color: fileChatRunInfo ? '#d4d4d4' : '#666',
+                  cursor: fileChatRunInfo ? 'pointer' : 'default',
+                  fontSize: 12,
+                }}
+              >
+                Debug
+              </button>
+              <button
+                onClick={() => void submitFileChatQuestion()}
+                disabled={fileChatPhase === 'submitting' || fileChatPhase === 'waiting' || fileChatQuestion.trim().length === 0}
+                style={{
+                  marginLeft: 'auto',
+                  height: 30,
+                  padding: '0 12px',
+                  borderRadius: 4,
+                  border: '1px solid #0e639c',
+                  background: fileChatPhase === 'submitting' || fileChatPhase === 'waiting' || fileChatQuestion.trim().length === 0 ? '#333' : '#0e639c',
+                  color: fileChatPhase === 'submitting' || fileChatPhase === 'waiting' || fileChatQuestion.trim().length === 0 ? '#888' : '#fff',
+                  cursor: fileChatPhase === 'submitting' || fileChatPhase === 'waiting' || fileChatQuestion.trim().length === 0 ? 'default' : 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast */}
