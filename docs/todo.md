@@ -1,15 +1,5 @@
 # Code Viewer — Active Todo
 
-## P1: File-Aware Chat MVP @2026-06-01-2315
-
-Section source:
-
-- Plan: `docs/file-aware-chat/plan.md`
-- Code/Surface: `packages/shared/src/ws-types.ts`, `extension/src/providers/file-chat-provider.ts`, `extension/src/extension.ts`, `frontend/src/pages/files/code-viewer.tsx`
-
-- [ ] Runtime verification with visual and data-level evidence
-  - Acceptance: real VSIX/runtime smoke shows submit -> target spawned/reused -> pending -> ready -> answer displayed; `.codeviewer/chat-runs/current/thread.md` and `run.jsonl` contain the expected request; source diff remains empty; Playwright screenshots verify desktop/mobile layout and no overlap.
-
 ## P1: Known Improvements @2026-05-12-1635
 
 Section source:

@@ -130,6 +130,43 @@ Section source:
   `extension/src/__tests__/file-chat-provider.test.ts` +
   `extension/src/__tests__/annotation-provider.test.ts`.
 
+## Completed: File Chat Runtime Verification @2026-06-01-2349
+
+Section source:
+
+- Plan: [docs/file-aware-chat/plan.md](./file-aware-chat/plan.md)
+- Code/Surface: installed VSIX `code-viewer-extension@0.0.6`, backend `4800`,
+  frontend `4801`, real VS Code extension host, Playwright iPhone viewport
+  `390x844`
+
+- [x] Rebuilt and packaged VSIX with bundled layout only:
+  `extension/package.json` and `extension/dist/extension.js`.
+- [x] Installed VSIX `code-viewer-extension-0.0.6.vsix`; installation check
+  showed `undefined_publisher.code-viewer-extension@0.0.6`.
+- [x] Fresh-started backend `4800` and frontend `4801` after confirming stale
+  listeners belonged to code-viewer.
+- [x] Launched real VS Code extension host and verified backend authority:
+  code-viewer workspace connected with `extensionVersion=0.0.6`.
+- [x] Playwright mobile smoke opened `packages/shared/src/ws-types.ts`, opened
+  Ask About File, submitted a question, and visually verified the mobile
+  full-screen chat progressed to `ready` with an assistant answer rendered.
+- [x] Data-level proof: `.codeviewer/chat-runs/current/thread.md` contained the
+  matching user and assistant blocks; `.codeviewer/chat-runs/current/run.jsonl`
+  contained `tmux.ensureTarget.done`, `tmux.send.done`,
+  `extension.fileChat.status.pending`, and `extension.fileChat.status.ready`.
+- [x] Verified source integrity with `git diff -- packages/shared/src/ws-types.ts`
+  empty after file chat execution.
+- [x] Playwright marked-line smoke tapped a line number, opened Ask About File,
+  clicked the insert button, and visually verified the composer contained a
+  simple `L7: id: string` reference line.
+- [x] Screenshots and proof files:
+  `/private/tmp/code-viewer-file-chat-smoke/01-workspaces.png`,
+  `/private/tmp/code-viewer-file-chat-smoke/02-file-view.png`,
+  `/private/tmp/code-viewer-file-chat-smoke/03-chat-open.png`,
+  `/private/tmp/code-viewer-file-chat-smoke/04-chat-submitted.png`,
+  `/private/tmp/code-viewer-file-chat-smoke/05-marked-line-insert.png`,
+  `/private/tmp/code-viewer-file-chat-smoke/console.json`.
+
 ## Completed: Code Annotation Reliability Infrastructure @2026-05-21-2355
 
 Section source:
