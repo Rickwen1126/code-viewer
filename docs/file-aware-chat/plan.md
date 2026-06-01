@@ -1,7 +1,7 @@
 # File-Aware Temporary Chat Plan
 
 Created: 2026-06-01 22:22
-Last Updated: 2026-06-02 00:17
+Last Updated: 2026-06-02 01:25
 Status: active plan; xhigh survey timed out, main-session recon integrated
 
 ## Goal
@@ -52,6 +52,11 @@ In scope for V1:
 - Prompt composer with submit, loading, error, and retry/resend affordance.
 - Message rendering for user question and assistant answer.
 - Automatic current-file context injection.
+- Workspace-level current thread loading in the chat UI:
+  `.codeviewer/chat-runs/current/thread.md` is the UI history source.
+- Archive/New Chat action that moves current artifacts under
+  `.codeviewer/chat-runs/archive/<timestamp>/` and resets current.
+- Keyword search over visible thread messages.
 - A simple Codex Spark request using `tmux-adapter`.
 - A dedicated Codex target/context via `codeViewer.fileChatSpawnProfile`
   (`code-viewer-codex-file-chat` by default). This must stay separate from
@@ -62,7 +67,6 @@ In scope for V1:
 
 Out of scope for V1:
 
-- Persistent chat history across app reloads.
 - Multi-file retrieval or semantic search.
 - Project-wide agent planning.
 - Streaming UI unless it is almost free from the borrowed UI pattern.
@@ -155,6 +159,12 @@ frontend file chat submit
   -> frontend polls fileChat.status
   -> frontend reads/displays latest assistant block
 ```
+
+The prompt intentionally does **not** include the whole `thread.md`. Codex's
+persistent file-chat target can naturally preserve short-term continuity, while
+`thread.md` remains the durable UI/recovery artifact. Sending both full thread
+history and relying on session memory would double-count context and make large
+files more likely to hit context pressure.
 
 Large file-chat prompts can be tens of thousands of characters. The
 tmux-adapter client should use a longer submit delay for large pasted prompts

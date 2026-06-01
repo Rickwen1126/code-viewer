@@ -16,6 +16,10 @@ import {
   MSG_FILE_CHAT_SEND_RESULT,
   MSG_FILE_CHAT_STATUS,
   MSG_FILE_CHAT_STATUS_RESULT,
+  MSG_FILE_CHAT_THREAD,
+  MSG_FILE_CHAT_THREAD_RESULT,
+  MSG_FILE_CHAT_ARCHIVE,
+  MSG_FILE_CHAT_ARCHIVE_RESULT,
   MSG_LSP_HOVER,
   MSG_LSP_HOVER_RESULT,
   MSG_LSP_DEFINITION,
@@ -239,6 +243,10 @@ describe('message type constants — file chat domain', () => {
     expect(MSG_FILE_CHAT_SEND_RESULT).toBe('fileChat.send.result')
     expect(MSG_FILE_CHAT_STATUS).toBe('fileChat.status')
     expect(MSG_FILE_CHAT_STATUS_RESULT).toBe('fileChat.status.result')
+    expect(MSG_FILE_CHAT_THREAD).toBe('fileChat.thread')
+    expect(MSG_FILE_CHAT_THREAD_RESULT).toBe('fileChat.thread.result')
+    expect(MSG_FILE_CHAT_ARCHIVE).toBe('fileChat.archive')
+    expect(MSG_FILE_CHAT_ARCHIVE_RESULT).toBe('fileChat.archive.result')
   })
 })
 

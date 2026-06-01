@@ -17,6 +17,12 @@ function isAnnotationMessage(type: string): boolean {
     || type === 'fileChat.status'
     || type === 'fileChat.status.result'
     || type === 'fileChat.status.error'
+    || type === 'fileChat.thread'
+    || type === 'fileChat.thread.result'
+    || type === 'fileChat.thread.error'
+    || type === 'fileChat.archive'
+    || type === 'fileChat.archive.result'
+    || type === 'fileChat.archive.error'
 }
 
 function annotationPathFromPayload(payload: unknown): string | undefined {

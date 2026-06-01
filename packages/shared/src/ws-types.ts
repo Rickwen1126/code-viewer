@@ -71,6 +71,10 @@ export const MSG_FILE_CHAT_SEND = 'fileChat.send' as const
 export const MSG_FILE_CHAT_SEND_RESULT = 'fileChat.send.result' as const
 export const MSG_FILE_CHAT_STATUS = 'fileChat.status' as const
 export const MSG_FILE_CHAT_STATUS_RESULT = 'fileChat.status.result' as const
+export const MSG_FILE_CHAT_THREAD = 'fileChat.thread' as const
+export const MSG_FILE_CHAT_THREAD_RESULT = 'fileChat.thread.result' as const
+export const MSG_FILE_CHAT_ARCHIVE = 'fileChat.archive' as const
+export const MSG_FILE_CHAT_ARCHIVE_RESULT = 'fileChat.archive.result' as const
 
 // LSP domain
 export const MSG_LSP_HOVER = 'lsp.hover' as const
@@ -395,6 +399,33 @@ export interface FileChatStatusResultPayload {
   latestAssistantMessage?: string
   diagnostics?: string[]
   updatedAt?: number
+}
+
+export interface FileChatThreadPayload {
+  threadId?: string
+}
+
+export interface FileChatThreadResultPayload {
+  threadId: string
+  manifestPath: string
+  threadPath: string
+  runLogPath: string
+  threadText: string
+  exists: boolean
+  updatedAt?: number
+}
+
+export interface FileChatArchivePayload {
+  threadId?: string
+}
+
+export interface FileChatArchiveResultPayload {
+  threadId: string
+  archivedAt: number
+  archivePath: string
+  manifestPath: string
+  threadPath: string
+  runLogPath: string
 }
 
 // LSP

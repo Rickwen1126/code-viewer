@@ -3,7 +3,12 @@ import type { WsMessage, WatchSetPayload } from '@code-viewer/shared'
 import { WsClient, createMessage } from './ws/client'
 import { handleFileTree, handleFileRead, handleFilePreview } from './providers/file-provider'
 import { handleAnnotationGenerate, handleAnnotationStatus } from './providers/annotation-provider'
-import { handleFileChatSend, handleFileChatStatus } from './providers/file-chat-provider'
+import {
+  handleFileChatArchive,
+  handleFileChatSend,
+  handleFileChatStatus,
+  handleFileChatThread,
+} from './providers/file-chat-provider'
 import { handleLspHover, handleLspDefinition, handleLspReferences, handleLspDocumentSymbol } from './providers/lsp-provider'
 import { handleGitStatus, handleGitDiff, handleGitLog, handleGitCommitFiles } from './providers/git-provider'
 import {
@@ -55,6 +60,8 @@ const handlers: Record<string, Handler> = {
   'annotation.status': handleAnnotationStatus,
   'fileChat.send': handleFileChatSend,
   'fileChat.status': handleFileChatStatus,
+  'fileChat.thread': handleFileChatThread,
+  'fileChat.archive': handleFileChatArchive,
   'lsp.hover': handleLspHover,
   'lsp.definition': handleLspDefinition,
   'lsp.references': handleLspReferences,

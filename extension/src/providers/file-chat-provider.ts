@@ -3,6 +3,7 @@ import * as path from 'path'
 import * as vscode from 'vscode'
 import type {
   FileChatMarkedLine,
+  FileChatThreadResultPayload,
   FileChatSendPayload,
   FileChatStatusPayload,
   RunEvent,
@@ -13,6 +14,7 @@ import { debugLog } from '../utils/debug'
 import { ensureTarget, sendMessage } from './tmux-adapter-client'
 
 const CHAT_ROOT = '.codeviewer/chat-runs/current'
+const CHAT_ARCHIVE_ROOT = '.codeviewer/chat-runs/archive'
 const CHAT_THREAD_ID = 'current'
 const CHAT_MANIFEST_PATH = `${CHAT_ROOT}/manifest.json`
 const CHAT_THREAD_PATH = `${CHAT_ROOT}/thread.md`
@@ -170,6 +172,43 @@ async function appendWorkspaceText(workspaceFolder: vscode.WorkspaceFolder, rela
   await writeWorkspaceText(workspaceFolder, relativePath, `${existing ?? ''}${text}`)
 }
 
+function safeArchiveSegment(date = new Date()): string {
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+}
+
+async function pathExists(workspaceFolder: vscode.WorkspaceFolder, relativePath: string): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, relativePath)))
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function copyWorkspaceFileIfExists(
+  workspaceFolder: vscode.WorkspaceFolder,
+  fromRelativePath: string,
+  toRelativePath: string,
+): Promise<void> {
+  const source = await readWorkspaceText(workspaceFolder, fromRelativePath)
+  if (source === null) return
+  await writeWorkspaceText(workspaceFolder, toRelativePath, source)
+}
+
+async function resetCurrentThread(workspaceFolder: vscode.WorkspaceFolder, archivedAt: number): Promise<void> {
+  await ensureChatDirectory(workspaceFolder)
+  await writeWorkspaceText(workspaceFolder, CHAT_THREAD_PATH, '')
+  await writeWorkspaceText(workspaceFolder, CHAT_RUN_LOG_PATH, '')
+  await writeWorkspaceText(workspaceFolder, CHAT_MANIFEST_PATH, `${JSON.stringify({
+    version: 1,
+    threadId: CHAT_THREAD_ID,
+    resetAt: archivedAt,
+    manifestPath: CHAT_MANIFEST_PATH,
+    threadPath: CHAT_THREAD_PATH,
+    runLogPath: CHAT_RUN_LOG_PATH,
+  }, null, 2)}\n`)
+}
+
 async function recordFileChatEvent(
   workspaceFolder: vscode.WorkspaceFolder,
   event: Omit<RunEvent, 'version' | 'feature' | 'timestamp' | 'runLogPath' | 'threadPath' | 'threadId'>,
@@ -224,6 +263,31 @@ function userBlock(requestId: string, relativePath: string, question: string, ma
     question,
     '',
   ].join('\n')
+}
+
+async function readThreadSnapshot(workspaceFolder: vscode.WorkspaceFolder): Promise<FileChatThreadResultPayload> {
+  const threadUri = vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, CHAT_THREAD_PATH))
+  try {
+    const stat = await vscode.workspace.fs.stat(threadUri)
+    return {
+      threadId: CHAT_THREAD_ID,
+      manifestPath: CHAT_MANIFEST_PATH,
+      threadPath: CHAT_THREAD_PATH,
+      runLogPath: CHAT_RUN_LOG_PATH,
+      threadText: readText(await vscode.workspace.fs.readFile(threadUri)),
+      exists: true,
+      updatedAt: stat.mtime,
+    }
+  } catch {
+    return {
+      threadId: CHAT_THREAD_ID,
+      manifestPath: CHAT_MANIFEST_PATH,
+      threadPath: CHAT_THREAD_PATH,
+      runLogPath: CHAT_RUN_LOG_PATH,
+      threadText: '',
+      exists: false,
+    }
+  }
 }
 
 export function extractAssistantMessage(threadText: string, requestId: string): string | undefined {
@@ -590,6 +654,67 @@ export async function handleFileChatStatus(
       elapsedMs: Date.now() - startedAt,
       error: error instanceof Error ? { message, stack: error.stack } : { message },
     })
+    sendError(msg.type, msg.id, sendResponse, 'INVALID_REQUEST', message)
+  }
+}
+
+export async function handleFileChatThread(
+  msg: WsMessage,
+  sendResponse: (msg: WsMessage) => void,
+): Promise<void> {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) {
+    sendError(msg.type, msg.id, sendResponse, 'NOT_FOUND', 'No workspace open')
+    return
+  }
+
+  try {
+    sendResponse(createMessage('fileChat.thread.result', await readThreadSnapshot(workspaceFolder), msg.id))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    sendError(msg.type, msg.id, sendResponse, 'INVALID_REQUEST', message)
+  }
+}
+
+export async function handleFileChatArchive(
+  msg: WsMessage,
+  sendResponse: (msg: WsMessage) => void,
+): Promise<void> {
+  const startedAt = Date.now()
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+  if (!workspaceFolder) {
+    sendError(msg.type, msg.id, sendResponse, 'NOT_FOUND', 'No workspace open')
+    return
+  }
+
+  try {
+    const archivedAt = Date.now()
+    const segment = safeArchiveSegment(new Date(archivedAt))
+    const archivePath = `${CHAT_ARCHIVE_ROOT}/${segment}`
+    await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, archivePath)))
+    const hadThread = await pathExists(workspaceFolder, CHAT_THREAD_PATH)
+    await copyWorkspaceFileIfExists(workspaceFolder, CHAT_THREAD_PATH, `${archivePath}/thread.md`)
+    await copyWorkspaceFileIfExists(workspaceFolder, CHAT_MANIFEST_PATH, `${archivePath}/manifest.json`)
+    await copyWorkspaceFileIfExists(workspaceFolder, CHAT_RUN_LOG_PATH, `${archivePath}/run.jsonl`)
+    await resetCurrentThread(workspaceFolder, archivedAt)
+    await recordFileChatEvent(workspaceFolder, {
+      phase: 'extension.fileChat.archive.done',
+      level: 'info',
+      requestId: msg.id,
+      path: archivePath,
+      elapsedMs: Date.now() - startedAt,
+      data: { archivePath, hadThread },
+    })
+    sendResponse(createMessage('fileChat.archive.result', {
+      threadId: CHAT_THREAD_ID,
+      archivedAt,
+      archivePath,
+      manifestPath: CHAT_MANIFEST_PATH,
+      threadPath: CHAT_THREAD_PATH,
+      runLogPath: CHAT_RUN_LOG_PATH,
+    }, msg.id))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     sendError(msg.type, msg.id, sendResponse, 'INVALID_REQUEST', message)
   }
 }

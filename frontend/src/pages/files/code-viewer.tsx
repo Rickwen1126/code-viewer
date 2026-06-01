@@ -51,6 +51,8 @@ import type {
   FileChatSendResultPayload,
   FileChatStatusPayload,
   FileChatStatusResultPayload,
+  FileChatThreadResultPayload,
+  FileChatArchiveResultPayload,
   LspDefinitionResultPayload,
   LspReferencesResultPayload,
   LspDocumentSymbolResultPayload,
@@ -148,16 +150,66 @@ interface FileChatMessage {
   role: 'user' | 'assistant'
   content: string
   createdAt: number
+  requestId?: string
+  filePath?: string
 }
 
 interface FileChatRunInfo {
   requestId: string
+  path?: string
   threadPath: string
   runLogPath: string
   submittedAt: number
   target?: FileChatSendResultPayload['target']
   state?: FileChatStatusResultPayload['state']
   diagnostics?: string[]
+}
+
+function parseFileChatThread(threadText: string): FileChatMessage[] {
+  const headerPattern = /^## (User|Assistant) requestId=([^\n]+)\s*$/gm
+  const headers = Array.from(threadText.matchAll(headerPattern))
+  const requestFileMap = new Map<string, string>()
+  const messages: FileChatMessage[] = []
+  let lastFilePath: string | undefined
+
+  headers.forEach((match, index) => {
+    const roleLabel = match[1]
+    const requestId = match[2].trim()
+    const bodyStart = match.index! + match[0].length
+    const bodyEnd = index + 1 < headers.length ? headers[index + 1].index! : threadText.length
+    const body = threadText.slice(bodyStart, bodyEnd).trim()
+
+    if (roleLabel === 'User') {
+      const fileMatch = /^File:\s*(.+)$/m.exec(body)
+      const filePath = fileMatch?.[1]?.trim()
+      if (filePath) {
+        requestFileMap.set(requestId, filePath)
+        lastFilePath = filePath
+      }
+      const questionMatch = /(?:^|\n)Question:\s*\n+([\s\S]*)$/m.exec(body)
+      const content = (questionMatch?.[1] ?? body).trim()
+      messages.push({
+        id: `${requestId}:user:${index}`,
+        role: 'user',
+        content,
+        createdAt: 0,
+        requestId,
+        filePath,
+      })
+      return
+    }
+
+    messages.push({
+      id: `${requestId}:assistant:${index}`,
+      role: 'assistant',
+      content: body,
+      createdAt: 0,
+      requestId,
+      filePath: requestFileMap.get(requestId) ?? lastFilePath,
+    })
+  })
+
+  return messages
 }
 
 function getFileReturnPosition(state: unknown): FileReturnPosition | null {
@@ -227,6 +279,7 @@ export function CodeViewerPage() {
   const [fileChatError, setFileChatError] = useState<string | null>(null)
   const [fileChatMessages, setFileChatMessages] = useState<FileChatMessage[]>([])
   const [fileChatRunInfo, setFileChatRunInfo] = useState<FileChatRunInfo | null>(null)
+  const [fileChatSearch, setFileChatSearch] = useState('')
   const [fileChatButtonPos, setFileChatButtonPos] = useState({ right: 18, bottom: 18 })
   const [isMobileChat, setIsMobileChat] = useState(() => window.innerWidth <= 640)
   const fileChatMessagesRef = useRef<HTMLDivElement>(null)
@@ -245,12 +298,24 @@ export function CodeViewerPage() {
     : path
   const isAnnotationView = activeFilePath !== path
   const isMarkdown = file?.languageId === 'markdown'
+  const desktopFileChatPanelHeight = Math.min(620, Math.max(320, window.innerHeight - 36))
+  const normalizedFileChatSearch = fileChatSearch.trim().toLowerCase()
+  const visibleFileChatMessages = normalizedFileChatSearch
+    ? fileChatMessages.filter(message => [
+        message.content,
+        message.filePath ?? '',
+        message.requestId ?? '',
+      ].some(value => value.toLowerCase().includes(normalizedFileChatSearch)))
+    : fileChatMessages
 
   useEffect(() => {
-    const onResize = () => setIsMobileChat(window.innerWidth <= 640)
+    const onResize = () => {
+      setIsMobileChat(window.innerWidth <= 640)
+      setFileChatButtonPos(current => clampFileChatPosition(current, fileChatOpen))
+    }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [])
+  }, [fileChatOpen])
 
   useEffect(() => {
     if (!fileChatOpen) return
@@ -260,6 +325,14 @@ export function CodeViewerPage() {
       container.scrollTop = container.scrollHeight
     })
   }, [fileChatOpen, fileChatMessages.length, fileChatPhase, fileChatError])
+
+  useEffect(() => {
+    if (!fileChatOpen) return
+    void loadFileChatThread()
+    if (!isMobileChat) {
+      setFileChatButtonPos(current => clampFileChatPosition(current, true))
+    }
+  }, [fileChatOpen])
 
   // References list state (T041)
   const [referencesOpen, setReferencesOpen] = useState(false)
@@ -467,6 +540,18 @@ export function CodeViewerPage() {
     setFileChatOpen(true)
   }
 
+  function clampFileChatPosition(
+    pos: { right: number; bottom: number },
+    panelOpen: boolean,
+  ): { right: number; bottom: number } {
+    const width = panelOpen && !isMobileChat ? 420 : 56
+    const height = panelOpen && !isMobileChat ? desktopFileChatPanelHeight : 56
+    return {
+      right: Math.max(0, Math.min(Math.max(0, window.innerWidth - width), pos.right)),
+      bottom: Math.max(0, Math.min(Math.max(0, window.innerHeight - height), pos.bottom)),
+    }
+  }
+
   function handleFileChatPointerDown(event: PointerEvent<HTMLElement>): void {
     if (isMobileChat && fileChatOpen) return
     fileChatDragRef.current = {
@@ -487,9 +572,10 @@ export function CodeViewerPage() {
     const dy = event.clientY - drag.startY
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true
     if (!drag.moved) return
-    const nextRight = Math.max(8, Math.min(window.innerWidth - 56, drag.startRight - dx))
-    const nextBottom = Math.max(8, Math.min(window.innerHeight - 56, drag.startBottom - dy))
-    setFileChatButtonPos({ right: nextRight, bottom: nextBottom })
+    setFileChatButtonPos(clampFileChatPosition({
+      right: drag.startRight - dx,
+      bottom: drag.startBottom - dy,
+    }, fileChatOpen))
   }
 
   function handleFileChatPointerUp(event: PointerEvent<HTMLElement>): void {
@@ -573,12 +659,7 @@ export function CodeViewerPage() {
     setAnnotationGenerationId(null)
     setAnnotationSubmittedAt(null)
     setAnnotationDebugInfo(null)
-    setFileChatOpen(false)
-    setFileChatPhase('idle')
     setFileChatQuestion('')
-    setFileChatError(null)
-    setFileChatMessages([])
-    setFileChatRunInfo(null)
   }, [path, previewKind])
 
   // Redirect to workspace selection if no workspace ever selected
@@ -1108,6 +1189,8 @@ export function CodeViewerPage() {
                 role: 'assistant',
                 content: res.payload.latestAssistantMessage ?? '',
                 createdAt: Date.now(),
+                requestId,
+                filePath: res.payload.path,
               },
             ]
           })
@@ -1125,6 +1208,48 @@ export function CodeViewerPage() {
     }
     setFileChatPhase('error')
     setFileChatError('File chat answer did not become ready in time')
+  }
+
+  async function loadFileChatThread(): Promise<void> {
+    try {
+      const res = await request<Record<string, never>, FileChatThreadResultPayload>(
+        'fileChat.thread',
+        {},
+        5000,
+      )
+      setFileChatMessages(parseFileChatThread(res.payload.threadText))
+      setFileChatError(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load file chat thread'
+      setFileChatError(message)
+      console.warn('[fileChat] thread.load.failed', { message })
+    }
+  }
+
+  async function archiveFileChatThread(): Promise<void> {
+    try {
+      const res = await request<Record<string, never>, FileChatArchiveResultPayload>(
+        'fileChat.archive',
+        {},
+        10000,
+      )
+      setFileChatMessages([])
+      setFileChatRunInfo({
+        requestId: 'archive',
+        threadPath: res.payload.threadPath,
+        runLogPath: res.payload.runLogPath,
+        submittedAt: res.payload.archivedAt,
+        diagnostics: [`archived to ${res.payload.archivePath}`],
+      })
+      setFileChatPhase('idle')
+      setFileChatError(null)
+      setFileChatSearch('')
+      showToast('Chat archived')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to archive chat'
+      setFileChatError(message)
+      console.warn('[fileChat] archive.failed', { message })
+    }
   }
 
   async function submitFileChatQuestion(): Promise<void> {
@@ -1145,6 +1270,8 @@ export function CodeViewerPage() {
         role: 'user',
         content: question,
         createdAt: Date.now(),
+        requestId,
+        filePath: path,
       },
     ])
     setFileChatQuestion('')
@@ -1162,6 +1289,7 @@ export function CodeViewerPage() {
       setFileChatPhase('waiting')
       setFileChatRunInfo({
         requestId: res.payload.requestId,
+        path: res.payload.path,
         threadPath: res.payload.threadPath,
         runLogPath: res.payload.runLogPath,
         submittedAt: res.payload.submittedAt,
@@ -1182,6 +1310,7 @@ export function CodeViewerPage() {
       setFileChatError(message)
       setFileChatRunInfo({
         requestId,
+        path,
         threadPath: '.codeviewer/chat-runs/current/thread.md',
         runLogPath: '.codeviewer/chat-runs/current/run.jsonl',
         submittedAt: Date.now(),
@@ -2126,6 +2255,22 @@ export function CodeViewerPage() {
               </span>
             )}
             <button
+              onClick={() => void archiveFileChatThread()}
+              style={{
+                background: '#252526',
+                border: '1px solid #444',
+                color: '#d4d4d4',
+                height: 28,
+                borderRadius: 4,
+                padding: '0 8px',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+              title="Archive current chat and start a new one"
+            >
+              New
+            </button>
+            <button
               onClick={() => setFileChatOpen(false)}
               style={{
                 background: 'none',
@@ -2142,6 +2287,34 @@ export function CodeViewerPage() {
             </button>
           </div>
 
+          <div style={{
+            borderBottom: '1px solid #333',
+            padding: '8px 12px',
+            flexShrink: 0,
+          }}>
+            <input
+              value={fileChatSearch}
+              onChange={(event) => setFileChatSearch(event.target.value)}
+              placeholder="Search this thread"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                background: '#111',
+                border: '1px solid #444',
+                borderRadius: 5,
+                color: '#d4d4d4',
+                padding: '6px 8px',
+                fontSize: 12,
+                outline: 'none',
+              }}
+            />
+            {normalizedFileChatSearch && (
+              <div style={{ color: '#888', fontSize: 11, marginTop: 4 }}>
+                {visibleFileChatMessages.length} match{visibleFileChatMessages.length === 1 ? '' : 'es'}
+              </div>
+            )}
+          </div>
+
           <div ref={fileChatMessagesRef} style={{
             flex: 1,
             overflow: 'auto',
@@ -2154,8 +2327,12 @@ export function CodeViewerPage() {
               <div style={{ color: '#888', fontSize: 13, lineHeight: 1.5 }}>
                 Current file is attached automatically.
               </div>
+            ) : visibleFileChatMessages.length === 0 ? (
+              <div style={{ color: '#888', fontSize: 13, lineHeight: 1.5 }}>
+                No matching messages.
+              </div>
             ) : (
-              fileChatMessages.map((message) => (
+              visibleFileChatMessages.map((message) => (
                 <div
                   key={message.id}
                   style={{
@@ -2171,7 +2348,23 @@ export function CodeViewerPage() {
                     whiteSpace: message.role === 'user' ? 'pre-wrap' : undefined,
                     wordBreak: 'break-word',
                   }}
+                  title={[
+                    message.filePath ? `file: ${message.filePath}` : '',
+                    message.requestId ? `request: ${message.requestId}` : '',
+                  ].filter(Boolean).join('\n')}
                 >
+                  {message.filePath && (
+                    <div style={{
+                      color: message.role === 'user' ? '#c7dff5' : '#888',
+                      fontSize: 11,
+                      marginBottom: 4,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {message.filePath}
+                    </div>
+                  )}
                   {message.role === 'assistant' ? (
                     <MarkdownRenderer
                       content={message.content}
@@ -2193,22 +2386,6 @@ export function CodeViewerPage() {
             {fileChatError && (
               <div style={{ color: '#f48771', fontSize: 12, whiteSpace: 'pre-wrap' }}>
                 {fileChatError}
-              </div>
-            )}
-            {fileChatRunInfo && (
-              <div style={{
-                color: '#888',
-                fontSize: 11,
-                borderTop: '1px solid #333',
-                paddingTop: 8,
-                lineHeight: 1.4,
-              }}>
-                <div>request: {fileChatRunInfo.requestId}</div>
-                <div>thread: {fileChatRunInfo.threadPath}</div>
-                <div>log: {fileChatRunInfo.runLogPath}</div>
-                {fileChatRunInfo.target && (
-                  <div>target: {fileChatRunInfo.target.acquired} {fileChatRunInfo.target.bindingId}</div>
-                )}
               </div>
             )}
           </div>
