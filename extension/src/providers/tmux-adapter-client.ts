@@ -17,6 +17,7 @@ export interface TmuxAdapterConfig {
 export interface EnsureTargetOptions extends TmuxAdapterConfig {
   spawnProfile: string
   cwd: string
+  feature?: 'annotation' | 'fileChat'
 }
 
 export interface TmuxAdapterTarget {
@@ -212,7 +213,7 @@ export async function ensureTarget(options: EnsureTargetOptions): Promise<TmuxAd
     '--spawn-timeout',
     '5',
     '--tags-json',
-    JSON.stringify({ feature: 'annotation' }),
+    JSON.stringify({ feature: options.feature ?? 'annotation' }),
   ])
   const { stdout } = await execFileAsync(options.command, args, options.cwd)
   return normalizeEnsureTargetOutput(parseJsonObject(stdout, 'tmux-adapter ensure-target'))

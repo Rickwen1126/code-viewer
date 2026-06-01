@@ -1,18 +1,5 @@
 # Code Viewer — Active Todo
 
-## P1: Annotation And Chat Observability @2026-06-01-2315
-
-Section source:
-
-- Spec: `docs/code-annotation-tmux-adapter/spec.md`
-- Plan: `docs/file-aware-chat/plan.md`
-- Code/Surface: `extension/src/providers/annotation-provider.ts`, future `extension/src/providers/file-chat-provider.ts`, `backend/src/ws/relay.ts`, `frontend/src/pages/files/code-viewer.tsx`
-- User request: frontend and backend/extension debug logs must expose dataflow and call stack enough to diagnose failed annotation/chat runs.
-
-- [ ] Reuse the run-event schema in file chat provider
-  - Code: future `extension/src/providers/file-chat-provider.ts`
-  - Acceptance: file chat asks write the same JSONL event shape to `.codeviewer/chat-runs/current/run.jsonl`, including thread id/path, marked-line metadata, target binding, phase, elapsed time, and structured diagnostics.
-
 ## P1: File-Aware Chat MVP @2026-06-01-2315
 
 Section source:
@@ -20,9 +7,6 @@ Section source:
 - Plan: `docs/file-aware-chat/plan.md`
 - Code/Surface: `packages/shared/src/ws-types.ts`, `extension/src/providers/file-chat-provider.ts`, `extension/src/extension.ts`, `frontend/src/pages/files/code-viewer.tsx`
 
-- [ ] Add `fileChat.*` protocol and extension provider
-  - Plan: `docs/file-aware-chat/plan.md`
-  - Acceptance: frontend can submit a question for the current file; extension creates/updates the thread artifacts, sends a self-contained Codex Spark prompt through `tmux-adapter`, and status can validate the latest assistant append.
 - [ ] Build draggable Ask About File UI
   - Code: `frontend/src/pages/files/code-viewer.tsx`
   - Acceptance: desktop opens an appropriately sized floating panel or drawer; mobile opens a full-screen chat sheet; composer includes an icon button that inserts all marked reference lines as simple `L<line>: <content>` text.

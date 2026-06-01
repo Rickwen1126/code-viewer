@@ -12,6 +12,10 @@ import {
   MSG_ANNOTATION_GENERATE_RESULT,
   MSG_ANNOTATION_STATUS,
   MSG_ANNOTATION_STATUS_RESULT,
+  MSG_FILE_CHAT_SEND,
+  MSG_FILE_CHAT_SEND_RESULT,
+  MSG_FILE_CHAT_STATUS,
+  MSG_FILE_CHAT_STATUS_RESULT,
   MSG_LSP_HOVER,
   MSG_LSP_HOVER_RESULT,
   MSG_LSP_DEFINITION,
@@ -61,6 +65,7 @@ import {
   type ErrorPayload,
   type ErrorCode,
   type AnnotationGenerateResultPayload,
+  type FileChatSendResultPayload,
   type RunEvent,
 } from '../ws-types.js'
 import type {
@@ -228,6 +233,15 @@ describe('message type constants — annotation domain', () => {
   })
 })
 
+describe('message type constants — file chat domain', () => {
+  it('should have correct string values', () => {
+    expect(MSG_FILE_CHAT_SEND).toBe('fileChat.send')
+    expect(MSG_FILE_CHAT_SEND_RESULT).toBe('fileChat.send.result')
+    expect(MSG_FILE_CHAT_STATUS).toBe('fileChat.status')
+    expect(MSG_FILE_CHAT_STATUS_RESULT).toBe('fileChat.status.result')
+  })
+})
+
 describe('annotation payloads', () => {
   it('serializes generate result target metadata without making pane identity durable', () => {
     const payload: AnnotationGenerateResultPayload = {
@@ -249,6 +263,30 @@ describe('annotation payloads', () => {
     expect(parsed.generationId).toBe('annotation-123')
     expect(parsed.target.acquired).toBe('reused')
     expect(parsed.submitted).toBe(true)
+  })
+})
+
+describe('file chat payloads', () => {
+  it('serializes append-only thread artifact paths', () => {
+    const payload: FileChatSendResultPayload = {
+      path: 'src/index.ts',
+      requestId: 'chat-123',
+      threadId: 'current',
+      submittedAt: 1779377824000,
+      manifestPath: '.codeviewer/chat-runs/current/manifest.json',
+      threadPath: '.codeviewer/chat-runs/current/thread.md',
+      runLogPath: '.codeviewer/chat-runs/current/run.jsonl',
+      target: {
+        bindingId: 'codex:codex:abc',
+        acquired: 'spawned',
+      },
+      submitted: true,
+    }
+
+    const parsed = JSON.parse(JSON.stringify(payload)) as FileChatSendResultPayload
+    expect(parsed.threadId).toBe('current')
+    expect(parsed.threadPath).toBe('.codeviewer/chat-runs/current/thread.md')
+    expect(parsed.target.acquired).toBe('spawned')
   })
 })
 

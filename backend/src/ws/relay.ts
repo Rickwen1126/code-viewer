@@ -11,6 +11,12 @@ function isAnnotationMessage(type: string): boolean {
     || type === 'annotation.status'
     || type === 'annotation.status.result'
     || type === 'annotation.status.error'
+    || type === 'fileChat.send'
+    || type === 'fileChat.send.result'
+    || type === 'fileChat.send.error'
+    || type === 'fileChat.status'
+    || type === 'fileChat.status.result'
+    || type === 'fileChat.status.error'
 }
 
 function annotationPathFromPayload(payload: unknown): string | undefined {
@@ -43,7 +49,8 @@ function annotationStateFromPayload(payload: unknown): string | undefined {
 
 function annotationDbg(stage: string, msg: WsMessage, extra: Record<string, unknown> = {}): void {
   if (!DEBUG || !isAnnotationMessage(msg.type)) return
-  console.log('[relay:annotation]', stage, {
+  console.log('[relay:codex-run]', stage, {
+    feature: msg.type.startsWith('fileChat.') ? 'fileChat' : 'annotation',
     type: msg.type,
     id: msg.id,
     replyTo: msg.replyTo,

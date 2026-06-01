@@ -66,6 +66,12 @@ export const MSG_ANNOTATION_GENERATE_RESULT = 'annotation.generate.result' as co
 export const MSG_ANNOTATION_STATUS = 'annotation.status' as const
 export const MSG_ANNOTATION_STATUS_RESULT = 'annotation.status.result' as const
 
+// File chat domain
+export const MSG_FILE_CHAT_SEND = 'fileChat.send' as const
+export const MSG_FILE_CHAT_SEND_RESULT = 'fileChat.send.result' as const
+export const MSG_FILE_CHAT_STATUS = 'fileChat.status' as const
+export const MSG_FILE_CHAT_STATUS_RESULT = 'fileChat.status.result' as const
+
 // LSP domain
 export const MSG_LSP_HOVER = 'lsp.hover' as const
 export const MSG_LSP_HOVER_RESULT = 'lsp.hover.result' as const
@@ -337,6 +343,58 @@ export interface AnnotationStatusResultPayload {
   generationId?: string
   updatedAt?: number
   validation?: AnnotationArtifactValidation
+}
+
+// File chat
+export interface FileChatMarkedLine {
+  line: number
+  content: string
+}
+
+export interface FileChatSendPayload {
+  path: string
+  question: string
+  requestId?: string
+  markedLines?: FileChatMarkedLine[]
+}
+
+export interface FileChatSendResultPayload {
+  path: string
+  requestId: string
+  threadId: string
+  submittedAt: number
+  manifestPath: string
+  threadPath: string
+  runLogPath: string
+  target: {
+    bindingId: string
+    acquired: 'reused' | 'spawned'
+    paneId?: string
+    paneTarget?: string
+    pid?: string
+    targetScopeKey?: string
+  }
+  submitted: true
+}
+
+export interface FileChatStatusPayload {
+  path: string
+  requestId: string
+  minUpdatedAt?: number
+}
+
+export interface FileChatStatusResultPayload {
+  path: string
+  requestId: string
+  threadId: string
+  manifestPath: string
+  threadPath: string
+  runLogPath: string
+  ready: boolean
+  state: 'pending' | 'ready' | 'invalid' | 'failed' | 'missing'
+  latestAssistantMessage?: string
+  diagnostics?: string[]
+  updatedAt?: number
 }
 
 // LSP

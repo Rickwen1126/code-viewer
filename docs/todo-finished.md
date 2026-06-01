@@ -77,6 +77,37 @@ Section source:
   `extension/src/__tests__/annotation-provider.test.ts`; monorepo
   `pnpm -r typecheck`.
 
+## Completed: File Chat Protocol And Provider @2026-06-01-2329
+
+Section source:
+
+- Plan: [docs/file-aware-chat/plan.md](./file-aware-chat/plan.md)
+- Code/Surface: `packages/shared/src/ws-types.ts`,
+  `extension/src/providers/file-chat-provider.ts`, `extension/src/extension.ts`,
+  `extension/src/providers/tmux-adapter-client.ts`,
+  `backend/src/ws/relay.ts`,
+  `extension/src/__tests__/file-chat-provider.test.ts`,
+  `packages/shared/src/__tests__/models.test.ts`
+
+- [x] Added shared `fileChat.send`, `fileChat.send.result`,
+  `fileChat.status`, and `fileChat.status.result` protocol constants and
+  payload types.
+- [x] Added extension `file-chat-provider.ts` with workspace-relative path
+  validation, question validation, marked-line normalization, source read size
+  guard, append-only thread writes, manifest writes, run JSONL events, target
+  ensure/send, and status parsing for the latest assistant block.
+- [x] File chat artifacts use the accepted append-only shape:
+  `.codeviewer/chat-runs/current/{manifest.json,thread.md,run.jsonl}`.
+- [x] File chat reuses the same tmux-adapter/Codex Spark profile path as
+  annotation, while tagging ensure-target calls as `feature=fileChat`.
+- [x] Backend run debug correlation recognizes `fileChat.*` messages and prints
+  them under the shared `[relay:codex-run]` debug label.
+- [x] Verification: targeted Vitest
+  `packages/shared/src/__tests__/models.test.ts` +
+  `extension/src/__tests__/file-chat-provider.test.ts` +
+  `extension/src/__tests__/annotation-provider.test.ts`; monorepo
+  `pnpm -r typecheck`.
+
 ## Completed: Code Annotation Reliability Infrastructure @2026-05-21-2355
 
 Section source:
