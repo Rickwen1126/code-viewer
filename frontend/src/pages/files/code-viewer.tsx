@@ -29,7 +29,11 @@ import {
 } from '../../components/code-block'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { InFileSearch } from '../../components/in-file-search'
-import { getBookmarkedLines, addBookmark, removeBookmark, getBookmarksForFile } from '../../services/bookmarks'
+import {
+  addFileBookmark,
+  isFileBookmarked,
+  removeFileBookmark,
+} from '../../services/bookmarks'
 import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
@@ -299,8 +303,9 @@ export function CodeViewerPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Bookmarks state
-  const [bookmarkedLines, setBookmarkedLines] = useState<Set<number>>(new Set())
+  // File bookmark + file-chat reference markers
+  const [fileBookmarked, setFileBookmarked] = useState(false)
+  const [markedReferenceLines, setMarkedReferenceLines] = useState<Set<number>>(new Set())
 
   // Close overflow menu on click outside
   useEffect(() => {
@@ -322,13 +327,14 @@ export function CodeViewerPage() {
     })
   }
 
-  // Load bookmarks when file changes
+  // Load file-level bookmark when file changes. Line stars are temporary file-chat reference marks.
   useEffect(() => {
     if (!workspace || !path) return
-    setBookmarkedLines(getBookmarkedLines(workspace.extensionId, path))
+    setFileBookmarked(isFileBookmarked(workspace.extensionId, path))
+    setMarkedReferenceLines(new Set())
   }, [workspace, path])
 
-  // Line number click — Step+ ON: open add-step overlay; OFF: toggle bookmark
+  // Line number click — Step+ ON: open add-step overlay; OFF: toggle file-chat reference mark
   const handleLineNumberClick = useCallback((lineNum: number) => {
     if (!workspace || !path || !file || isAnnotationView) return
 
@@ -339,21 +345,40 @@ export function CodeViewerPage() {
       return
     }
 
-    // Step+ is OFF: toggle bookmark
-    const contentLines = file.content.split('\n')
-    const preview = contentLines[lineNum - 1] ?? ''
-
-    if (bookmarkedLines.has(lineNum)) {
-      removeBookmark(workspace.extensionId, path, lineNum)
-      setBookmarkedLines(prev => { const next = new Set(prev); next.delete(lineNum); return next })
-      showToast(`Bookmark removed (line ${lineNum})`)
-    } else {
-      addBookmark(workspace.extensionId, path, lineNum, preview)
-      setBookmarkedLines(prev => new Set(prev).add(lineNum))
-      showToast(`Bookmarked line ${lineNum}`)
-    }
+    setMarkedReferenceLines((prev) => {
+      const next = new Set(prev)
+      if (next.has(lineNum)) {
+        next.delete(lineNum)
+        showToast(`Reference line removed (${lineNum})`)
+      } else {
+        next.add(lineNum)
+        showToast(`Reference line marked (${lineNum})`)
+      }
+      return next
+    })
     if (navigator.vibrate) navigator.vibrate(50)
-  }, [workspace, path, file, bookmarkedLines, tourEdit, stepModeActive, isAnnotationView])
+  }, [workspace, path, file, tourEdit, stepModeActive, isAnnotationView])
+
+  function toggleFileBookmark(): void {
+    if (!workspace || !path) return
+    if (fileBookmarked) {
+      removeFileBookmark(workspace.extensionId, path)
+      setFileBookmarked(false)
+      showToast('File bookmark removed')
+    } else {
+      addFileBookmark(workspace.extensionId, path)
+      setFileBookmarked(true)
+      showToast('File bookmarked')
+    }
+  }
+
+  function markedReferenceLineText(): string[] {
+    if (!file) return []
+    const lines = file.content.split('\n')
+    return Array.from(markedReferenceLines)
+      .sort((a, b) => a - b)
+      .map(lineNum => `L${lineNum}: ${lines[lineNum - 1] ?? ''}`)
+  }
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -1207,9 +1232,14 @@ export function CodeViewerPage() {
               unsaved
             </span>
           )}
-          {bookmarkedLines.size > 0 && (
-            <span style={{ fontSize: 11, color: '#e2b93d' }}>
-              &#x2605;{bookmarkedLines.size}
+          {fileBookmarked && (
+            <span style={{ fontSize: 11, color: '#e2b93d' }} title="File bookmarked">
+              &#x2605; file
+            </span>
+          )}
+          {markedReferenceLines.size > 0 && (
+            <span style={{ fontSize: 11, color: '#9cdcfe' }} title={markedReferenceLineText().join('\n')}>
+              ref {markedReferenceLines.size}
             </span>
           )}
           {annotationStatusLabel && (
@@ -1403,6 +1433,37 @@ export function CodeViewerPage() {
                 <div style={{ borderTop: '1px solid #333' }} />
                 <button
                   onClick={() => {
+                    toggleFileBookmark()
+                    setMenuOpen(false)
+                  }}
+                  style={menuItemStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a2d2e' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  {fileBookmarked ? '★ Remove File Bookmark' : '☆ Bookmark File'}
+                </button>
+                <button
+                  onClick={() => {
+                    copyToClipboard(markedReferenceLineText().join('\n'))
+                    setMenuOpen(false)
+                    showToast('Reference lines copied')
+                  }}
+                  disabled={markedReferenceLines.size === 0}
+                  style={{
+                    ...menuItemStyle,
+                    opacity: markedReferenceLines.size === 0 ? 0.45 : 1,
+                    cursor: markedReferenceLines.size === 0 ? 'default' : 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (markedReferenceLines.size > 0) (e.currentTarget as HTMLElement).style.background = '#2a2d2e'
+                  }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  Copy Marked Lines
+                </button>
+                <div style={{ borderTop: '1px solid #333' }} />
+                <button
+                  onClick={() => {
                     setWordWrap((v) => {
                       const next = !v
                       localStorage.setItem('code-viewer:wrap-enabled', String(next))
@@ -1511,7 +1572,7 @@ export function CodeViewerPage() {
               showLineNumbers
               wordWrap={wordWrap}
               highlightLine={highlightLine}
-              bookmarkedLines={bookmarkedLines}
+              bookmarkedLines={markedReferenceLines}
               onLineNumberClick={handleLineNumberClick}
               fontSize={codeFontSize}
             />

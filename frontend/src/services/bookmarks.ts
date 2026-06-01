@@ -1,6 +1,6 @@
 export interface Bookmark {
   path: string       // relative file path
-  line: number       // 1-based line number
+  line?: number      // 1-based line number; omitted means file-level bookmark
   preview: string    // first ~60 chars of the line content
   createdAt: number  // timestamp
 }
@@ -22,6 +22,22 @@ export function getBookmarksForFile(extensionId: string, path: string): Bookmark
   return getBookmarks(extensionId).filter(b => b.path === path)
 }
 
+export function isFileBookmarked(extensionId: string, path: string): boolean {
+  return getBookmarks(extensionId).some(b => b.path === path && b.line == null)
+}
+
+export function addFileBookmark(extensionId: string, path: string): void {
+  const bookmarks = getBookmarks(extensionId)
+  if (bookmarks.some(b => b.path === path && b.line == null)) return
+  bookmarks.push({ path, preview: path.split('/').pop() ?? path, createdAt: Date.now() })
+  try { localStorage.setItem(storageKey(extensionId), JSON.stringify(bookmarks)) } catch {}
+}
+
+export function removeFileBookmark(extensionId: string, path: string): void {
+  const bookmarks = getBookmarks(extensionId).filter(b => !(b.path === path && b.line == null))
+  try { localStorage.setItem(storageKey(extensionId), JSON.stringify(bookmarks)) } catch {}
+}
+
 export function addBookmark(extensionId: string, path: string, line: number, preview: string): void {
   const bookmarks = getBookmarks(extensionId)
   // Don't add duplicate
@@ -40,5 +56,5 @@ export function isBookmarked(extensionId: string, path: string, line: number): b
 }
 
 export function getBookmarkedLines(extensionId: string, path: string): Set<number> {
-  return new Set(getBookmarksForFile(extensionId, path).map(b => b.line))
+  return new Set(getBookmarksForFile(extensionId, path).map(b => b.line).filter((line): line is number => typeof line === 'number'))
 }
