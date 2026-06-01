@@ -1190,7 +1190,7 @@ export function CodeViewerPage() {
   }
 
   async function pollFileChatStatus(sourcePath: string, requestId: string, submittedAt: number): Promise<void> {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    for (let attempt = 0; attempt < 180; attempt += 1) {
       await new Promise(resolve => window.setTimeout(resolve, attempt === 0 ? 900 : 1500))
       try {
         const res = await request<FileChatStatusPayload, FileChatStatusResultPayload>(
@@ -1245,7 +1245,8 @@ export function CodeViewerPage() {
       }
     }
     setFileChatPhase('error')
-    setFileChatError('File chat answer did not become ready in time')
+    setFileChatError('File chat answer did not become ready in time. It may still finish in the thread later; use New to start a fresh chat if this Codex session is stuck.')
+    await loadFileChatThread()
   }
 
   async function loadFileChatThread(): Promise<void> {

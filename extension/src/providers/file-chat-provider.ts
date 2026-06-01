@@ -305,11 +305,10 @@ async function readThreadSnapshot(workspaceFolder: vscode.WorkspaceFolder): Prom
 }
 
 export function extractAssistantMessage(threadText: string, requestId: string): string | undefined {
-  const headerPattern = new RegExp(`^## Assistant requestId=${requestId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm')
-  const match = headerPattern.exec(threadText)
-  if (!match) return undefined
-  const bodyStart = match.index + match[0].length
-  const rest = threadText.slice(bodyStart)
+  const exactHeader = `## Assistant requestId=${requestId}`
+  const lastHeaderIndex = threadText.lastIndexOf(exactHeader)
+  if (lastHeaderIndex < 0) return undefined
+  const rest = threadText.slice(lastHeaderIndex + exactHeader.length)
   const nextHeader = /\n## (User|Assistant) requestId=/.exec(rest)
   const body = (nextHeader ? rest.slice(0, nextHeader.index) : rest).trim()
   return body.length > 0 ? body : undefined

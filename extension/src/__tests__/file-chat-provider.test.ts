@@ -83,6 +83,22 @@ describe('file chat thread parsing', () => {
     expect(extractAssistantMessage(thread, 'ask-3')).toBeUndefined()
   })
 
+  it('uses the latest matching assistant block when Codex compacting duplicates a header', () => {
+    const thread = [
+      '## User requestId=ask-1',
+      '',
+      'question',
+      '',
+      '## Assistant requestId=ask-1',
+      '',
+      'partial answer without newline before retry [## Assistant requestId=ask-1',
+      '',
+      'complete answer',
+    ].join('\n')
+
+    expect(extractAssistantMessage(thread, 'ask-1')).toBe('complete answer')
+  })
+
   it('builds a prompt that requires appending to the current thread', () => {
     const prompt = buildFileChatPrompt({
       workspaceRoot: '/Users/rickwen/code/example',
