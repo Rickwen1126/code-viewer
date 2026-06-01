@@ -6,14 +6,15 @@ interface MarkdownRendererProps {
   content: string
   codeFontSize?: number
   wordWrap?: boolean
+  padding?: string | number
 }
 
-export function MarkdownRenderer({ content, codeFontSize, wordWrap = false }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, codeFontSize, wordWrap = false, padding = '12px 16px' }: MarkdownRendererProps) {
   const tokens = useMemo(() => marked.lexer(content), [content])
   const markdownFontSize = codeFontSize ?? 14
 
   return (
-    <div style={{ padding: '12px 16px', lineHeight: 1.6, fontSize: markdownFontSize, color: '#d4d4d4', ...(wordWrap ? { overflowWrap: 'break-word', wordBreak: 'break-word' } : undefined) }}>
+    <div style={{ padding, lineHeight: 1.6, fontSize: markdownFontSize, color: '#d4d4d4', ...(wordWrap ? { overflowWrap: 'break-word', wordBreak: 'break-word' } : undefined) }}>
       {tokens.map((token, i) => (
         <TokenRenderer key={i} token={token} fontSize={markdownFontSize} />
       ))}

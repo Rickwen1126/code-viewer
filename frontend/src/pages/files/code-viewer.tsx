@@ -229,6 +229,7 @@ export function CodeViewerPage() {
   const [fileChatRunInfo, setFileChatRunInfo] = useState<FileChatRunInfo | null>(null)
   const [fileChatButtonPos, setFileChatButtonPos] = useState({ right: 18, bottom: 18 })
   const [isMobileChat, setIsMobileChat] = useState(() => window.innerWidth <= 640)
+  const fileChatMessagesRef = useRef<HTMLDivElement>(null)
   const fileChatDragRef = useRef<{
     pointerId: number
     startX: number
@@ -250,6 +251,15 @@ export function CodeViewerPage() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  useEffect(() => {
+    if (!fileChatOpen) return
+    window.requestAnimationFrame(() => {
+      const container = fileChatMessagesRef.current
+      if (!container) return
+      container.scrollTop = container.scrollHeight
+    })
+  }, [fileChatOpen, fileChatMessages.length, fileChatPhase, fileChatError])
 
   // References list state (T041)
   const [referencesOpen, setReferencesOpen] = useState(false)
@@ -457,7 +467,8 @@ export function CodeViewerPage() {
     setFileChatOpen(true)
   }
 
-  function handleFileChatPointerDown(event: PointerEvent<HTMLButtonElement>): void {
+  function handleFileChatPointerDown(event: PointerEvent<HTMLElement>): void {
+    if (isMobileChat && fileChatOpen) return
     fileChatDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -469,7 +480,7 @@ export function CodeViewerPage() {
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  function handleFileChatPointerMove(event: PointerEvent<HTMLButtonElement>): void {
+  function handleFileChatPointerMove(event: PointerEvent<HTMLElement>): void {
     const drag = fileChatDragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
     const dx = event.clientX - drag.startX
@@ -481,7 +492,7 @@ export function CodeViewerPage() {
     setFileChatButtonPos({ right: nextRight, bottom: nextBottom })
   }
 
-  function handleFileChatPointerUp(event: PointerEvent<HTMLButtonElement>): void {
+  function handleFileChatPointerUp(event: PointerEvent<HTMLElement>): void {
     const drag = fileChatDragRef.current
     fileChatDragRef.current = null
     if (!drag || drag.pointerId !== event.pointerId) return
@@ -2063,8 +2074,8 @@ export function CodeViewerPage() {
           style={{
             position: 'fixed',
             inset: isMobileChat ? 0 : undefined,
-            right: isMobileChat ? undefined : 18,
-            bottom: isMobileChat ? undefined : 18,
+            right: isMobileChat ? undefined : fileChatButtonPos.right,
+            bottom: isMobileChat ? undefined : fileChatButtonPos.bottom,
             width: isMobileChat ? '100vw' : 420,
             height: isMobileChat ? '100dvh' : 'min(620px, calc(100vh - 36px))',
             maxWidth: '100vw',
@@ -2086,7 +2097,18 @@ export function CodeViewerPage() {
             borderBottom: '1px solid #333',
             flexShrink: 0,
           }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              onPointerDown={handleFileChatPointerDown}
+              onPointerMove={handleFileChatPointerMove}
+              onPointerUp={handleFileChatPointerUp}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                cursor: isMobileChat ? 'default' : 'grab',
+                touchAction: isMobileChat ? 'auto' : 'none',
+              }}
+              title={isMobileChat ? fileName : 'Drag Ask About File'}
+            >
               <div style={{ color: '#d4d4d4', fontSize: 13, fontWeight: 600 }}>Ask About File</div>
               <div style={{ color: '#888', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {fileName}
@@ -2120,7 +2142,7 @@ export function CodeViewerPage() {
             </button>
           </div>
 
-          <div style={{
+          <div ref={fileChatMessagesRef} style={{
             flex: 1,
             overflow: 'auto',
             padding: 12,
@@ -2146,11 +2168,20 @@ export function CodeViewerPage() {
                     padding: '8px 10px',
                     fontSize: 13,
                     lineHeight: 1.5,
-                    whiteSpace: 'pre-wrap',
+                    whiteSpace: message.role === 'user' ? 'pre-wrap' : undefined,
                     wordBreak: 'break-word',
                   }}
                 >
-                  {message.content}
+                  {message.role === 'assistant' ? (
+                    <MarkdownRenderer
+                      content={message.content}
+                      codeFontSize={13}
+                      wordWrap
+                      padding={0}
+                    />
+                  ) : (
+                    message.content
+                  )}
                 </div>
               ))
             )}
@@ -2235,6 +2266,7 @@ export function CodeViewerPage() {
                   }
                 }}
                 disabled={!fileChatRunInfo}
+                title="Copy file chat request id, artifact paths, target id, and diagnostics"
                 style={{
                   height: 30,
                   padding: '0 8px',
