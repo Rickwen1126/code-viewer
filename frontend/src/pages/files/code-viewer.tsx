@@ -121,6 +121,23 @@ interface FileReturnState {
 type AnnotationMode = 'original' | 'annotated'
 type AnnotationPhase = 'idle' | 'submitting' | 'waiting' | 'ready' | 'error'
 
+interface AnnotationDebugInfo {
+  feature: 'annotation'
+  path: string
+  annotationPath?: string
+  runLogPath?: string
+  generationId?: string
+  phase: AnnotationPhase | 'status'
+  state?: string
+  ready?: boolean
+  submittedAt?: number
+  updatedAt?: number
+  target?: AnnotationGenerateResultPayload['target']
+  diagnostics?: string[]
+  error?: string
+  capturedAt: number
+}
+
 function getFileReturnPosition(state: unknown): FileReturnPosition | null {
   if (!state || typeof state !== 'object') return null
   const candidate = (state as FileReturnState).codeViewerFileReturn
@@ -180,6 +197,7 @@ export function CodeViewerPage() {
   const [annotationError, setAnnotationError] = useState<string | null>(null)
   const [annotationGenerationId, setAnnotationGenerationId] = useState<string | null>(null)
   const [annotationSubmittedAt, setAnnotationSubmittedAt] = useState<number | null>(null)
+  const [annotationDebugInfo, setAnnotationDebugInfo] = useState<AnnotationDebugInfo | null>(null)
   const annotationPollSeqRef = useRef(0)
 
   const previewKind = getFilePreviewKind(path)
@@ -453,6 +471,7 @@ export function CodeViewerPage() {
     setAnnotationError(null)
     setAnnotationGenerationId(null)
     setAnnotationSubmittedAt(null)
+    setAnnotationDebugInfo(null)
   }, [path, previewKind])
 
   // Redirect to workspace selection if no workspace ever selected
@@ -701,11 +720,25 @@ export function CodeViewerPage() {
       setAnnotationPath(res.payload.annotationPath)
       setAnnotationExists(res.payload.ready)
       setAnnotationGenerationId(res.payload.generationId ?? null)
+      setAnnotationDebugInfo({
+        feature: 'annotation',
+        path: res.payload.path,
+        annotationPath: res.payload.annotationPath,
+        runLogPath: res.payload.runLogPath,
+        generationId: res.payload.generationId,
+        phase: 'status',
+        state: res.payload.state,
+        ready: res.payload.ready,
+        updatedAt: res.payload.updatedAt,
+        diagnostics: res.payload.validation?.diagnostics ?? [],
+        capturedAt: Date.now(),
+      })
       debugLog('annotation', 'status.response', {
         requestId: res.replyTo,
         generationId: res.payload.generationId ?? null,
         path: res.payload.path,
         annotationPath: res.payload.annotationPath,
+        runLogPath: res.payload.runLogPath ?? null,
         exists: res.payload.exists,
         ready: res.payload.ready,
         state: res.payload.state,
@@ -731,6 +764,13 @@ export function CodeViewerPage() {
         setAnnotationPhase('error')
         setAnnotationError(error instanceof Error ? error.message : 'Annotation status unavailable')
       }
+      setAnnotationDebugInfo({
+        feature: 'annotation',
+        path,
+        phase: 'error',
+        error: error instanceof Error ? error.message : 'Annotation status unavailable',
+        capturedAt: Date.now(),
+      })
       return null
     }
   }
@@ -765,11 +805,26 @@ export function CodeViewerPage() {
         setAnnotationPath(res.payload.annotationPath)
         setAnnotationExists(res.payload.ready)
         setAnnotationGenerationId(res.payload.generationId ?? generationId)
+        setAnnotationDebugInfo({
+          feature: 'annotation',
+          path: res.payload.path,
+          annotationPath: res.payload.annotationPath,
+          runLogPath: res.payload.runLogPath,
+          generationId: res.payload.generationId ?? generationId,
+          phase: res.payload.ready ? 'ready' : 'waiting',
+          state: res.payload.state,
+          ready: res.payload.ready,
+          submittedAt,
+          updatedAt: res.payload.updatedAt,
+          diagnostics: res.payload.validation?.diagnostics ?? [],
+          capturedAt: Date.now(),
+        })
         debugLog('annotation', 'poll.response', {
           requestId: res.replyTo,
           generationId: res.payload.generationId ?? generationId,
           sourcePath,
           annotationPath: res.payload.annotationPath,
+          runLogPath: res.payload.runLogPath ?? null,
           exists: res.payload.exists,
           ready: res.payload.ready,
           state: res.payload.state,
@@ -816,6 +871,20 @@ export function CodeViewerPage() {
       lastStatus?.validation?.diagnostics.join('; ')
       || (lastStatus?.state ? `Annotation not ready: ${lastStatus.state}` : 'Annotation artifact not found'),
     )
+    setAnnotationDebugInfo({
+      feature: 'annotation',
+      path: sourcePath,
+      annotationPath: expectedAnnotationPath,
+      runLogPath: lastStatus?.runLogPath,
+      generationId,
+      phase: 'error',
+      state: lastStatus?.state,
+      ready: false,
+      submittedAt,
+      diagnostics: lastStatus?.validation?.diagnostics ?? [],
+      error: lastStatus?.state ? `Annotation not ready: ${lastStatus.state}` : 'Annotation artifact not found',
+      capturedAt: Date.now(),
+    })
   }
 
   async function generateAnnotation() {
@@ -834,6 +903,13 @@ export function CodeViewerPage() {
     setAnnotationError(null)
     setAnnotationGenerationId(generationId)
     setAnnotationSubmittedAt(null)
+    setAnnotationDebugInfo({
+      feature: 'annotation',
+      path,
+      generationId,
+      phase: 'submitting',
+      capturedAt: Date.now(),
+    })
     try {
       const res = await request<AnnotationGeneratePayload, AnnotationGenerateResultPayload>(
         'annotation.generate',
@@ -845,12 +921,24 @@ export function CodeViewerPage() {
       setAnnotationPhase('waiting')
       setAnnotationGenerationId(res.payload.generationId)
       setAnnotationSubmittedAt(res.payload.submittedAt)
+      setAnnotationDebugInfo({
+        feature: 'annotation',
+        path: res.payload.path,
+        annotationPath: res.payload.annotationPath,
+        runLogPath: res.payload.runLogPath,
+        generationId: res.payload.generationId,
+        phase: 'waiting',
+        submittedAt: res.payload.submittedAt,
+        target: res.payload.target,
+        capturedAt: Date.now(),
+      })
       debugLog('annotation', 'generate.submitted', {
         requestId: res.replyTo,
         generationId: res.payload.generationId,
         submittedAt: res.payload.submittedAt,
         path: res.payload.path,
         annotationPath: res.payload.annotationPath,
+        runLogPath: res.payload.runLogPath ?? null,
         target: res.payload.target,
       })
       showToast(`Annotation ${res.payload.target.acquired}`)
@@ -864,6 +952,14 @@ export function CodeViewerPage() {
       })
       setAnnotationPhase('error')
       setAnnotationError(error instanceof Error ? error.message : 'Annotation request failed')
+      setAnnotationDebugInfo({
+        feature: 'annotation',
+        path,
+        generationId,
+        phase: 'error',
+        error: error instanceof Error ? error.message : 'Annotation request failed',
+        capturedAt: Date.now(),
+      })
     }
   }
 
@@ -1038,9 +1134,16 @@ export function CodeViewerPage() {
   const annotationStatusTitle = [
     annotationError,
     annotationGenerationId ? `generation: ${annotationGenerationId}` : null,
+    annotationDebugInfo?.runLogPath ? `run log: ${annotationDebugInfo.runLogPath}` : null,
     annotationSubmittedAt ? `submitted: ${new Date(annotationSubmittedAt).toLocaleTimeString()}` : null,
   ].filter(Boolean).join(' | ') || undefined
   const stackFileActions = annotationExists || isAnnotationView
+
+  function copyAnnotationDebugInfo(): void {
+    if (!annotationDebugInfo) return
+    copyToClipboard(JSON.stringify(annotationDebugInfo, null, 2))
+    showToast('Annotation debug info copied')
+  }
 
   if (previewKind) {
     return (
@@ -1505,6 +1608,24 @@ export function CodeViewerPage() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                 >
                   {annotationExists ? 'Regen Annotation' : 'Generate Annotation'}
+                </button>
+                <button
+                  onClick={() => {
+                    copyAnnotationDebugInfo()
+                    setMenuOpen(false)
+                  }}
+                  disabled={!annotationDebugInfo}
+                  style={{
+                    ...menuItemStyle,
+                    opacity: annotationDebugInfo ? 1 : 0.45,
+                    cursor: annotationDebugInfo ? 'pointer' : 'default',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (annotationDebugInfo) (e.currentTarget as HTMLElement).style.background = '#2a2d2e'
+                  }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  Copy Annotation Debug Info
                 </button>
                 <div style={{ borderTop: '1px solid #333' }} />
                 <div style={{ padding: '8px 12px' }}>

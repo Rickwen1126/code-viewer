@@ -27,6 +27,56 @@ Section source:
   for copying `L<line>: <content>` references before the chat composer exists.
 - [x] Verification: `pnpm --dir frontend typecheck`.
 
+## Completed: Annotation Run Event Logs @2026-06-01-2320
+
+Section source:
+
+- Spec: [docs/code-annotation-tmux-adapter/spec.md](./code-annotation-tmux-adapter/spec.md)
+- Plan: [docs/file-aware-chat/plan.md](./file-aware-chat/plan.md)
+- Code/Surface: `packages/shared/src/ws-types.ts`,
+  `extension/src/providers/annotation-provider.ts`,
+  `extension/src/__tests__/annotation-provider.test.ts`,
+  `packages/shared/src/__tests__/models.test.ts`
+
+- [x] Added a portable shared `RunEvent` shape for annotation and future file
+  chat observability.
+- [x] Added optional `runLogPath` to annotation generate/status payloads so UI
+  and backend debug surfaces can point to the concrete run evidence.
+- [x] Added annotation run log path derivation under
+  `.codeviewer/annotation-runs/<generationId>/run.jsonl`.
+- [x] Added extension-side JSONL event writes for annotation generate/status
+  phases: received, validated, ensure-target start/done, spawn delay done, send
+  start/done, status states, and error paths.
+- [x] Run log events include request id, generation id, path, artifact path,
+  target metadata when available, elapsed time, diagnostics, and concise error
+  stack.
+- [x] Verification: targeted Vitest
+  `packages/shared/src/__tests__/models.test.ts` +
+  `extension/src/__tests__/annotation-provider.test.ts`; monorepo
+  `pnpm -r typecheck`.
+
+## Completed: Annotation Debug Info Surface @2026-06-01-2322
+
+Section source:
+
+- Spec: [docs/code-annotation-tmux-adapter/spec.md](./code-annotation-tmux-adapter/spec.md)
+- Plan: [docs/file-aware-chat/plan.md](./file-aware-chat/plan.md)
+- Code/Surface: `frontend/src/pages/files/code-viewer.tsx`,
+  `backend/src/ws/relay.ts`
+
+- [x] Frontend now keeps latest annotation debug info with phase, state,
+  generation id, submitted time, annotation path, run log path, target metadata,
+  diagnostics, and error message when available.
+- [x] Annotation status pill title includes the run log path when available.
+- [x] File `...` menu now includes `Copy Annotation Debug Info`, disabled until
+  a run/status event exists.
+- [x] Backend annotation debug logging includes `runLogPath` in correlated
+  request/response logs when `CODE_VIEWER_DEBUG=true`.
+- [x] Verification: targeted Vitest
+  `packages/shared/src/__tests__/models.test.ts` +
+  `extension/src/__tests__/annotation-provider.test.ts`; monorepo
+  `pnpm -r typecheck`.
+
 ## Completed: Code Annotation Reliability Infrastructure @2026-05-21-2355
 
 Section source:

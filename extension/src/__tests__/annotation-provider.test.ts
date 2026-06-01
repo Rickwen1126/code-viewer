@@ -19,6 +19,7 @@ vi.mock('vscode', () => ({
 
 import {
   annotationPathFor,
+  annotationRunLogPathFor,
   validateAnnotationArtifactText,
   validateAnnotationPath,
 } from '../providers/annotation-provider'
@@ -50,6 +51,15 @@ describe('annotation provider path helpers', () => {
   it('rejects traversal paths', () => {
     expect(() => validateAnnotationPath('../outside.ts', workspaceFolder)).toThrow(/escape/)
     expect(() => validateAnnotationPath('src/../outside.ts', workspaceFolder)).toThrow(/escape/)
+  })
+
+  it('derives a safe run log path from generation id', () => {
+    expect(annotationRunLogPathFor('annotation-123')).toBe(
+      '.codeviewer/annotation-runs/annotation-123/run.jsonl',
+    )
+    expect(annotationRunLogPathFor('../bad/id')).toBe(
+      '.codeviewer/annotation-runs/.._bad_id/run.jsonl',
+    )
   })
 })
 

@@ -27,6 +27,12 @@ function annotationGenerationFromPayload(payload: unknown): string | undefined {
   return typeof data.generationId === 'string' ? data.generationId : undefined
 }
 
+function annotationRunLogPathFromPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const data = payload as { runLogPath?: unknown }
+  return typeof data.runLogPath === 'string' ? data.runLogPath : undefined
+}
+
 function annotationStateFromPayload(payload: unknown): string | undefined {
   if (!payload || typeof payload !== 'object') return undefined
   const data = payload as { state?: unknown; ready?: unknown }
@@ -43,6 +49,7 @@ function annotationDbg(stage: string, msg: WsMessage, extra: Record<string, unkn
     replyTo: msg.replyTo,
     path: annotationPathFromPayload(msg.payload),
     generationId: annotationGenerationFromPayload(msg.payload),
+    runLogPath: annotationRunLogPathFromPayload(msg.payload),
     state: annotationStateFromPayload(msg.payload),
     ...extra,
   })

@@ -61,6 +61,7 @@ import {
   type ErrorPayload,
   type ErrorCode,
   type AnnotationGenerateResultPayload,
+  type RunEvent,
 } from '../ws-types.js'
 import type {
   FileTreeNode,
@@ -232,6 +233,7 @@ describe('annotation payloads', () => {
     const payload: AnnotationGenerateResultPayload = {
       path: 'src/index.ts',
       annotationPath: '.codeviewer/annotated/src/index.ts',
+      runLogPath: '.codeviewer/annotation-runs/annotation-123/run.jsonl',
       generationId: 'annotation-123',
       submittedAt: 1779377824000,
       target: {
@@ -243,9 +245,37 @@ describe('annotation payloads', () => {
     }
     const parsed = JSON.parse(JSON.stringify(payload)) as AnnotationGenerateResultPayload
     expect(parsed.annotationPath).toBe('.codeviewer/annotated/src/index.ts')
+    expect(parsed.runLogPath).toBe('.codeviewer/annotation-runs/annotation-123/run.jsonl')
     expect(parsed.generationId).toBe('annotation-123')
     expect(parsed.target.acquired).toBe('reused')
     expect(parsed.submitted).toBe(true)
+  })
+})
+
+describe('run event payloads', () => {
+  it('serializes portable annotation run events for JSONL logs', () => {
+    const event: RunEvent = {
+      version: 1,
+      feature: 'annotation',
+      phase: 'tmux.send.done',
+      level: 'info',
+      timestamp: 1779377824000,
+      requestId: 'ws-1',
+      generationId: 'annotation-123',
+      path: 'src/index.ts',
+      artifactPath: '.codeviewer/annotated/src/index.ts',
+      runLogPath: '.codeviewer/annotation-runs/annotation-123/run.jsonl',
+      elapsedMs: 3210,
+      target: {
+        bindingId: 'codex:codex:abc',
+        acquired: 'reused',
+      },
+    }
+
+    const parsed = JSON.parse(JSON.stringify(event)) as RunEvent
+    expect(parsed.feature).toBe('annotation')
+    expect(parsed.phase).toBe('tmux.send.done')
+    expect(parsed.target?.bindingId).toBe('codex:codex:abc')
   })
 })
 

@@ -9,15 +9,9 @@ Section source:
 - Code/Surface: `extension/src/providers/annotation-provider.ts`, future `extension/src/providers/file-chat-provider.ts`, `backend/src/ws/relay.ts`, `frontend/src/pages/files/code-viewer.tsx`
 - User request: frontend and backend/extension debug logs must expose dataflow and call stack enough to diagnose failed annotation/chat runs.
 
-- [ ] Define shared run-event schema for annotation and file chat
-  - Code: `packages/shared/src/ws-types.ts`
-  - Acceptance: both features can report request id, workspace id, source path, artifact/thread path, target binding, phase, elapsed time, and structured diagnostics without scraping console text.
-- [ ] Add extension-side JSONL run logs
-  - Code: `extension/src/providers/annotation-provider.ts`, future `extension/src/providers/file-chat-provider.ts`
-  - Acceptance: every generate/ask request writes deterministic phase events to `.codeviewer/*/run.jsonl`, including path validation, source read, ensure-target, send, status poll, ready/failed state, and concise error stack.
-- [ ] Add frontend/backend observable debug surface
-  - Code: `frontend/src/pages/files/code-viewer.tsx`, `backend/src/ws/relay.ts`
-  - Acceptance: UI can expose Copy Debug Info for the latest run; backend relay logs include request/response correlation in debug mode without leaking full source content by default.
+- [ ] Reuse the run-event schema in file chat provider
+  - Code: future `extension/src/providers/file-chat-provider.ts`
+  - Acceptance: file chat asks write the same JSONL event shape to `.codeviewer/chat-runs/current/run.jsonl`, including thread id/path, marked-line metadata, target binding, phase, elapsed time, and structured diagnostics.
 
 ## P1: File-Aware Chat MVP @2026-06-01-2315
 

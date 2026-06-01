@@ -6,6 +6,7 @@ import type {
   AnnotationArtifactValidation,
   AnnotationGeneratePayload,
   AnnotationStatusPayload,
+  RunEvent,
   WsMessage,
 } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
@@ -13,6 +14,7 @@ import { debugLog } from '../utils/debug'
 import { ensureTarget, sendMessage } from './tmux-adapter-client'
 
 const ANNOTATION_ROOT = '.codeviewer/annotated'
+const ANNOTATION_RUN_ROOT = '.codeviewer/annotation-runs'
 const SPAWN_READY_DELAY_MS = 2500
 const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
 const EMPTY_VALIDATION: AnnotationArtifactValidation = { ok: false, diagnostics: [] }
@@ -29,6 +31,7 @@ interface AnnotationGenerationState {
   requestId: string
   relativePath: string
   annotationPath: string
+  runLogPath: string
   submittedAt: number
   status: Extract<AnnotationArtifactState, 'pending' | 'ready' | 'invalid'>
   target?: Awaited<ReturnType<typeof ensureTarget>>
@@ -38,6 +41,7 @@ interface AnnotationGenerationState {
 interface AnnotationStatusSnapshot {
   path: string
   annotationPath: string
+  runLogPath?: string
   exists: boolean
   ready: boolean
   state: AnnotationArtifactState
@@ -61,6 +65,15 @@ function sendError(
 
 function annotationDebug(stage: string, data: Record<string, unknown>): void {
   debugLog('annotation', stage, data)
+}
+
+function safeRunSegment(value: string): string {
+  const segment = value.trim().replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120)
+  return segment.length > 0 ? segment : `run-${Date.now()}`
+}
+
+export function annotationRunLogPathFor(generationId: string): string {
+  return `${ANNOTATION_RUN_ROOT}/${safeRunSegment(generationId)}/run.jsonl`
 }
 
 function delay(ms: number): Promise<void> {
@@ -213,6 +226,51 @@ async function ensureAnnotationParent(annotationUri: vscode.Uri): Promise<void> 
   await vscode.workspace.fs.createDirectory(vscode.Uri.file(parentFsPath))
 }
 
+async function appendWorkspaceJsonLine(workspaceFolder: vscode.WorkspaceFolder, relativePath: string, value: unknown): Promise<void> {
+  const workspaceRoot = workspaceFolder.uri.fsPath
+  const fsPath = path.resolve(workspaceRoot, relativePath)
+  const relativeFromRoot = path.relative(workspaceRoot, fsPath)
+  if (relativeFromRoot.startsWith('..') || path.isAbsolute(relativeFromRoot)) {
+    throw new Error('run log path cannot escape the workspace')
+  }
+
+  const uri = vscode.Uri.file(fsPath)
+  await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(fsPath)))
+
+  let existing = ''
+  try {
+    existing = readText(await vscode.workspace.fs.readFile(uri))
+  } catch {
+    existing = ''
+  }
+  const next = `${existing}${JSON.stringify(value)}\n`
+  await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(next))
+}
+
+async function recordAnnotationEvent(
+  workspaceFolder: vscode.WorkspaceFolder,
+  event: Omit<RunEvent, 'version' | 'feature' | 'timestamp'>,
+): Promise<void> {
+  const fullEvent: RunEvent = {
+    version: 1,
+    feature: 'annotation',
+    timestamp: Date.now(),
+    ...event,
+  }
+  annotationDebug('run-event', fullEvent as unknown as Record<string, unknown>)
+  if (!fullEvent.runLogPath) return
+  try {
+    await appendWorkspaceJsonLine(workspaceFolder, fullEvent.runLogPath, fullEvent)
+  } catch (error) {
+    console.warn('[CodeViewer][annotation] run-log.write.failed', {
+      requestId: fullEvent.requestId,
+      generationId: fullEvent.generationId,
+      runLogPath: fullEvent.runLogPath,
+      message: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
 function readAnnotationConfig(): {
   command: string
   stateRoot: string
@@ -319,6 +377,7 @@ async function getAnnotationStatusSnapshot(
 ): Promise<AnnotationStatusSnapshot> {
   const trackedGeneration = generationStates.get(safePath.relativePath)
   const effectiveGenerationId = generationId ?? trackedGeneration?.generationId
+  const runLogPath = effectiveGenerationId ? annotationRunLogPathFor(effectiveGenerationId) : undefined
 
   let stat: vscode.FileStat
   try {
@@ -327,6 +386,7 @@ async function getAnnotationStatusSnapshot(
     return {
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
+      runLogPath,
       exists: false,
       ready: false,
       state: 'missing',
@@ -342,6 +402,7 @@ async function getAnnotationStatusSnapshot(
     return {
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
+      runLogPath,
       exists: false,
       ready: false,
       state: 'invalid',
@@ -360,6 +421,7 @@ async function getAnnotationStatusSnapshot(
     return {
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
+      runLogPath,
       exists: true,
       ready: false,
       state: 'pending',
@@ -387,6 +449,7 @@ async function getAnnotationStatusSnapshot(
   return {
     path: safePath.relativePath,
     annotationPath: safePath.annotationPath,
+    runLogPath,
     exists: true,
     ready: validation.ok,
     state: validation.ok ? 'ready' : 'invalid',
@@ -404,9 +467,11 @@ export async function handleAnnotationGenerate(
   const startedAt = Date.now()
   const payload = msg.payload as AnnotationGeneratePayload
   const generationId = normalizeOptionalString(payload?.generationId) ?? requestId
+  const runLogPath = annotationRunLogPathFor(generationId)
   annotationDebug('generate.received', {
     requestId,
     generationId,
+    runLogPath,
     path: payload?.path,
     force: payload?.force === true,
   })
@@ -415,6 +480,17 @@ export async function handleAnnotationGenerate(
     sendError(msg.type, msg.id, sendResponse, 'NOT_FOUND', 'No workspace open')
     return
   }
+
+  await recordAnnotationEvent(workspaceFolder, {
+    phase: 'extension.annotation.generate.received',
+    level: 'info',
+    requestId,
+    generationId,
+    runLogPath,
+    path: typeof payload?.path === 'string' ? payload.path : undefined,
+    elapsedMs: Date.now() - startedAt,
+    data: { force: payload?.force === true },
+  })
 
   let safePath: SafeAnnotationPath
   try {
@@ -426,6 +502,18 @@ export async function handleAnnotationGenerate(
       workspaceRoot: workspaceFolder.uri.fsPath,
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
+      runLogPath,
+    })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'extension.annotation.generate.validated',
+      level: 'info',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
+      workspaceId: workspaceFolder.name,
+      elapsedMs: Date.now() - startedAt,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -434,6 +522,16 @@ export async function handleAnnotationGenerate(
       generationId,
       path: payload?.path,
       message,
+    })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'extension.annotation.generate.validate.failed',
+      level: 'error',
+      requestId,
+      generationId,
+      path: typeof payload?.path === 'string' ? payload.path : undefined,
+      runLogPath,
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error ? { message, stack: error.stack } : { message },
     })
     sendError(msg.type, msg.id, sendResponse, message.includes('not found') ? 'NOT_FOUND' : 'INVALID_REQUEST', message)
     return
@@ -449,6 +547,21 @@ export async function handleAnnotationGenerate(
       spawnProfile: config.spawnProfile,
       cwd: workspaceFolder.uri.fsPath,
     })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'tmux.ensureTarget.start',
+      level: 'info',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
+      elapsedMs: Date.now() - startedAt,
+      data: {
+        command: config.command,
+        stateRoot: config.stateRoot,
+        spawnProfile: config.spawnProfile,
+      },
+    })
     const target = await ensureTarget({
       command: config.command,
       stateRoot: config.stateRoot,
@@ -458,6 +571,17 @@ export async function handleAnnotationGenerate(
     annotationDebug('generate.ensure-target.done', {
       requestId,
       generationId,
+      target,
+      elapsedMs: Date.now() - startedAt,
+    })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'tmux.ensureTarget.done',
+      level: 'info',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
       target,
       elapsedMs: Date.now() - startedAt,
     })
@@ -475,6 +599,18 @@ export async function handleAnnotationGenerate(
         bindingId: target.bindingId,
         elapsedMs: Date.now() - startedAt,
       })
+      await recordAnnotationEvent(workspaceFolder, {
+        phase: 'tmux.spawnReadyDelay.done',
+        level: 'debug',
+        requestId,
+        generationId,
+        path: safePath.relativePath,
+        artifactPath: safePath.annotationPath,
+        runLogPath,
+        target,
+        elapsedMs: Date.now() - startedAt,
+        data: { delayMs: SPAWN_READY_DELAY_MS },
+      })
     }
     const submittedAt = Date.now()
     generationStates.set(safePath.relativePath, {
@@ -482,6 +618,7 @@ export async function handleAnnotationGenerate(
       requestId,
       relativePath: safePath.relativePath,
       annotationPath: safePath.annotationPath,
+      runLogPath,
       submittedAt,
       status: 'pending',
       target,
@@ -492,6 +629,17 @@ export async function handleAnnotationGenerate(
       submittedAt,
       bindingId: target.bindingId,
       annotationPath: safePath.annotationPath,
+    })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'tmux.send.start',
+      level: 'info',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
+      target,
+      elapsedMs: Date.now() - startedAt,
     })
     await sendMessage({
       command: config.command,
@@ -510,9 +658,21 @@ export async function handleAnnotationGenerate(
       bindingId: target.bindingId,
       elapsedMs: Date.now() - startedAt,
     })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'tmux.send.done',
+      level: 'info',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
+      target,
+      elapsedMs: Date.now() - startedAt,
+    })
     sendResponse(createMessage('annotation.generate.result', {
       path: safePath.relativePath,
       annotationPath: safePath.annotationPath,
+      runLogPath,
       generationId,
       submittedAt,
       target,
@@ -533,6 +693,19 @@ export async function handleAnnotationGenerate(
       annotationPath: safePath.annotationPath,
       message: error instanceof Error ? error.message : String(error),
     })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'extension.annotation.generate.adapter.failed',
+      level: 'error',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error
+        ? { message: error.message, stack: error.stack }
+        : { message: String(error) },
+    })
     sendError(
       msg.type,
       msg.id,
@@ -548,6 +721,7 @@ export async function handleAnnotationStatus(
   sendResponse: (msg: WsMessage) => void,
 ): Promise<void> {
   const requestId = msg.id
+  const startedAt = Date.now()
   const payload = msg.payload as AnnotationStatusPayload
   const generationId = normalizeOptionalString(payload?.generationId)
   const minUpdatedAt = normalizeOptionalNumber(payload?.minUpdatedAt)
@@ -601,6 +775,24 @@ export async function handleAnnotationStatus(
       updatedAt: snapshot.updatedAt ?? null,
       diagnostics: snapshot.validation?.diagnostics ?? [],
     })
+    if (snapshot.runLogPath) {
+      await recordAnnotationEvent(workspaceFolder, {
+        phase: `extension.annotation.status.${snapshot.state}`,
+        level: snapshot.ready ? 'info' : snapshot.state === 'invalid' ? 'warn' : 'debug',
+        requestId,
+        generationId: snapshot.generationId,
+        path: safePath.relativePath,
+        artifactPath: safePath.annotationPath,
+        runLogPath: snapshot.runLogPath,
+        elapsedMs: Date.now() - startedAt,
+        diagnostics: snapshot.validation?.diagnostics ?? [],
+        data: {
+          exists: snapshot.exists,
+          ready: snapshot.ready,
+          updatedAt: snapshot.updatedAt ?? null,
+        },
+      })
+    }
     sendResponse(createMessage('annotation.status.result', snapshot, msg.id))
   } catch (error) {
     console.error('[CodeViewer][annotation] status.check.failed', {
@@ -610,6 +802,22 @@ export async function handleAnnotationStatus(
       annotationPath: safePath.annotationPath,
       message: error instanceof Error ? error.message : String(error),
     })
+    const statusRunLogPath = generationId ? annotationRunLogPathFor(generationId) : undefined
+    if (statusRunLogPath) {
+      await recordAnnotationEvent(workspaceFolder, {
+        phase: 'extension.annotation.status.failed',
+        level: 'error',
+        requestId,
+        generationId,
+        path: safePath.relativePath,
+        artifactPath: safePath.annotationPath,
+        runLogPath: statusRunLogPath,
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error
+          ? { message: error.message, stack: error.stack }
+          : { message: String(error) },
+      })
+    }
     sendError(
       msg.type,
       msg.id,

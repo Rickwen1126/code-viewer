@@ -215,6 +215,43 @@ export interface WatchSetPayload {
   watches: WatchDescriptor[]
 }
 
+// Run/debug event domain
+export type RunEventFeature = 'annotation' | 'fileChat'
+export type RunEventLevel = 'debug' | 'info' | 'warn' | 'error'
+
+export interface RunEventTarget {
+  bindingId?: string
+  acquired?: 'reused' | 'spawned'
+  paneId?: string
+  paneTarget?: string
+  pid?: string
+  targetScopeKey?: string
+}
+
+export interface RunEvent {
+  version: 1
+  feature: RunEventFeature
+  phase: string
+  level: RunEventLevel
+  timestamp: number
+  requestId: string
+  generationId?: string
+  threadId?: string
+  workspaceId?: string
+  path?: string
+  artifactPath?: string
+  threadPath?: string
+  runLogPath?: string
+  elapsedMs?: number
+  target?: RunEventTarget
+  diagnostics?: string[]
+  error?: {
+    message: string
+    stack?: string
+  }
+  data?: Record<string, unknown>
+}
+
 // File
 export interface FileTreePayload {
   path?: string
@@ -259,6 +296,7 @@ export interface AnnotationGeneratePayload {
 export interface AnnotationGenerateResultPayload {
   path: string
   annotationPath: string
+  runLogPath?: string
   generationId: string
   submittedAt: number
   target: {
@@ -292,6 +330,7 @@ export interface AnnotationArtifactValidation {
 export interface AnnotationStatusResultPayload {
   path: string
   annotationPath: string
+  runLogPath?: string
   exists: boolean
   ready: boolean
   state: AnnotationArtifactState
