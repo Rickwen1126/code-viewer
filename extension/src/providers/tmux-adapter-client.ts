@@ -34,6 +34,12 @@ export interface SendMessageOptions extends TmuxAdapterConfig {
   message: string
 }
 
+export interface DestroyTargetOptions extends TmuxAdapterConfig {
+  bindingId: string
+  cwd?: string
+  adminOverride?: boolean
+}
+
 interface EnsureTargetStdout {
   binding_id?: unknown
   acquired?: unknown
@@ -250,4 +256,15 @@ export async function sendMessage(options: SendMessageOptions): Promise<true> {
       // Best effort cleanup for a generated prompt file.
     }
   }
+}
+
+export async function destroyTarget(options: DestroyTargetOptions): Promise<boolean> {
+  const args = buildTmuxAdapterArgs(options.stateRoot, 'destroy', [
+    '--binding-id',
+    options.bindingId,
+    ...(options.adminOverride ? ['--admin-override'] : []),
+  ])
+  const { stdout } = await execFileAsync(options.command, args, options.cwd)
+  const parsed = parseJsonObject(stdout, 'tmux-adapter destroy')
+  return parsed.destroyed === true
 }

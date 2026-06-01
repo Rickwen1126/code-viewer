@@ -51,11 +51,16 @@ In scope for V1:
 - One active conversation per currently opened file path in frontend state.
 - Prompt composer with submit, loading, error, and retry/resend affordance.
 - Message rendering for user question and assistant answer.
-- Automatic current-file context injection.
+- Automatic current-file reference injection. The prompt should pass workspace,
+  file path, marked lines, and the question, but must not paste the whole source
+  file into every request.
 - Workspace-level current thread loading in the chat UI:
   `.codeviewer/chat-runs/current/thread.md` is the UI history source.
 - Archive/New Chat action that moves current artifacts under
   `.codeviewer/chat-runs/archive/<timestamp>/` and resets current.
+- Archive/New Chat should also destroy the last dedicated file-chat Codex target
+  when known, so a context-overflowed session is not reused after the UI history
+  is reset.
 - Keyword search over visible thread messages.
 - A simple Codex Spark request using `tmux-adapter`.
 - A dedicated Codex target/context via `codeViewer.fileChatSpawnProfile`
@@ -216,7 +221,9 @@ Run log: .codeviewer/chat-runs/current/run.jsonl
 Request id: <requestId>
 
 Rules:
-- Read the current source file.
+- Use the workspace path as primary context; read the source file from the
+  workspace only if needed.
+- Do not paste or restate the whole source file.
 - Answer the user's question using this file as primary context.
 - Prefer concrete references to functions, types, line-level behavior, and APIs.
 - If the answer needs inference beyond the file, label it as Inference.
@@ -231,12 +238,13 @@ User question:
 <question>
 ```
 
-Open design point: whether to embed the current file content directly in the
-prompt or require Codex to read the file. Embedding gives a stronger guarantee
-that the "current file content" is exactly what the frontend saw, but it can
-explode prompt size. For V1, extension should read the workspace file from disk
-and include metadata; a later version can pass unsaved/dirty editor content if
-needed.
+Accepted decision: do not embed the full source file in the prompt. The
+persistent Codex session already retains prior messages, so repeatedly pasting a
+large source file can exhaust the context window after a few asks. For V1, the
+extension validates the workspace file and includes metadata plus marked lines;
+Codex reads the file from the workspace only when the question needs more
+detail. A later version can pass small targeted snippets or unsaved/dirty editor
+content if needed.
 
 ## Frontend UI Sketch
 
@@ -341,6 +349,9 @@ Responsibilities:
 - Append a user block to `.codeviewer/chat-runs/current/thread.md`.
 - Write structured events to `.codeviewer/chat-runs/current/run.jsonl`.
 - Call existing `ensureTarget` and `sendMessage`.
+- On archive/new chat, copy current artifacts to archive, reset current
+  artifacts, and best-effort destroy the last file-chat target recorded in the
+  run log.
 - Implement `fileChat.status` by validating the latest assistant block freshness
   and reading that block back as the assistant message.
 

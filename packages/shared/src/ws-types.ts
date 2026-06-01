@@ -426,6 +426,9 @@ export interface FileChatArchiveResultPayload {
   manifestPath: string
   threadPath: string
   runLogPath: string
+  previousTargetBindingId?: string
+  destroyedTarget?: boolean
+  destroyError?: string
 }
 
 // LSP

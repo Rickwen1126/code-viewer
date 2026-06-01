@@ -59,6 +59,21 @@ describe('tmux-adapter client helpers', () => {
     ])
   })
 
+  it('builds destroy args with the global state-root before the subcommand', () => {
+    expect(buildTmuxAdapterArgs('/tmp/state', 'destroy', [
+      '--binding-id',
+      'binding-1',
+      '--admin-override',
+    ])).toEqual([
+      '--state-root',
+      '/tmp/state',
+      'destroy',
+      '--binding-id',
+      'binding-1',
+      '--admin-override',
+    ])
+  })
+
   it('normalizes active ensure-target output', () => {
     expect(normalizeEnsureTargetOutput({
       binding_id: 'binding-1',

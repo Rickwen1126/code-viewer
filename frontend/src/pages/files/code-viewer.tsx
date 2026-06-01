@@ -319,12 +319,16 @@ export function CodeViewerPage() {
 
   useEffect(() => {
     if (!fileChatOpen) return
-    window.requestAnimationFrame(() => {
+    const scrollToBottom = () => {
       const container = fileChatMessagesRef.current
       if (!container) return
       container.scrollTop = container.scrollHeight
+    }
+    window.requestAnimationFrame(() => {
+      scrollToBottom()
+      window.requestAnimationFrame(scrollToBottom)
     })
-  }, [fileChatOpen, fileChatMessages.length, fileChatPhase, fileChatError])
+  }, [fileChatOpen, fileChatMessages.length, fileChatPhase, fileChatError, path, visibleFileChatMessages.length])
 
   useEffect(() => {
     if (!fileChatOpen) return
@@ -1219,6 +1223,11 @@ export function CodeViewerPage() {
       )
       setFileChatMessages(parseFileChatThread(res.payload.threadText))
       setFileChatError(null)
+      window.requestAnimationFrame(() => {
+        const container = fileChatMessagesRef.current
+        if (!container) return
+        container.scrollTop = container.scrollHeight
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load file chat thread'
       setFileChatError(message)

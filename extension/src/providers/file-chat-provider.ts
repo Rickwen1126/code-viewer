@@ -11,7 +11,7 @@ import type {
 } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
 import { debugLog } from '../utils/debug'
-import { ensureTarget, sendMessage } from './tmux-adapter-client'
+import { destroyTarget, ensureTarget, sendMessage } from './tmux-adapter-client'
 
 const CHAT_ROOT = '.codeviewer/chat-runs/current'
 const CHAT_ARCHIVE_ROOT = '.codeviewer/chat-runs/archive'
@@ -20,7 +20,6 @@ const CHAT_MANIFEST_PATH = `${CHAT_ROOT}/manifest.json`
 const CHAT_THREAD_PATH = `${CHAT_ROOT}/thread.md`
 const CHAT_RUN_LOG_PATH = `${CHAT_ROOT}/run.jsonl`
 const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
-const MAX_SOURCE_CHARS = 80_000
 const SPAWN_READY_DELAY_MS = 2500
 
 interface SafeFileChatPath {
@@ -245,6 +244,21 @@ function formatMarkedLines(markedLines: FileChatMarkedLine[]): string {
     .join('\n')
 }
 
+function latestTargetBindingIdFromRunLog(runLogText: string): string | undefined {
+  const lines = runLogText.split(/\r?\n/).filter(Boolean).reverse()
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line) as { target?: { bindingId?: unknown } }
+      if (typeof parsed.target?.bindingId === 'string' && parsed.target.bindingId.length > 0) {
+        return parsed.target.bindingId
+      }
+    } catch {
+      // Ignore corrupt partial debug lines; archive should remain best-effort.
+    }
+  }
+  return undefined
+}
+
 function userBlock(requestId: string, relativePath: string, question: string, markedLines: FileChatMarkedLine[]): string {
   return [
     '',
@@ -306,7 +320,6 @@ export function buildFileChatPrompt(params: {
   relativePath: string
   requestId: string
   question: string
-  sourceText: string
   markedLines: FileChatMarkedLine[]
 }): string {
   return [
@@ -322,7 +335,8 @@ export function buildFileChatPrompt(params: {
     'Rules:',
     '- Answer in Traditional Chinese.',
     '- Help a junior engineer understand the syntax/API layer first, then the code intent.',
-    '- Use the current source file content below as primary context.',
+    '- Use the workspace path as primary context; read the source file from the workspace only if needed.',
+    '- Do not paste or restate the whole source file.',
     '- Prefer concrete references to functions, types, line-level behavior, and library APIs.',
     '- If the answer needs inference beyond the file, label it as "Inference:".',
     '- Do not modify the source file.',
@@ -341,12 +355,6 @@ export function buildFileChatPrompt(params: {
     'User question:',
     '',
     params.question,
-    '',
-    'Current source file content:',
-    '',
-    '```text',
-    params.sourceText,
-    '```',
   ].join('\n')
 }
 
@@ -485,10 +493,7 @@ export async function handleFileChatSend(
   }
 
   try {
-    const sourceText = readText(await vscode.workspace.fs.readFile(safePath.sourceUri))
-    if (sourceText.length > MAX_SOURCE_CHARS) {
-      throw new Error(`Source file too large for file chat V1 (${sourceText.length} chars > ${MAX_SOURCE_CHARS})`)
-    }
+    const sourceStat = await vscode.workspace.fs.stat(safePath.sourceUri)
     const submittedAt = Date.now()
     await writeManifest(workspaceFolder, {
       requestId,
@@ -505,7 +510,7 @@ export async function handleFileChatSend(
       path: safePath.relativePath,
       elapsedMs: Date.now() - startedAt,
       data: {
-        sourceChars: sourceText.length,
+        sourceBytes: sourceStat.size,
         markedLineCount: markedLines.length,
       },
     })
@@ -568,7 +573,6 @@ export async function handleFileChatSend(
         relativePath: safePath.relativePath,
         requestId,
         question,
-        sourceText,
         markedLines,
       }),
     })
@@ -691,19 +695,37 @@ export async function handleFileChatArchive(
     const archivedAt = Date.now()
     const segment = safeArchiveSegment(new Date(archivedAt))
     const archivePath = `${CHAT_ARCHIVE_ROOT}/${segment}`
+    const previousRunLog = await readWorkspaceText(workspaceFolder, CHAT_RUN_LOG_PATH)
+    const previousBindingId = previousRunLog ? latestTargetBindingIdFromRunLog(previousRunLog) : undefined
     await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, archivePath)))
     const hadThread = await pathExists(workspaceFolder, CHAT_THREAD_PATH)
     await copyWorkspaceFileIfExists(workspaceFolder, CHAT_THREAD_PATH, `${archivePath}/thread.md`)
     await copyWorkspaceFileIfExists(workspaceFolder, CHAT_MANIFEST_PATH, `${archivePath}/manifest.json`)
     await copyWorkspaceFileIfExists(workspaceFolder, CHAT_RUN_LOG_PATH, `${archivePath}/run.jsonl`)
     await resetCurrentThread(workspaceFolder, archivedAt)
+    let destroyedTarget = false
+    let destroyError: string | undefined
+    if (previousBindingId) {
+      const config = readFileChatConfig()
+      try {
+        destroyedTarget = await destroyTarget({
+          command: config.command,
+          stateRoot: config.stateRoot,
+          bindingId: previousBindingId,
+          cwd: workspaceFolder.uri.fsPath,
+          adminOverride: true,
+        })
+      } catch (error) {
+        destroyError = error instanceof Error ? error.message : String(error)
+      }
+    }
     await recordFileChatEvent(workspaceFolder, {
       phase: 'extension.fileChat.archive.done',
       level: 'info',
       requestId: msg.id,
       path: archivePath,
       elapsedMs: Date.now() - startedAt,
-      data: { archivePath, hadThread },
+      data: { archivePath, hadThread, previousBindingId, destroyedTarget, destroyError },
     })
     sendResponse(createMessage('fileChat.archive.result', {
       threadId: CHAT_THREAD_ID,
@@ -712,6 +734,9 @@ export async function handleFileChatArchive(
       manifestPath: CHAT_MANIFEST_PATH,
       threadPath: CHAT_THREAD_PATH,
       runLogPath: CHAT_RUN_LOG_PATH,
+      previousTargetBindingId: previousBindingId,
+      destroyedTarget,
+      destroyError,
     }, msg.id))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

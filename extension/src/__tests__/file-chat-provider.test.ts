@@ -89,13 +89,13 @@ describe('file chat thread parsing', () => {
       relativePath: 'src/index.ts',
       requestId: 'ask-1',
       question: '這段做什麼？',
-      sourceText: 'export const n = 1',
       markedLines: [{ line: 1, content: 'export const n = 1' }],
     })
 
     expect(prompt).toContain('Thread file: .codeviewer/chat-runs/current/thread.md')
     expect(prompt).toContain('## Assistant requestId=ask-1')
     expect(prompt).toContain('L1: export const n = 1')
-    expect(prompt).toContain('export const n = 1')
+    expect(prompt).toContain('Use the workspace path as primary context')
+    expect(prompt).not.toContain('Current source file content')
   })
 })
