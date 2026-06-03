@@ -142,6 +142,13 @@ async function main() {
     await page.getByRole('button', { name: 'Git' }).click()
     await page.waitForURL(/\/git$/, { timeout: 15000 })
     await page.getByText(/changed|No changes|Loading git status/i).first().waitFor({ state: 'visible', timeout: 15000 })
+    await waitFor(
+      () => consoleLines.some(
+        (line) => line.includes('[watch] sync') && line.includes('pathname: /git') && line.includes('watches: Array(1)'),
+      ),
+      5000,
+    )
+    await page.waitForTimeout(500)
 
     writeFileSync(TEST_FILE_2_PATH, `${GIT_CONTENT}\n`, 'utf8')
     await waitForPathText(page, TEST_FILE_2, 20000)

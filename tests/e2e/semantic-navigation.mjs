@@ -1,5 +1,5 @@
 import { chromium, devices } from '@playwright/test'
-import { appendFileSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 
@@ -10,7 +10,6 @@ const TOUR_TITLE = '02 - Sky Eye: Code Viewer Edit Step Boundary'
 const RUN_ID = `${Date.now()}`
 const APP_FILE_PATH = join(WORKSPACE_PATH, 'frontend/src/app.tsx')
 const APP_TARGET_TEXT = 'path="open/file"'
-const GIT_TARGET_FILE = 'packages/cli/src/index.ts'
 
 const OUTPUT_DIR = '/private/tmp/claude-501'
 const CONSOLE_LOG = `${OUTPUT_DIR}/codeview-e2e-semantic-navigation-console-${RUN_ID}.log`
@@ -35,6 +34,50 @@ function assert(condition, message) {
 function getPathAndSearch(rawUrl) {
   const url = new URL(rawUrl)
   return `${url.pathname}${url.search}`
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function toRoutePath(path) {
+  return path.split('/').map(encodeURIComponent).join('/')
+}
+
+function toRoutePathRegex(path) {
+  return path.split('/').map((segment) => escapeRegExp(encodeURIComponent(segment))).join('/')
+}
+
+function mapGitStatus(rawStatus) {
+  if (rawStatus === 'A') return 'added'
+  return 'modified'
+}
+
+function findRecentGitDiffTarget() {
+  const commits = execSync('git log -n 30 --format=%H', {
+    cwd: WORKSPACE_PATH,
+    encoding: 'utf8',
+  }).split('\n').map((line) => line.trim()).filter(Boolean)
+
+  for (const commit of commits) {
+    const rows = execSync(`git diff-tree --no-commit-id --name-status -r ${commit}`, {
+      cwd: WORKSPACE_PATH,
+      encoding: 'utf8',
+    }).split('\n').map((line) => line.trim()).filter(Boolean)
+
+    for (const row of rows) {
+      const parts = row.split('\t')
+      const rawStatus = parts[0]?.[0]
+      const path = parts[1]
+      if (!path || rawStatus === 'D' || rawStatus === 'R') continue
+      if (!/^[A-Za-z0-9._/-]+$/.test(path)) continue
+      if (!/\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|html)$/.test(path)) continue
+      if (!existsSync(join(WORKSPACE_PATH, path))) continue
+      return { commit, path, status: mapGitStatus(rawStatus) }
+    }
+  }
+
+  throw new Error('Could not find a recent Git diff target in the latest 30 commits')
 }
 
 function findOneBasedLine(filePath, needle) {
@@ -70,11 +113,12 @@ async function expectNoRuntimeErrors() {
 async function main() {
   const targetLine = findOneBasedLine(APP_FILE_PATH, APP_TARGET_TEXT)
   const workspaceKey = await findWorkspaceKey(WORKSPACE_PATH)
-  const diffCommit = execSync(`git log -n 1 --format=%H -- ${JSON.stringify(GIT_TARGET_FILE)}`, {
-    cwd: WORKSPACE_PATH,
-    encoding: 'utf8',
-  }).trim()
+  const gitTarget = findRecentGitDiffTarget()
+  const diffCommit = gitTarget.commit
   const diffCommitShort = diffCommit.slice(0, 7)
+  const gitTargetRoutePath = `/git/diff/${toRoutePath(gitTarget.path)}`
+  const gitTargetRouteRegex = toRoutePathRegex(gitTarget.path)
+  const gitCodeRouteRegex = `/files/${gitTargetRouteRegex}\\?line=`
   const browser = await chromium.launch({
     executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     headless: true,
@@ -135,6 +179,8 @@ async function main() {
     },
     gitDetour: {
       commit: diffCommit,
+      path: gitTarget.path,
+      status: gitTarget.status,
       apiResolverPath: null,
       apiLocalUrl: null,
       directUrl: null,
@@ -234,7 +280,7 @@ async function main() {
     assert(result.tourDetour.forwardUrl === result.tourDetour.codeUrl, 'Browser forward did not restore the code detour entry')
 
     const diffLinkResponse = await fetch(
-      `http://127.0.0.1:4800/api/links/diff?workspace=${encodeURIComponent(workspaceKey)}&path=${encodeURIComponent(GIT_TARGET_FILE)}&commit=${encodeURIComponent(diffCommit)}&status=modified`,
+      `http://127.0.0.1:4800/api/links/diff?workspace=${encodeURIComponent(workspaceKey)}&path=${encodeURIComponent(gitTarget.path)}&commit=${encodeURIComponent(diffCommit)}&status=${gitTarget.status}`,
     )
     assert(diffLinkResponse.ok, `Failed to fetch diff link: ${diffLinkResponse.status} ${diffLinkResponse.statusText}`)
     const diffLink = await diffLinkResponse.json()
@@ -244,37 +290,39 @@ async function main() {
       localStorage.removeItem('code-viewer:selected-workspace')
     })
     await page.goto(diffLink.localUrl, { waitUntil: 'networkidle' })
-    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${diffCommit}&status=modified$`), { timeout: 20000 })
+    await page.waitForURL(new RegExp(`${gitTargetRouteRegex}\\?commit=${diffCommit}&status=${gitTarget.status}$`), { timeout: 20000 })
     result.gitDetour.directUrl = page.url()
     assert(
-      result.gitDetour.apiResolverPath === `/open/git-diff?workspace=${workspaceKey}&path=${encodeURIComponent(GIT_TARGET_FILE)}&commit=${diffCommit}&status=modified`,
+      result.gitDetour.apiResolverPath === `/open/git-diff?workspace=${workspaceKey}&path=${encodeURIComponent(gitTarget.path)}&commit=${diffCommit}&status=${gitTarget.status}`,
       'diff resolver path did not match expected contract',
     )
     assert(
-      getPathAndSearch(result.gitDetour.directUrl) === `/git/diff/packages/cli/src/index.ts?commit=${diffCommit}&status=modified`,
+      getPathAndSearch(result.gitDetour.directUrl) === `${gitTargetRoutePath}?commit=${diffCommit}&status=${gitTarget.status}`,
       'Direct diff link did not resolve to canonical URL',
     )
 
     await page.getByRole('button', { name: 'Git', exact: true }).click()
     await page.waitForURL(/\/git$/, { timeout: 15000 })
     const commitButton = page.locator('button', { hasText: diffCommitShort }).first()
+    await commitButton.scrollIntoViewIfNeeded({ timeout: 15000 })
     await commitButton.waitFor({ state: 'visible', timeout: 15000 })
     await commitButton.click()
-    const gitFileButton = page.locator('button', { hasText: GIT_TARGET_FILE }).first()
+    const gitFileButton = page.locator('button', { hasText: gitTarget.path }).first()
+    await gitFileButton.scrollIntoViewIfNeeded({ timeout: 20000 })
     await gitFileButton.waitFor({ state: 'visible', timeout: 20000 })
     await gitFileButton.click()
-    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${diffCommit}`), { timeout: 15000 })
+    await page.waitForURL(new RegExp(`${gitTargetRouteRegex}\\?commit=${diffCommit}`), { timeout: 15000 })
     result.gitDetour.diffUrl = page.url()
     await page.getByRole('button', { name: 'View in Code' }).click()
-    await page.waitForURL(/\/files\/packages\/cli\/src\/index\.ts\?line=/, { timeout: 15000 })
+    await page.waitForURL(new RegExp(gitCodeRouteRegex), { timeout: 15000 })
     await page.getByRole('button', { name: 'Back to Diff' }).waitFor({ state: 'visible', timeout: 15000 })
     result.gitDetour.codeUrl = page.url()
     await page.screenshot({ path: SCREENSHOT_GIT_CODE, fullPage: true })
     await page.getByRole('button', { name: 'Back to Diff' }).click()
-    await page.waitForURL(new RegExp(`/git/diff/packages/cli/src/index\\.ts\\?commit=${diffCommit}`), { timeout: 15000 })
+    await page.waitForURL(new RegExp(`${gitTargetRouteRegex}\\?commit=${diffCommit}`), { timeout: 15000 })
     result.gitDetour.unwindUrl = page.url()
     await page.goForward({ waitUntil: 'networkidle' })
-    await page.waitForURL(/\/files\/packages\/cli\/src\/index\.ts\?line=/, { timeout: 15000 })
+    await page.waitForURL(new RegExp(gitCodeRouteRegex), { timeout: 15000 })
     await page.getByRole('button', { name: 'Back to Diff' }).waitFor({ state: 'visible', timeout: 15000 })
     result.gitDetour.forwardUrl = page.url()
     result.gitDetour.gitDiffResult = consoleLines.some((line) => line.includes('git.diff.result'))
