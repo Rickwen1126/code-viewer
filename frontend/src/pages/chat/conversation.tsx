@@ -103,21 +103,63 @@ function formatThreadForCopy(turns: Turn[]): string {
   return turns.map(formatTurnForCopy).join('\n\n---\n\n')
 }
 
+function CopyButton({
+  label,
+  copied,
+  onClick,
+  align = 'left',
+}: {
+  label: string
+  copied: boolean
+  onClick: () => void
+  align?: 'left' | 'right'
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      style={{
+        alignSelf: align === 'right' ? 'flex-end' : 'flex-start',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        height: 26,
+        padding: '0 8px',
+        borderRadius: 6,
+        border: '1px solid #3a3a3a',
+        background: copied ? '#163b2f' : '#252526',
+        color: copied ? '#8fe6bd' : '#9cdcfe',
+        cursor: 'pointer',
+        fontSize: 11,
+        lineHeight: 1,
+      }}
+    >
+      <Copy size={12} />
+      {copied ? 'Copied' : label}
+    </button>
+  )
+}
+
 function MessageBubble({
   turn,
   isStreaming,
   onCopyTurn,
+  onCopyRequest,
   copied,
+  requestCopied,
 }: {
   turn: Turn
   isStreaming: boolean
   onCopyTurn: () => void
+  onCopyRequest: () => void
   copied: boolean
+  requestCopied: boolean
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 16px' }}>
       {/* User message — right/blue */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
         <div
           style={{
             maxWidth: '80%',
@@ -132,17 +174,27 @@ function MessageBubble({
         >
           {turn.request}
         </div>
+        <CopyButton
+          label="Copy Message"
+          copied={requestCopied}
+          onClick={onCopyRequest}
+          align="right"
+        />
+        <CopyButton
+          label="Copy Turn"
+          copied={copied}
+          onClick={onCopyTurn}
+          align="right"
+        />
       </div>
 
       {/* Copilot response — left/dark */}
       {(turn.response || isStreaming) && (
-        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
           <div
             style={{
-              position: 'relative',
               maxWidth: '90%',
               padding: '10px 14px',
-              paddingRight: 42,
               borderRadius: '18px 18px 18px 4px',
               background: '#1e1e1e',
               border: '1px solid #333',
@@ -152,29 +204,6 @@ function MessageBubble({
               wordBreak: 'break-word',
             }}
           >
-            <button
-              onClick={onCopyTurn}
-              title="Copy this turn"
-              aria-label="Copy this turn"
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                width: 26,
-                height: 26,
-                borderRadius: 6,
-                border: '1px solid #3a3a3a',
-                background: copied ? '#163b2f' : '#252526',
-                color: copied ? '#8fe6bd' : '#9cdcfe',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 0,
-              }}
-            >
-              <Copy size={14} />
-            </button>
             {turn.response ? (
               <>
                 <ChatMessage content={turn.response} />
@@ -333,6 +362,11 @@ export function ChatConversationPage() {
   function handleCopyTurn(turn: Turn): void {
     copyToClipboard(formatTurnForCopy(turn))
     markCopied(turn.id)
+  }
+
+  function handleCopyRequest(turn: Turn): void {
+    copyToClipboard(turn.request)
+    markCopied(`${turn.id}:request`)
   }
 
   function handleCopyThread(): void {
@@ -500,7 +534,9 @@ export function ChatConversationPage() {
             turn={turn}
             isStreaming={turn.id === sendingTurnId}
             onCopyTurn={() => handleCopyTurn(turn)}
+            onCopyRequest={() => handleCopyRequest(turn)}
             copied={copiedKey === turn.id}
+            requestCopied={copiedKey === `${turn.id}:request`}
           />
         ))}
       </div>
