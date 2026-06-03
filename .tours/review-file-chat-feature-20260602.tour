@@ -1,0 +1,76 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: File-Aware Chat Feature 2026-06-02",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 3\n🟡 Suggestions: 4\n✅ Good Practices: 4\n\n### Scope\nFull Ask About File / file-aware temporary chat feature across commits 7c0949e..ce0653f: shared protocol, backend relay debug routing, extension file-chat provider, tmux target isolation, frontend floating chat UI, archive/new behavior, markdown rendering, file-level bookmark/marked-line integration, docs, and unit/typecheck evidence.\n\n### Verdict\nNeeds Fix before stable. The feature is usable for short happy-path trials, but async lifecycle and contract drift still explain the user's observed stale pending/error behavior after switching files and late Codex replies."
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 1218,
+      "title": "🔴 Stale poll can mutate the active chat after archive or navigation",
+      "description": "## Problem\n`pollFileChatStatus()` starts an async loop per request, but the loop has no cancellation token or active-request guard before mutating `fileChatPhase`, `fileChatError`, and `fileChatMessages`. If the user sends a question, clicks New/archive, closes/reopens, or switches file while an older poll is still running, that older poll can later append an assistant message and set phase to `ready` for a request that is no longer the visible/current one.\n\n## Fix\nTrack an `activeFileChatRequestRef` or generation counter. Set it on submit and archive. Before every state mutation in the poll, check that the active request id still matches; after archive, invalidate all prior polls. Prefer a helper such as `isActiveFileChatRequest(requestId)` and use it before setting phase, error, messages, toast, and timeout state.\n\n## Rationale\nThis is the core lifecycle bug behind confusing UI states: thread.md can be correct while the React view shows stale pending/error or a late answer from an older request."
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 1247,
+      "title": "🔴 Timeout message is immediately cleared by thread reload",
+      "description": "## Problem\nAfter polling exhausts, the code sets `fileChatPhase('error')` and a helpful timeout error, then immediately calls `await loadFileChatThread()`. `loadFileChatThread()` unconditionally calls `setFileChatError(null)` on success, so the user may only see `error` state without the diagnostic text, or see the text flicker and disappear.\n\n## Fix\nLet `loadFileChatThread()` accept an option such as `{ preserveError: true }`, or split message loading from error clearing. On timeout, reload the thread while keeping the timeout diagnostic until a new submit/archive succeeds.\n\n## Rationale\nThe feature's observability depends on surfacing the real failure reason. Clearing the error right after setting it makes the UI harder to debug exactly when the user needs it most."
+    },
+    {
+      "file": "extension/src/providers/file-chat-provider.ts",
+      "line": 307,
+      "title": "🔴 Assistant block parser can false-match quoted headers",
+      "description": "## Problem\n`extractAssistantMessage()` uses `threadText.lastIndexOf(exactHeader)`, which fixed one compacted duplicate-header case but now matches the header string anywhere in the thread body. If Codex quotes or explains `## Assistant requestId=<id>` inside an answer, status can slice from that quoted text and return a truncated or bogus assistant block.\n\n## Fix\nParse only line-start Markdown headers: find matches for `^## Assistant requestId=<escaped requestId>\\s*$` with multiline regex, select the last real header, then slice until the next real `^## (User|Assistant) requestId=` header. Add tests for quoted inline headers and compact recovery.\n\n## Rationale\n`fileChat.status` treats parser success as readiness. A false positive can mark a request ready with corrupt content, which is worse than a clean pending/error state."
+    },
+    {
+      "file": "docs/file-aware-chat/plan.md",
+      "line": 16,
+      "title": "🟡 Plan still preserves the old full-source injection contract",
+      "description": "## Problem\nThe top Goal says Code Viewer automatically includes the current file content as context, while the accepted V1 decision later says the prompt must pass path/metadata/marked lines and must not paste the whole source file. This contradiction is exactly the contract drift that previously caused context-window exhaustion.\n\n## Fix\nRewrite the Goal and Initial behavior to say the current file is referenced by workspace-relative path and optional marked lines. Move the abandoned full-source idea into a historical note or delete it from active plan language.\n\n## Rationale\nFuture agents read the Goal first. Leaving the obsolete contract there makes it likely that someone will reintroduce full-source replay."
+    },
+    {
+      "file": "docs/file-aware-chat/plan.md",
+      "line": 333,
+      "title": "🟡 Milestone checklist is stale after implementation",
+      "description": "## Problem\nP1/P2/P3 checkboxes still show protocol/provider/frontend/runtime tasks as unchecked even though shared protocol, provider, UI, archive, and runtime verification commits exist. Active todo state no longer reflects actual shipped code.\n\n## Fix\nUpdate completed tasks and move historical done items to `docs/todo-finished.md`; leave only the remaining gaps such as lifecycle cancellation, parser hardening, and E2E coverage in active todo.\n\n## Rationale\n`docs/todo.md` and feature plans are the repo's working index. Stale unchecked milestones make the next session waste time rediscovering what is real."
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 1193,
+      "title": "🟡 Polling timing is encoded as magic numbers",
+      "description": "## Problem\nThe file-chat poll loop hardcodes 180 attempts, 900 ms initial delay, 1500 ms interval, and 5000 ms status request timeout inline. The effective wait time is about 4.5 minutes, but that policy is invisible at the call site.\n\n## Fix\nExtract named constants such as `FILE_CHAT_POLL_MAX_ATTEMPTS`, `FILE_CHAT_POLL_INITIAL_DELAY_MS`, `FILE_CHAT_POLL_INTERVAL_MS`, and `FILE_CHAT_STATUS_TIMEOUT_MS` near the feature state constants.\n\n## Rationale\nThis makes timeout tuning intentional and makes future behavior changes auditable rather than buried in one loop."
+    },
+    {
+      "file": "extension/src/providers/file-chat-provider.ts",
+      "line": 343,
+      "title": "🟡 Prompt lacks explicit late/compact recovery instructions",
+      "description": "## Problem\nThe prompt tells Codex to append exactly one assistant block, but it does not describe what to do after compaction, interruption, or if a partial header was already written. The parser was already changed to tolerate a compacted duplicate header, which means this failure mode is real.\n\n## Fix\nAdd a short recovery rule: if the assistant block for this request is already partial or malformed, append one complete fresh block with the exact header and do not edit earlier blocks.\n\n## Rationale\nThe runtime parser and the model prompt should agree on the recovery behavior. Otherwise the UI grows parser hacks to compensate for underspecified model behavior."
+    },
+    {
+      "file": "extension/src/providers/file-chat-provider.ts",
+      "line": 530,
+      "title": "✅ Dedicated file-chat Codex target is the right boundary",
+      "description": "## Good Practice\nThe provider uses `ensureTarget({ feature: 'fileChat', spawnProfile })`, and `extension/package.json` defines `codeViewer.fileChatSpawnProfile` separately from annotation. This prevents annotation prompts from polluting ad-hoc Q&A context.\n\n## Rationale\nThis directly addresses the earlier suspicion that chat was slow because it reused annotation context."
+    },
+    {
+      "file": "extension/src/providers/file-chat-provider.ts",
+      "line": 570,
+      "title": "✅ Prompt no longer replays full source content",
+      "description": "## Good Practice\n`buildFileChatPrompt()` passes workspace root, source path, thread/log paths, request id, question, and marked lines, while explicitly telling Codex to read the source file only if needed and not paste the whole source file.\n\n## Rationale\nThis fixes the context-window exhaustion failure mode caused by repeatedly injecting large source files into a persistent Codex session."
+    },
+    {
+      "file": "frontend/src/pages/files/code-viewer.tsx",
+      "line": 2409,
+      "title": "✅ Assistant messages render Markdown",
+      "description": "## Good Practice\nAssistant content is rendered through `MarkdownRenderer` while user messages stay plain/pre-wrapped. This makes code identifiers, lists, and headings readable in the compact chat panel.\n\n## Rationale\nThe user's screenshot showed raw Markdown was unreadable. Rendering assistant Markdown is the correct UX move for this chat surface."
+    },
+    {
+      "file": "extension/src/providers/file-chat-provider.ts",
+      "line": 721,
+      "title": "✅ Archive/New preserves artifacts and attempts target cleanup",
+      "description": "## Good Practice\nArchive copies thread, manifest, and run log to `.codeviewer/chat-runs/archive/<timestamp>/`, resets current artifacts, records an archive event, and best-effort destroys the last recorded file-chat target.\n\n## Rationale\nThis aligns UI New with the real Codex session boundary, which matters after context overflow or a stuck pane."
+    }
+  ]
+}
