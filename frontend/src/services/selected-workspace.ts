@@ -29,14 +29,15 @@ export function writeStoredWorkspace(workspace: Workspace | null): void {
   }
 }
 
-export function findMatchingWorkspace(
+export function findMatchingWorkspace<T extends WorkspaceIdentity>(
   storedWorkspace: Pick<Workspace, 'workspaceKey' | 'rootPath' | 'extensionId'> | null | undefined,
-  liveWorkspaces: WorkspaceIdentity[],
-): WorkspaceIdentity | null {
+  liveWorkspaces: T[],
+): T | null {
   if (!storedWorkspace) return null
 
-  return liveWorkspaces.find((workspace) => workspace.workspaceKey === storedWorkspace.workspaceKey)
-    ?? liveWorkspaces.find((workspace) => workspace.rootPath === storedWorkspace.rootPath)
+  const newestFirst = [...liveWorkspaces].reverse()
+  return newestFirst.find((workspace) => workspace.workspaceKey === storedWorkspace.workspaceKey)
+    ?? newestFirst.find((workspace) => workspace.rootPath === storedWorkspace.rootPath)
     ?? liveWorkspaces.find((workspace) => workspace.extensionId === storedWorkspace.extensionId)
     ?? null
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
+import { Copy } from 'lucide-react'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { wsClient, generateId } from '../../services/ws-client'
@@ -68,7 +69,51 @@ interface Turn {
   timestamp: number
 }
 
-function MessageBubble({ turn, isStreaming }: { turn: Turn; isStreaming: boolean }) {
+function copyToClipboard(text: string): void {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
+  } else {
+    fallbackCopy(text)
+  }
+}
+
+function fallbackCopy(text: string): void {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  document.body.removeChild(textarea)
+}
+
+function formatTurnForCopy(turn: Turn): string {
+  const parts = [
+    'User:',
+    turn.request.trim(),
+    '',
+    'Assistant:',
+    turn.response.trim() || (turn.responseStatus === 'streaming' ? '(streaming)' : ''),
+  ]
+  return parts.join('\n').trimEnd()
+}
+
+function formatThreadForCopy(turns: Turn[]): string {
+  return turns.map(formatTurnForCopy).join('\n\n---\n\n')
+}
+
+function MessageBubble({
+  turn,
+  isStreaming,
+  onCopyTurn,
+  copied,
+}: {
+  turn: Turn
+  isStreaming: boolean
+  onCopyTurn: () => void
+  copied: boolean
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 16px' }}>
       {/* User message — right/blue */}
@@ -94,8 +139,10 @@ function MessageBubble({ turn, isStreaming }: { turn: Turn; isStreaming: boolean
         <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
           <div
             style={{
+              position: 'relative',
               maxWidth: '90%',
               padding: '10px 14px',
+              paddingRight: 42,
               borderRadius: '18px 18px 18px 4px',
               background: '#1e1e1e',
               border: '1px solid #333',
@@ -105,6 +152,29 @@ function MessageBubble({ turn, isStreaming }: { turn: Turn; isStreaming: boolean
               wordBreak: 'break-word',
             }}
           >
+            <button
+              onClick={onCopyTurn}
+              title="Copy this turn"
+              aria-label="Copy this turn"
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                border: '1px solid #3a3a3a',
+                background: copied ? '#163b2f' : '#252526',
+                color: copied ? '#8fe6bd' : '#9cdcfe',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+              }}
+            >
+              <Copy size={14} />
+            </button>
             {turn.response ? (
               <>
                 <ChatMessage content={turn.response} />
@@ -141,6 +211,7 @@ export function ChatConversationPage() {
   const [isOffline, setIsOffline] = useState(false)
   const [chatMode, setChatMode] = useState<'ask' | 'plan'>('ask')
   const [fileRefs, setFileRefs] = useState<string[]>([])
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -250,6 +321,24 @@ export function ChatConversationPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
+  }
+
+  function markCopied(key: string): void {
+    setCopiedKey(key)
+    window.setTimeout(() => {
+      setCopiedKey((current) => current === key ? null : current)
+    }, 1200)
+  }
+
+  function handleCopyTurn(turn: Turn): void {
+    copyToClipboard(formatTurnForCopy(turn))
+    markCopied(turn.id)
+  }
+
+  function handleCopyThread(): void {
+    if (turns.length === 0) return
+    copyToClipboard(formatThreadForCopy(turns))
+    markCopied('thread')
   }
 
   async function handleSend() {
@@ -410,6 +499,8 @@ export function ChatConversationPage() {
             key={turn.id}
             turn={turn}
             isStreaming={turn.id === sendingTurnId}
+            onCopyTurn={() => handleCopyTurn(turn)}
+            copied={copiedKey === turn.id}
           />
         ))}
       </div>
@@ -439,6 +530,26 @@ export function ChatConversationPage() {
               }}
             >
               {chatMode === 'ask' ? 'Ask' : 'Plan'}
+            </button>
+            <button
+              onClick={handleCopyThread}
+              disabled={turns.length === 0}
+              title="Copy full thread"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                background: copiedKey === 'thread' ? '#163b2f' : '#252526',
+                border: '1px solid #444',
+                color: turns.length === 0 ? '#666' : copiedKey === 'thread' ? '#8fe6bd' : '#d4d4d4',
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 4,
+                cursor: turns.length === 0 ? 'default' : 'pointer',
+              }}
+            >
+              <Copy size={12} />
+              {copiedKey === 'thread' ? 'Copied' : 'Copy Thread'}
             </button>
             {/* File ref chips */}
             {fileRefs.map((ref) => (

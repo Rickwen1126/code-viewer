@@ -42,6 +42,15 @@ describe('selected-workspace', () => {
     expect(findMatchingWorkspace(storedWorkspace, liveWorkspaces)).toEqual(liveWorkspaces[0])
   })
 
+  it('prefers the newest live workspace for duplicate stable workspace keys', () => {
+    const liveWorkspaces: Workspace[] = [
+      { ...storedWorkspace, extensionId: 'ext-old-runtime' },
+      { ...storedWorkspace, extensionId: 'ext-new-runtime' },
+    ]
+
+    expect(findMatchingWorkspace(storedWorkspace, liveWorkspaces)).toEqual(liveWorkspaces[1])
+  })
+
   it('falls back to rootPath when workspaceKey is missing or changed', () => {
     const legacyStored = { ...storedWorkspace, workspaceKey: '', extensionId: 'ext-old' }
     const liveWorkspaces: Workspace[] = [

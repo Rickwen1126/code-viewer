@@ -12,8 +12,8 @@ export function useWebSocket() {
     return wsClient.send(type, payload)
   }, [])
 
-  const request = useCallback(<TReq, TRes>(type: string, payload: TReq) => {
-    return wsClient.request<TReq, TRes>(type, payload)
+  const request = useCallback(<TReq, TRes>(type: string, payload: TReq, timeout?: number) => {
+    return wsClient.request<TReq, TRes>(type, payload, timeout)
   }, [])
 
   return { connectionState, send, request }

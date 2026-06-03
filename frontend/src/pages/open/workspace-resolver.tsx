@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { cacheService, type WorkspaceEntry } from '../../services/cache'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { findMatchingWorkspace } from '../../services/selected-workspace'
 import type { ListWorkspacesResultPayload, SelectWorkspaceResultPayload } from '@code-viewer/shared'
 
 interface ResolverDetail {
@@ -66,10 +67,11 @@ export function WorkspaceScopedResolverPage({
 
   const matchingWorkspace = useMemo(() => {
     if (!workspaceRef) return null
-    return workspaces.find((entry) =>
-      (entry.workspaceKey === workspaceRef || entry.rootPath === workspaceRef) &&
-      entry.status === 'connected',
-    ) ?? null
+    const connectedWorkspaces = workspaces.filter((entry) => entry.status === 'connected')
+    return findMatchingWorkspace(
+      { workspaceKey: workspaceRef, rootPath: workspaceRef, extensionId: workspaceRef },
+      connectedWorkspaces,
+    )
   }, [workspaces, workspaceRef])
 
   useEffect(() => {
