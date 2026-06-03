@@ -21,6 +21,7 @@ import { FileBrowserPage } from './pages/files/file-browser'
 import { CodeViewerPage } from './pages/files/code-viewer'
 import { GitChangesPage } from './pages/git'
 import { GitDiffDetailPage } from './pages/git/diff-detail'
+// Deprecated legacy Copilot Chat routes. The active chat UI is Ask About File inside CodeViewerPage.
 import { ChatSessionListPage } from './pages/chat'
 import { ChatConversationPage } from './pages/chat/conversation'
 import { TourListPage } from './pages/tours/index'

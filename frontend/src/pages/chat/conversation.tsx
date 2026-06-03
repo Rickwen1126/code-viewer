@@ -15,6 +15,9 @@ import type {
 } from '@code-viewer/shared'
 import type { ChatTurn } from '@code-viewer/shared'
 
+// Deprecated: this legacy Copilot Chat route is hidden from navigation and is not the active Code Viewer chat surface.
+// New chat-facing UX work should target the Ask About File overlay in pages/files/code-viewer.tsx.
+
 // T052: Parse markdown response into text + code segments
 function ChatMessage({ content }: { content: string }) {
   const parts = content.split(/(```[\s\S]*?```)/g)

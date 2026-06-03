@@ -165,6 +165,28 @@ interface FileChatRunInfo {
   diagnostics?: string[]
 }
 
+function fileChatRoleLabel(role: FileChatMessage['role']): string {
+  return role === 'user' ? 'User' : 'Assistant'
+}
+
+function formatFileChatMessageForCopy(message: FileChatMessage): string {
+  const lines: string[] = []
+  if (message.filePath) lines.push(`File: ${message.filePath}`)
+  lines.push(`${fileChatRoleLabel(message.role)}:`)
+  lines.push(message.content)
+  return lines.join('\n').trim()
+}
+
+function formatFileChatThreadForCopy(messages: FileChatMessage[]): string {
+  return messages.map(formatFileChatMessageForCopy).join('\n\n---\n\n')
+}
+
+function formatFileChatTurnForCopy(message: FileChatMessage, messages: FileChatMessage[]): string {
+  if (!message.requestId) return formatFileChatMessageForCopy(message)
+  const turnMessages = messages.filter(candidate => candidate.requestId === message.requestId)
+  return formatFileChatThreadForCopy(turnMessages.length > 0 ? turnMessages : [message])
+}
+
 function parseFileChatThread(threadText: string): FileChatMessage[] {
   const headerPattern = /^## (User|Assistant) requestId=([^\n]+)\s*$/gm
   const headers = Array.from(threadText.matchAll(headerPattern))
@@ -2394,6 +2416,66 @@ export function CodeViewerPage() {
                     message.requestId ? `request: ${message.requestId}` : '',
                   ].filter(Boolean).join('\n')}
                 >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: message.role === 'user' ? 'flex-end' : 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 6,
+                  }}>
+                    {message.role === 'assistant' && (
+                      <span style={{
+                        color: '#888',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                      }}>
+                        Reply
+                      </span>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => {
+                          copyToClipboard(formatFileChatMessageForCopy(message))
+                          showToast('Message copied')
+                        }}
+                        title="Copy Message"
+                        aria-label="Copy Message"
+                        style={{
+                          height: 24,
+                          padding: '0 7px',
+                          borderRadius: 4,
+                          border: '1px solid #444',
+                          background: '#1f1f1f',
+                          color: '#d4d4d4',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                        }}
+                      >
+                        Copy Message
+                      </button>
+                      <button
+                        onClick={() => {
+                          copyToClipboard(formatFileChatTurnForCopy(message, fileChatMessages))
+                          showToast('Turn copied')
+                        }}
+                        title="Copy Turn"
+                        aria-label="Copy Turn"
+                        style={{
+                          height: 24,
+                          padding: '0 7px',
+                          borderRadius: 4,
+                          border: '1px solid #444',
+                          background: '#1f1f1f',
+                          color: '#d4d4d4',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                        }}
+                      >
+                        Copy Turn
+                      </button>
+                    </div>
+                  </div>
                   {message.filePath && (
                     <div style={{
                       color: message.role === 'user' ? '#c7dff5' : '#888',
@@ -2497,6 +2579,27 @@ export function CodeViewerPage() {
                 }}
               >
                 Debug
+              </button>
+              <button
+                onClick={() => {
+                  copyToClipboard(formatFileChatThreadForCopy(fileChatMessages))
+                  showToast('Thread copied')
+                }}
+                disabled={fileChatMessages.length === 0}
+                title="Copy full file chat thread"
+                aria-label="Copy Thread"
+                style={{
+                  height: 30,
+                  padding: '0 8px',
+                  borderRadius: 4,
+                  border: '1px solid #444',
+                  background: fileChatMessages.length > 0 ? '#252526' : '#1b1b1b',
+                  color: fileChatMessages.length > 0 ? '#d4d4d4' : '#666',
+                  cursor: fileChatMessages.length > 0 ? 'pointer' : 'default',
+                  fontSize: 12,
+                }}
+              >
+                Copy Thread
               </button>
               <button
                 onClick={() => void submitFileChatQuestion()}
