@@ -304,6 +304,7 @@ export function CodeViewerPage() {
   const [fileChatSearch, setFileChatSearch] = useState('')
   const [fileChatButtonPos, setFileChatButtonPos] = useState({ right: 18, bottom: 18 })
   const [isMobileChat, setIsMobileChat] = useState(() => window.innerWidth <= 640)
+  const fileChatQuestionRef = useRef<HTMLTextAreaElement>(null)
   const fileChatMessagesRef = useRef<HTMLDivElement>(null)
   const fileChatScrollTimersRef = useRef<number[]>([])
   const fileChatDragRef = useRef<{
@@ -594,10 +595,29 @@ export function CodeViewerPage() {
   }
 
   function insertMarkedLinesIntoChat(): void {
-    const text = markedReferenceLineText().join('\n')
-    if (!text) return
-    setFileChatQuestion((current) => current.trim().length > 0 ? `${current.trimEnd()}\n\n${text}` : text)
+    const referenceText = markedReferenceLineText().join('\n')
+    if (!referenceText) return
+    const contextBlock = [
+      '以下是想要詢問的關聯行：',
+      referenceText,
+      '',
+      '請針對以上關聯行回答：',
+      '',
+    ].join('\n')
+    const nextQuestion = fileChatQuestion.trim().length > 0
+      ? `${fileChatQuestion.trimEnd()}\n\n---\n${contextBlock}`
+      : contextBlock
+    setFileChatQuestion(nextQuestion)
     setFileChatOpen(true)
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const textarea = fileChatQuestionRef.current
+        if (!textarea) return
+        textarea.focus()
+        textarea.setSelectionRange(nextQuestion.length, nextQuestion.length)
+      })
+    })
+    showToast('Reference lines inserted')
   }
 
   function clampFileChatPosition(
@@ -2515,6 +2535,7 @@ export function CodeViewerPage() {
 
           <div style={{ borderTop: '1px solid #333', padding: 10, flexShrink: 0 }}>
             <textarea
+              ref={fileChatQuestionRef}
               value={fileChatQuestion}
               onChange={(event) => setFileChatQuestion(event.target.value)}
               onKeyDown={(event) => {
