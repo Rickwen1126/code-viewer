@@ -59,12 +59,17 @@ export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMess
   }, msg.id))
 }
 
-function mapGitStatus(status: number): 'added' | 'modified' | 'deleted' | 'renamed' {
-  // VS Code Git status enum: 0=Modified, 1=Added, 2=Deleted, 3=Renamed, 4=Copied, 5=Untracked, 6=Ignored, 7=Intent to Add
+export function mapGitStatus(status: number): 'added' | 'modified' | 'deleted' | 'renamed' {
+  // VS Code Git status enum:
+  // 0 INDEX_MODIFIED, 1 INDEX_ADDED, 2 INDEX_DELETED, 3 INDEX_RENAMED,
+  // 4 INDEX_COPIED, 5 MODIFIED, 6 DELETED, 7 UNTRACKED, 9 INTENT_TO_ADD,
+  // 10 INTENT_TO_RENAME, 11 TYPE_CHANGED, 12 ADDED_BY_US, 13 ADDED_BY_THEM,
+  // 14 DELETED_BY_US, 15 DELETED_BY_THEM, 16 BOTH_ADDED, 17 BOTH_DELETED,
+  // 18 BOTH_MODIFIED.
   switch (status) {
-    case 1: case 5: case 7: return 'added'
-    case 2: return 'deleted'
-    case 3: return 'renamed'
+    case 1: case 4: case 7: case 9: case 12: case 13: case 16: return 'added'
+    case 2: case 6: case 14: case 15: case 17: return 'deleted'
+    case 3: case 10: return 'renamed'
     default: return 'modified'
   }
 }
@@ -222,10 +227,15 @@ export function startGitStatusWatch(sendEvent: (msg: WsMessage) => void): vscode
 
   const scheduleEmit = (source: 'repo' | 'fs' | 'fs-settle', delayMs: number) => {
     const timer = setTimeout(() => {
-      const branch = repo.state.HEAD?.name ?? ''
-      const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length
-      debugLog('git.statusChanged', { source, branch, changedFileCount, root: repo.rootUri.fsPath })
-      sendEvent(createMessage('git.statusChanged', { branch, changedFileCount }))
+      void (async () => {
+        if (source === 'fs-settle' && typeof repo.status === 'function') {
+          await repo.status()
+        }
+        const branch = repo.state.HEAD?.name ?? ''
+        const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length
+        debugLog('git.statusChanged', { source, branch, changedFileCount, root: repo.rootUri.fsPath })
+        sendEvent(createMessage('git.statusChanged', { branch, changedFileCount }))
+      })()
     }, delayMs)
 
     return timer

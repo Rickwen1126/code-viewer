@@ -131,6 +131,7 @@ const SKIPPED_DIRECTORIES = new Set([
   'dist',
   'build',
   '.cache',
+  '.codeviewer',
   '.turbo',
   'coverage',
   '__pycache__',

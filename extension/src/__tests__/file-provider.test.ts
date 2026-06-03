@@ -16,6 +16,7 @@ describe('shouldSkipDirectory', () => {
     expect(shouldSkipDirectory('.git')).toBe(true)
     expect(shouldSkipDirectory('node_modules')).toBe(true)
     expect(shouldSkipDirectory('.next')).toBe(true)
+    expect(shouldSkipDirectory('.codeviewer')).toBe(true)
     expect(shouldSkipDirectory('dist')).toBe(true)
   })
 

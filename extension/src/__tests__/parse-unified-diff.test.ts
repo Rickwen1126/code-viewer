@@ -24,7 +24,23 @@ vi.mock('../ws/client', () => ({
 }))
 
 // Import after mocks are set up
-import { parseUnifiedDiff } from '../providers/git-provider'
+import { mapGitStatus, parseUnifiedDiff } from '../providers/git-provider'
+
+describe('mapGitStatus', () => {
+  it('maps VS Code Git status enum values used by worktree and commit diffs', () => {
+    expect(mapGitStatus(0)).toBe('modified')
+    expect(mapGitStatus(5)).toBe('modified')
+    expect(mapGitStatus(11)).toBe('modified')
+    expect(mapGitStatus(18)).toBe('modified')
+    expect(mapGitStatus(1)).toBe('added')
+    expect(mapGitStatus(7)).toBe('added')
+    expect(mapGitStatus(9)).toBe('added')
+    expect(mapGitStatus(2)).toBe('deleted')
+    expect(mapGitStatus(6)).toBe('deleted')
+    expect(mapGitStatus(3)).toBe('renamed')
+    expect(mapGitStatus(10)).toBe('renamed')
+  })
+})
 
 describe('parseUnifiedDiff', () => {
   it('should return empty array for empty string', () => {
