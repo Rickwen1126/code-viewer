@@ -540,6 +540,11 @@ export function CodeViewerPage() {
     setMarkedReferenceLines(new Set())
   }, [workspace, path])
 
+  function clearMarkedReferenceLines(): void {
+    setMarkedReferenceLines(new Set())
+    showToast('Reference lines cleared')
+  }
+
   // Line number click — Step+ ON: open add-step overlay; OFF: toggle file-chat reference mark
   const handleLineNumberClick = useCallback((lineNum: number) => {
     if (!workspace || !path || !file || isAnnotationView) return
@@ -1780,9 +1785,28 @@ export function CodeViewerPage() {
             </span>
           )}
           {markedReferenceLines.size > 0 && (
-            <span style={{ fontSize: 11, color: '#9cdcfe' }} title={markedReferenceLineText().join('\n')}>
-              ref {markedReferenceLines.size}
-            </span>
+            <>
+              <span style={{ fontSize: 11, color: '#9cdcfe' }} title={markedReferenceLineText().join('\n')}>
+                ref {markedReferenceLines.size}
+              </span>
+              <button
+                onClick={clearMarkedReferenceLines}
+                title="Clear marked reference lines"
+                aria-label="Clear marked reference lines"
+                style={{
+                  height: 22,
+                  padding: '0 7px',
+                  borderRadius: 4,
+                  border: '1px solid #444',
+                  background: '#252526',
+                  color: '#d4d4d4',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                }}
+              >
+                Clear refs
+              </button>
+            </>
           )}
           {annotationStatusLabel && (
             <span
