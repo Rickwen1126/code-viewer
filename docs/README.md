@@ -2,13 +2,25 @@
 
 This directory stores curated project documents that are meant to be read and reused by humans.
 
+## Canonical Entrypoints
+
+- **[spec.md](./spec.md)** — project-level canonical spec; links to active todo, architecture, code map, and feature specs
+- **[todo.md](./todo.md)** — consolidated active todo list (single source of truth for pending work)
+- **[todo-finished.md](./todo-finished.md)** — completed/superseded work archive with artifact links
+
 ## Top-level folders
 
-- `superpowers/`: historical design and implementation notes from the earlier MVP push. These files remain useful for context, but they predate the current docs organization rules. Treat them as historical references unless a newer active-topic doc says otherwise.
 - `reference/`: long-lived technical references and checklists. Use these for canonical pitfalls, packaging rules, and reusable validation procedures.
-- `todo/`: dated working notes, deferred items, and tranche-local follow-ups that are not yet canonical spec/plan material.
-- `demand-driven-watch-list/`: the current active-topic folder for replacing activation-time eager watchers with a frontend-derived watch list and narrow live-watch scopes.
-- `semantic-location-history/`: the current active-topic folder for browser-history-first semantic navigation across code jumps, Git diff, CodeTour, and future deep links.
-- `git-tour-origin-context/`: the earlier narrower precursor that focused only on Git/Tour return-context before the broader semantic-location-history contract.
-- `desktop-ui/`: desktop layout design — responsive shell with Activity Bar + resizable Sidebar + Main Content, adapting the mobile-first UI for wide viewports (>= 768px).
-- `desktop-authority-mobile-viewer/`: active positioning notes for why Code Viewer should be understood as a desktop-authority mobile companion, not a browser IDE or a generic mobile code editor.
+- `demand-driven-watch-list/`: feature spec+plan for replacing activation-time eager watchers with frontend-derived watch list. **Completed.**
+- `semantic-location-history/`: feature spec+plan for browser-history-first semantic navigation. **Completed.** Supersedes `git-tour-origin-context/`.
+- `desktop-ui/`: desktop layout design — responsive shell with Activity Bar + resizable Sidebar + Main Content. **Implemented.**
+- `desktop-authority-mobile-viewer/`: positioning notes for why Code Viewer is a desktop-authority mobile companion.
+- `ws-client-singleton-refactor/`: investigation docs for WS client state machine rewrite. **Completed.**
+- `code-annotation-tmux-adapter/`: implementation handoff/spec for Code
+  Annotation MVP using `tmux-adapter ensure-target + send`. **Ready for
+  implementation.**
+- `html-rendered-toggle-preview/`: plan for explicit `Source / Rendered` HTML
+  artifact viewing in `/files/*`, scoped to repo-local architecture diagrams.
+- `superpowers/`: historical design and implementation notes from the earlier MVP push. Treat as historical references.
+- `archive/`: old dated todo files and legacy docs, preserved for context.
+- `git-tour-origin-context/`: superseded by `semantic-location-history/`. Kept for historical context.

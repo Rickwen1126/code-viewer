@@ -1,5 +1,7 @@
 # Code Viewer — Development Guidelines
 
+`docs/spec.md` is the current canonical project entrypoint; it links active todo, architecture diagram, code map / CodeTour, and per-feature specs. Missing artifacts are tracked as P0 todo gaps in `docs/todo.md`.
+
 ## Architecture
 
 ```
