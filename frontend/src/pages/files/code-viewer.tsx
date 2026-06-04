@@ -85,6 +85,8 @@ const menuControlButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
+const FILE_CHAT_MAXIMIZED_STORAGE_KEY = 'code-viewer:file-chat-maximized'
+
 function clampCodeFontSize(value: number): number {
   return Math.round(Math.min(Math.max(value, CODE_FONT_SIZE_MIN), CODE_FONT_SIZE_MAX))
 }
@@ -303,6 +305,9 @@ export function CodeViewerPage() {
   const [fileChatRunInfo, setFileChatRunInfo] = useState<FileChatRunInfo | null>(null)
   const [fileChatSearch, setFileChatSearch] = useState('')
   const [fileChatButtonPos, setFileChatButtonPos] = useState({ right: 18, bottom: 18 })
+  const [fileChatMaximized, setFileChatMaximized] = useState(() =>
+    localStorage.getItem(FILE_CHAT_MAXIMIZED_STORAGE_KEY) === 'true',
+  )
   const [isMobileChat, setIsMobileChat] = useState(() => window.innerWidth <= 640)
   const fileChatQuestionRef = useRef<HTMLTextAreaElement>(null)
   const fileChatMessagesRef = useRef<HTMLDivElement>(null)
@@ -351,7 +356,8 @@ export function CodeViewerPage() {
 
   useEffect(() => {
     const onResize = () => {
-      setIsMobileChat(window.innerWidth <= 640)
+      const nextIsMobileChat = window.innerWidth <= 640
+      setIsMobileChat(nextIsMobileChat)
       setFileChatButtonPos(current => clampFileChatPosition(current, fileChatOpen))
     }
     window.addEventListener('resize', onResize)
@@ -625,6 +631,11 @@ export function CodeViewerPage() {
     showToast('Reference lines inserted')
   }
 
+  function updateFileChatMaximized(next: boolean): void {
+    setFileChatMaximized(next)
+    localStorage.setItem(FILE_CHAT_MAXIMIZED_STORAGE_KEY, String(next))
+  }
+
   function clampFileChatPosition(
     pos: { right: number; bottom: number },
     panelOpen: boolean,
@@ -639,6 +650,7 @@ export function CodeViewerPage() {
 
   function handleFileChatPointerDown(event: PointerEvent<HTMLElement>): void {
     if (isMobileChat && fileChatOpen) return
+    if (fileChatMaximized && fileChatOpen) return
     fileChatDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -2308,15 +2320,15 @@ export function CodeViewerPage() {
         <div
           style={{
             position: 'fixed',
-            inset: isMobileChat ? 0 : undefined,
-            right: isMobileChat ? undefined : fileChatButtonPos.right,
-            bottom: isMobileChat ? undefined : fileChatButtonPos.bottom,
-            width: isMobileChat ? '100vw' : 420,
-            height: isMobileChat ? '100dvh' : 'min(620px, calc(100vh - 36px))',
+            inset: isMobileChat || fileChatMaximized ? 0 : undefined,
+            right: isMobileChat || fileChatMaximized ? undefined : fileChatButtonPos.right,
+            bottom: isMobileChat || fileChatMaximized ? undefined : fileChatButtonPos.bottom,
+            width: isMobileChat || fileChatMaximized ? '100vw' : 420,
+            height: isMobileChat || fileChatMaximized ? '100dvh' : 'min(620px, calc(100vh - 36px))',
             maxWidth: '100vw',
             background: '#1e1e1e',
-            border: isMobileChat ? 'none' : '1px solid #444',
-            borderRadius: isMobileChat ? 0 : 8,
+            border: isMobileChat || fileChatMaximized ? 'none' : '1px solid #444',
+            borderRadius: isMobileChat || fileChatMaximized ? 0 : 8,
             boxShadow: '0 12px 34px rgba(0,0,0,0.55)',
             zIndex: 80,
             display: 'flex',
@@ -2339,10 +2351,10 @@ export function CodeViewerPage() {
               style={{
                 flex: 1,
                 minWidth: 0,
-                cursor: isMobileChat ? 'default' : 'grab',
-                touchAction: isMobileChat ? 'auto' : 'none',
+                cursor: isMobileChat || fileChatMaximized ? 'default' : 'grab',
+                touchAction: isMobileChat || fileChatMaximized ? 'auto' : 'none',
               }}
-              title={isMobileChat ? fileName : 'Drag Ask About File'}
+              title={isMobileChat || fileChatMaximized ? fileName : 'Drag Ask About File'}
             >
               <div style={{ color: '#d4d4d4', fontSize: 13, fontWeight: 600 }}>Ask About File</div>
               <div style={{ color: '#888', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2359,6 +2371,25 @@ export function CodeViewerPage() {
               }}>
                 {fileChatPhase}
               </span>
+            )}
+            {!isMobileChat && (
+              <button
+                onClick={() => updateFileChatMaximized(!fileChatMaximized)}
+                style={{
+                  background: '#252526',
+                  border: '1px solid #444',
+                  color: '#d4d4d4',
+                  height: 28,
+                  borderRadius: 4,
+                  padding: '0 8px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                }}
+                title={fileChatMaximized ? 'Restore Ask About File dialog' : 'Maximize Ask About File dialog'}
+                aria-label={fileChatMaximized ? 'Restore Ask About File dialog' : 'Maximize Ask About File dialog'}
+              >
+                {fileChatMaximized ? 'Restore' : 'Max'}
+              </button>
             )}
             <button
               onClick={() => void archiveFileChatThread()}
