@@ -66,6 +66,7 @@ TypeScript 5.x across all 3 packages. Follow existing conventions.
 
 - **CWD 問題**: 在 `extension/` 下跑 build 後，Bash CWD 會留在 `extension/`。後續指令必須加 `cd /Users/rickwen/code/code-viewer &&` 確保從 project root 執行。
 - **Extension build**: 改動 extension 後必須 `cd extension && pnpm build` rebuild（tsc + esbuild bundle）。
+- **Extension version bump**: 只要 extension source 變更後要 package/install VSIX 給 daily VS Code 使用，必須先 bump `extension/package.json` 的 `version`，避免 VS Code/使用者無法判斷已安裝的是哪一版；只有使用者明確說本次不進版時才可例外。
 - **Extension VSIX 打包**: 必須用 `--no-dependencies`。pnpm monorepo 跟 `vsce package` 不相容。esbuild bundle 含 `ws` 等 runtime deps。
 - **Extension VSIX 驗證**: 不可只看 `code --list-extensions`。要再用 backend `/admin/workspaces` 或 VS Code `exthost.log` 驗證 extension 真的成功 activation；曾發生 VSIX 安裝成功但 runtime 因 `Cannot find module 'ws'` 失敗。
 - **Backend restart**: `tsx watch` 通常自動 reload，但有時需手動 stop/start。
