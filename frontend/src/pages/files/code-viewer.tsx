@@ -152,6 +152,37 @@ function isActiveAnnotationJob(job: AnnotationJobSnapshot | null | undefined): j
   return Boolean(job && (job.phase === 'submitted' || job.phase === 'running'))
 }
 
+const ACTIVE_ANNOTATION_JOB_KEY = 'code-viewer:active-annotation-job'
+const ACTIVE_ANNOTATION_JOB_MAX_AGE_MS = 125_000
+
+function readStoredActiveAnnotationJob(): AnnotationJobSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(ACTIVE_ANNOTATION_JOB_KEY)
+    if (!raw) return null
+    const job = JSON.parse(raw) as AnnotationJobSnapshot
+    if (!isActiveAnnotationJob(job)) return null
+    if (Date.now() - job.submittedAt > ACTIVE_ANNOTATION_JOB_MAX_AGE_MS) {
+      sessionStorage.removeItem(ACTIVE_ANNOTATION_JOB_KEY)
+      return null
+    }
+    return job
+  } catch {
+    return null
+  }
+}
+
+function writeStoredActiveAnnotationJob(job: AnnotationJobSnapshot | null): void {
+  try {
+    if (isActiveAnnotationJob(job)) {
+      sessionStorage.setItem(ACTIVE_ANNOTATION_JOB_KEY, JSON.stringify(job))
+    } else {
+      sessionStorage.removeItem(ACTIVE_ANNOTATION_JOB_KEY)
+    }
+  } catch {
+    // Ignore storage failures; WebSocket/status still drive the live state.
+  }
+}
+
 interface FileChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -301,7 +332,7 @@ export function CodeViewerPage() {
   const [annotationGenerationId, setAnnotationGenerationId] = useState<string | null>(null)
   const [annotationSubmittedAt, setAnnotationSubmittedAt] = useState<number | null>(null)
   const [annotationDebugInfo, setAnnotationDebugInfo] = useState<AnnotationDebugInfo | null>(null)
-  const [activeAnnotationJob, setActiveAnnotationJob] = useState<AnnotationJobSnapshot | null>(null)
+  const [activeAnnotationJob, setActiveAnnotationJob] = useState<AnnotationJobSnapshot | null>(() => readStoredActiveAnnotationJob())
   const annotationPollSeqRef = useRef(0)
   const [fileChatOpen, setFileChatOpen] = useState(false)
   const [fileChatPhase, setFileChatPhase] = useState<FileChatPhase>('idle')
@@ -818,6 +849,64 @@ export function CodeViewerPage() {
     return unsub
   }, [path, workspaceReady, connectionState, previewKind])
 
+  useEffect(() => {
+    if (!isActiveAnnotationJob(activeAnnotationJob) || !workspaceReady || connectionState !== 'connected') return
+    let cancelled = false
+    const check = async () => {
+      try {
+        const res = await request<AnnotationStatusPayload, AnnotationStatusResultPayload>(
+          'annotation.status',
+          { path: activeAnnotationJob.path, generationId: activeAnnotationJob.generationId },
+          5000,
+        )
+        if (cancelled) return
+        if (isActiveAnnotationJob(res.payload.activeJob)) {
+          applyAnnotationJobSnapshot(res.payload.activeJob, path)
+          return
+        }
+        if (res.payload.ready || res.payload.state === 'invalid') {
+          writeStoredActiveAnnotationJob(null)
+          setActiveAnnotationJob(null)
+          if (res.payload.path === path) {
+            setAnnotationPath(res.payload.annotationPath)
+            setAnnotationExists(res.payload.ready)
+            setAnnotationGenerationId(res.payload.generationId ?? null)
+            setAnnotationDebugInfo({
+              feature: 'annotation',
+              path: res.payload.path,
+              annotationPath: res.payload.annotationPath,
+              runLogPath: res.payload.runLogPath,
+              generationId: res.payload.generationId,
+              phase: res.payload.ready ? 'ready' : 'error',
+              state: res.payload.state,
+              ready: res.payload.ready,
+              updatedAt: res.payload.updatedAt,
+              diagnostics: res.payload.validation?.diagnostics ?? [],
+              capturedAt: Date.now(),
+            })
+            if (res.payload.ready) {
+              setAnnotationPhase('ready')
+              setAnnotationError(null)
+              setAnnotationMode('annotated')
+              void loadFileBackground(res.payload.annotationPath)
+            } else {
+              setAnnotationPhase('error')
+              setAnnotationError(res.payload.validation?.diagnostics.join('; ') || 'Annotation artifact is invalid')
+            }
+          }
+        }
+      } catch {
+        // Keep the optimistic busy state; the normal timeout/expiry clears stale jobs.
+      }
+    }
+    void check()
+    const timer = setInterval(() => { void check() }, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [activeAnnotationJob?.generationId, activeAnnotationJob?.path, workspaceReady, connectionState, path])
+
   const wasHiddenRef = useRef(visibility !== 'visible')
   useEffect(() => {
     if (visibility !== 'visible') {
@@ -1006,9 +1095,12 @@ export function CodeViewerPage() {
   function applyAnnotationJobSnapshot(job: AnnotationJobSnapshot | undefined | null, sourcePath = path): void {
     if (!job) {
       setActiveAnnotationJob(null)
+      writeStoredActiveAnnotationJob(null)
       return
     }
-    setActiveAnnotationJob(isActiveAnnotationJob(job) ? job : null)
+    const activeJob = isActiveAnnotationJob(job) ? job : null
+    setActiveAnnotationJob(activeJob)
+    writeStoredActiveAnnotationJob(activeJob)
 
     if (job.path !== sourcePath) return
 
@@ -1276,6 +1368,16 @@ export function CodeViewerPage() {
       setAnnotationGenerationId(res.payload.generationId)
       setAnnotationSubmittedAt(res.payload.submittedAt)
       setActiveAnnotationJob({
+        path: res.payload.path,
+        annotationPath: res.payload.annotationPath,
+        runLogPath: res.payload.runLogPath,
+        generationId: res.payload.generationId,
+        phase: 'running',
+        ready: false,
+        submittedAt: res.payload.submittedAt,
+        target: res.payload.target,
+      })
+      writeStoredActiveAnnotationJob({
         path: res.payload.path,
         annotationPath: res.payload.annotationPath,
         runLogPath: res.payload.runLogPath,

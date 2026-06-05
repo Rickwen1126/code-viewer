@@ -21,6 +21,7 @@ import {
   MSG_CONNECTION_SELECT_WORKSPACE_RESULT,
   MSG_CONNECTION_EXTENSION_CONNECTED,
   MSG_CONNECTION_EXTENSION_DISCONNECTED,
+  MSG_ANNOTATION_CHANGED,
   MSG_WORKSPACE_REGISTER,
   MSG_WORKSPACE_REGISTER_RESULT,
   MSG_WATCH_SYNC,
@@ -72,9 +73,13 @@ function syncEffectiveWatchSet(extensionId: string | null | undefined): void {
   )
 }
 
-// Extension-initiated events have types that end with ".result", "Changed", or "chunk"
+// Extension-initiated events have types that end with ".result", "Changed", or "chunk".
+// A few domains use lower-case event suffixes for historical mobile clients.
 function isExtensionResponse(type: string): boolean {
-  return type.endsWith('.result') || type.endsWith('Changed') || type.endsWith('Chunk')
+  return type.endsWith('.result')
+    || type.endsWith('Changed')
+    || type.endsWith('Chunk')
+    || type === MSG_ANNOTATION_CHANGED
 }
 
 export function createExtensionHandler(upgradeWebSocket: UpgradeWsFn) {
