@@ -856,7 +856,11 @@ export function CodeViewerPage() {
       try {
         const res = await request<AnnotationStatusPayload, AnnotationStatusResultPayload>(
           'annotation.status',
-          { path: activeAnnotationJob.path, generationId: activeAnnotationJob.generationId },
+          {
+            path: activeAnnotationJob.path,
+            generationId: activeAnnotationJob.generationId,
+            minUpdatedAt: activeAnnotationJob.submittedAt,
+          },
           5000,
         )
         if (cancelled) return
