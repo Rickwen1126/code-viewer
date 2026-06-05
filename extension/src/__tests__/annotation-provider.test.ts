@@ -89,4 +89,15 @@ describe('annotation artifact validation', () => {
     expect(result.diagnostics).toContain('artifact contains Markdown fences')
     expect(result.diagnostics).toContain('artifact does not include the source tail')
   })
+
+  it('allows comments to mention newline protocol strings when source tail is preserved', () => {
+    const result = validateAnnotationArtifactText(
+      'stream.write(`${payload}\\n`)\n',
+      '// 這裡說明 JSON-RPC 使用 \\n 作為 message framing delimiter。\nstream.write(`${payload}\\n`)\n',
+      'src/gateway.ts',
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.diagnostics).toEqual([])
+  })
 })

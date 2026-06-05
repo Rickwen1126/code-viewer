@@ -140,13 +140,6 @@ export function validateAnnotationArtifactText(
     diagnostics.push('artifact has no source-language comment markers')
   }
 
-  const literalNewlineInComment = artifactText
-    .split(/\r?\n/)
-    .some(line => /^\s*(#|\/\/)/.test(line) && line.includes('\\n'))
-  if (literalNewlineInComment) {
-    diagnostics.push('comment contains literal \\n artifact')
-  }
-
   return {
     ok: diagnostics.length === 0,
     diagnostics,
@@ -352,7 +345,8 @@ function buildAnnotationPrompt(
     '- Verify the output file exists, preserves source order, and includes the end of the source file.',
     '- Re-scan your internal checklist item by item; every item must have been copied and annotated before you reply DONE.',
     '- Verify important middle and tail sections received useful comments, not only imports and the first functions.',
-    '- Verify there are no generic filler comments, no literal "\\n" artifacts inside comments, and no Markdown fences.',
+    '- Verify there are no generic filler comments and no Markdown fences.',
+    '- Do not use literal escaped newline strings such as "\\n" as formatting leftovers inside comments; mentioning real source/API strings such as "\\n" is allowed when the nearby code actually uses newline framing.',
     '- When practical, verify the annotated artifact remains syntactically valid source.',
     '',
     'Writing strategy:',
