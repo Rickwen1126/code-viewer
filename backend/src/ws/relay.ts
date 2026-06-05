@@ -11,6 +11,7 @@ function isAnnotationMessage(type: string): boolean {
     || type === 'annotation.status'
     || type === 'annotation.status.result'
     || type === 'annotation.status.error'
+    || type === 'annotation.changed'
     || type === 'fileChat.send'
     || type === 'fileChat.send.result'
     || type === 'fileChat.send.error'

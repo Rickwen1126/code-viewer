@@ -45,6 +45,7 @@ import type {
   FilePreviewResultPayload,
   AnnotationGeneratePayload,
   AnnotationGenerateResultPayload,
+  AnnotationJobSnapshot,
   AnnotationStatusPayload,
   AnnotationStatusResultPayload,
   FileChatSendPayload,
@@ -145,6 +146,10 @@ interface AnnotationDebugInfo {
   diagnostics?: string[]
   error?: string
   capturedAt: number
+}
+
+function isActiveAnnotationJob(job: AnnotationJobSnapshot | null | undefined): job is AnnotationJobSnapshot {
+  return Boolean(job && (job.phase === 'submitted' || job.phase === 'running'))
 }
 
 interface FileChatMessage {
@@ -296,6 +301,7 @@ export function CodeViewerPage() {
   const [annotationGenerationId, setAnnotationGenerationId] = useState<string | null>(null)
   const [annotationSubmittedAt, setAnnotationSubmittedAt] = useState<number | null>(null)
   const [annotationDebugInfo, setAnnotationDebugInfo] = useState<AnnotationDebugInfo | null>(null)
+  const [activeAnnotationJob, setActiveAnnotationJob] = useState<AnnotationJobSnapshot | null>(null)
   const annotationPollSeqRef = useRef(0)
   const [fileChatOpen, setFileChatOpen] = useState(false)
   const [fileChatPhase, setFileChatPhase] = useState<FileChatPhase>('idle')
@@ -804,6 +810,14 @@ export function CodeViewerPage() {
     void refreshAnnotationStatus(false)
   }, [path, workspaceReady, connectionState, previewKind])
 
+  useEffect(() => {
+    if (!path || !workspaceReady || previewKind || connectionState !== 'connected') return
+    const unsub = wsClient.subscribe('annotation.changed', (msg) => {
+      applyAnnotationJobSnapshot(msg.payload as AnnotationJobSnapshot, path)
+    })
+    return unsub
+  }, [path, workspaceReady, connectionState, previewKind])
+
   const wasHiddenRef = useRef(visibility !== 'visible')
   useEffect(() => {
     if (visibility !== 'visible') {
@@ -989,6 +1003,57 @@ export function CodeViewerPage() {
     }
   }
 
+  function applyAnnotationJobSnapshot(job: AnnotationJobSnapshot | undefined | null, sourcePath = path): void {
+    if (!job) {
+      setActiveAnnotationJob(null)
+      return
+    }
+    setActiveAnnotationJob(isActiveAnnotationJob(job) ? job : null)
+
+    if (job.path !== sourcePath) return
+
+    setAnnotationPath(job.annotationPath)
+    setAnnotationGenerationId(job.generationId)
+    setAnnotationSubmittedAt(job.submittedAt)
+    setAnnotationDebugInfo({
+      feature: 'annotation',
+      path: job.path,
+      annotationPath: job.annotationPath,
+      runLogPath: job.runLogPath,
+      generationId: job.generationId,
+      phase: job.phase === 'ready'
+        ? 'ready'
+        : job.phase === 'invalid' || job.phase === 'failed'
+          ? 'error'
+          : 'waiting',
+      state: job.phase,
+      ready: job.ready,
+      submittedAt: job.submittedAt,
+      updatedAt: job.updatedAt,
+      target: job.target,
+      diagnostics: job.diagnostics ?? [],
+      error: job.phase === 'failed' || job.phase === 'invalid' ? (job.diagnostics ?? []).join('; ') : undefined,
+      capturedAt: Date.now(),
+    })
+
+    if (job.phase === 'ready') {
+      setAnnotationExists(true)
+      setAnnotationPhase('ready')
+      setAnnotationError(null)
+      setAnnotationMode('annotated')
+      void loadFileBackground(job.annotationPath)
+      showToast('Annotation ready')
+    } else if (job.phase === 'invalid' || job.phase === 'failed') {
+      setAnnotationExists(false)
+      setAnnotationPhase('error')
+      setAnnotationError((job.diagnostics ?? []).join('; ') || 'Annotation job failed')
+    } else {
+      setAnnotationExists(false)
+      setAnnotationPhase('waiting')
+      setAnnotationError(null)
+    }
+  }
+
   async function refreshAnnotationStatus(updatePhase = true): Promise<AnnotationStatusResultPayload | null> {
     if (!path || previewKind) return null
     debugLog('annotation', 'status.request', {
@@ -1030,6 +1095,10 @@ export function CodeViewerPage() {
         updatedAt: res.payload.updatedAt ?? null,
         diagnostics: res.payload.validation?.diagnostics ?? [],
       })
+      applyAnnotationJobSnapshot(res.payload.activeJob, res.payload.path)
+      if (isActiveAnnotationJob(res.payload.activeJob)) {
+        return res.payload
+      }
       if (res.payload.ready) {
         setAnnotationPhase('ready')
         setAnnotationError(null)
@@ -1173,7 +1242,7 @@ export function CodeViewerPage() {
   }
 
   async function generateAnnotation() {
-    if (!path || previewKind || annotationPhase === 'submitting' || annotationPhase === 'waiting') return
+    if (!path || previewKind || annotationPhase === 'submitting' || annotationPhase === 'waiting' || isActiveAnnotationJob(activeAnnotationJob)) return
     const seq = annotationPollSeqRef.current + 1
     annotationPollSeqRef.current = seq
     const generationId = `annotation-${generateId()}`
@@ -1206,6 +1275,16 @@ export function CodeViewerPage() {
       setAnnotationPhase('waiting')
       setAnnotationGenerationId(res.payload.generationId)
       setAnnotationSubmittedAt(res.payload.submittedAt)
+      setActiveAnnotationJob({
+        path: res.payload.path,
+        annotationPath: res.payload.annotationPath,
+        runLogPath: res.payload.runLogPath,
+        generationId: res.payload.generationId,
+        phase: 'running',
+        ready: false,
+        submittedAt: res.payload.submittedAt,
+        target: res.payload.target,
+      })
       setAnnotationDebugInfo({
         feature: 'annotation',
         path: res.payload.path,
@@ -1577,11 +1656,16 @@ export function CodeViewerPage() {
   }
 
   const fileName = path.split('/').pop() ?? path
-  const annotationBusy = annotationPhase === 'submitting' || annotationPhase === 'waiting'
+  const activeAnnotationBusy = isActiveAnnotationJob(activeAnnotationJob)
+  const activeAnnotationForCurrentFile = activeAnnotationBusy && activeAnnotationJob.path === path
+  const activeAnnotationForOtherFile = activeAnnotationBusy && activeAnnotationJob.path !== path
+  const annotationBusy = annotationPhase === 'submitting' || annotationPhase === 'waiting' || activeAnnotationBusy
   const annotationStatusLabel = annotationPhase === 'submitting'
     ? 'Submitting'
-    : annotationPhase === 'waiting'
+    : annotationPhase === 'waiting' || activeAnnotationForCurrentFile
       ? 'Waiting'
+      : activeAnnotationForOtherFile
+        ? 'Annotation busy'
       : annotationPhase === 'ready'
         ? 'Annotated'
         : annotationPhase === 'error'
@@ -1589,6 +1673,7 @@ export function CodeViewerPage() {
           : null
   const annotationStatusTitle = [
     annotationError,
+    activeAnnotationForOtherFile ? `active annotation: ${activeAnnotationJob.path}` : null,
     annotationGenerationId ? `generation: ${annotationGenerationId}` : null,
     annotationDebugInfo?.runLogPath ? `run log: ${annotationDebugInfo.runLogPath}` : null,
     annotationSubmittedAt ? `submitted: ${new Date(annotationSubmittedAt).toLocaleTimeString()}` : null,

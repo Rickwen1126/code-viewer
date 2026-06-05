@@ -5,11 +5,14 @@ import type {
   AnnotationArtifactState,
   AnnotationArtifactValidation,
   AnnotationGeneratePayload,
+  AnnotationJobPhase,
+  AnnotationJobSnapshot,
   AnnotationStatusPayload,
   RunEvent,
   WsMessage,
 } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
+import type { WsClient } from '../ws/client'
 import { debugLog } from '../utils/debug'
 import { ensureTarget, sendMessage } from './tmux-adapter-client'
 
@@ -33,9 +36,13 @@ interface AnnotationGenerationState {
   annotationPath: string
   runLogPath: string
   submittedAt: number
-  status: Extract<AnnotationArtifactState, 'pending' | 'ready' | 'invalid'>
+  phase: AnnotationJobPhase
   target?: Awaited<ReturnType<typeof ensureTarget>>
   validation?: AnnotationArtifactValidation
+  updatedAt?: number
+  diagnostics?: string[]
+  timeout?: ReturnType<typeof setTimeout>
+  poll?: ReturnType<typeof setInterval>
 }
 
 interface AnnotationStatusSnapshot {
@@ -48,15 +55,19 @@ interface AnnotationStatusSnapshot {
   generationId?: string
   updatedAt?: number
   validation?: AnnotationArtifactValidation
+  activeJob?: AnnotationJobSnapshot
 }
 
 const generationStates = new Map<string, AnnotationGenerationState>()
+let activeAnnotationJob: AnnotationGenerationState | undefined
+const ANNOTATION_WATCH_INTERVAL_MS = 1500
+const ANNOTATION_JOB_TIMEOUT_MS = 120000
 
 function sendError(
   requestType: string,
   requestId: string,
   sendResponse: (msg: WsMessage) => void,
-  code: 'INVALID_REQUEST' | 'NOT_FOUND' | 'EXTENSION_OFFLINE',
+  code: 'INVALID_REQUEST' | 'NOT_FOUND' | 'EXTENSION_OFFLINE' | 'ANNOTATION_BUSY',
   message: string,
 ): void {
   console.error('[CodeViewer][annotation]', `${requestType}.error`, { requestId, code, message })
@@ -65,6 +76,47 @@ function sendError(
 
 function annotationDebug(stage: string, data: Record<string, unknown>): void {
   debugLog('annotation', stage, data)
+}
+
+function isTerminalAnnotationPhase(phase: AnnotationJobPhase): boolean {
+  return phase === 'ready' || phase === 'invalid' || phase === 'failed'
+}
+
+function annotationJobSnapshot(job: AnnotationGenerationState): AnnotationJobSnapshot {
+  return {
+    path: job.relativePath,
+    annotationPath: job.annotationPath,
+    runLogPath: job.runLogPath,
+    generationId: job.generationId,
+    phase: job.phase,
+    ready: job.phase === 'ready',
+    submittedAt: job.submittedAt,
+    updatedAt: job.updatedAt,
+    diagnostics: job.diagnostics ?? job.validation?.diagnostics ?? [],
+    target: job.target,
+  }
+}
+
+function activeJobSnapshot(): AnnotationJobSnapshot | undefined {
+  return activeAnnotationJob ? annotationJobSnapshot(activeAnnotationJob) : undefined
+}
+
+function broadcastAnnotationJob(client: WsClient | undefined, job: AnnotationGenerationState): void {
+  client?.send(createMessage('annotation.changed', annotationJobSnapshot(job)))
+}
+
+function stopAnnotationJobTimers(job: AnnotationGenerationState): void {
+  if (job.poll) clearInterval(job.poll)
+  if (job.timeout) clearTimeout(job.timeout)
+  job.poll = undefined
+  job.timeout = undefined
+}
+
+function releaseAnnotationJob(job: AnnotationGenerationState): void {
+  stopAnnotationJobTimers(job)
+  if (activeAnnotationJob?.generationId === job.generationId) {
+    activeAnnotationJob = undefined
+  }
 }
 
 function safeRunSegment(value: string): string {
@@ -383,6 +435,29 @@ async function getAnnotationStatusSnapshot(
   const trackedGeneration = generationStates.get(safePath.relativePath)
   const effectiveGenerationId = generationId ?? trackedGeneration?.generationId
   const runLogPath = effectiveGenerationId ? annotationRunLogPathFor(effectiveGenerationId) : undefined
+  const activeJob = activeJobSnapshot()
+  if (
+    activeAnnotationJob
+    && !isTerminalAnnotationPhase(activeAnnotationJob.phase)
+    && activeAnnotationJob.relativePath === safePath.relativePath
+  ) {
+    return {
+      path: safePath.relativePath,
+      annotationPath: safePath.annotationPath,
+      runLogPath: activeAnnotationJob.runLogPath,
+      exists: true,
+      ready: false,
+      state: 'pending',
+      generationId: activeAnnotationJob.generationId,
+      updatedAt: activeAnnotationJob.updatedAt,
+      validation: {
+        ok: false,
+        diagnostics: activeAnnotationJob.diagnostics ?? ['annotation job is running'],
+        updatedAt: activeAnnotationJob.updatedAt,
+      },
+      activeJob,
+    }
+  }
 
   let stat: vscode.FileStat
   try {
@@ -396,6 +471,7 @@ async function getAnnotationStatusSnapshot(
       ready: false,
       state: 'missing',
       generationId: effectiveGenerationId,
+      activeJob,
       validation: {
         ...EMPTY_VALIDATION,
         diagnostics: ['artifact missing'],
@@ -413,6 +489,7 @@ async function getAnnotationStatusSnapshot(
       state: 'invalid',
       generationId: effectiveGenerationId,
       updatedAt: stat.mtime,
+      activeJob,
       validation: {
         ok: false,
         diagnostics: ['annotation path is not a file'],
@@ -432,6 +509,7 @@ async function getAnnotationStatusSnapshot(
       state: 'pending',
       generationId: effectiveGenerationId,
       updatedAt: stat.mtime,
+      activeJob,
       validation: {
         ok: false,
         diagnostics: ['artifact predates requested generation'],
@@ -461,12 +539,114 @@ async function getAnnotationStatusSnapshot(
     generationId: effectiveGenerationId,
     updatedAt: stat.mtime,
     validation,
+    activeJob,
   }
+}
+
+async function evaluateAnnotationJob(
+  workspaceFolder: vscode.WorkspaceFolder,
+  safePath: SafeAnnotationPath,
+  job: AnnotationGenerationState,
+): Promise<'pending' | 'ready' | 'invalid'> {
+  let stat: vscode.FileStat
+  try {
+    stat = await vscode.workspace.fs.stat(safePath.annotationUri)
+  } catch {
+    job.updatedAt = undefined
+    job.diagnostics = ['artifact missing']
+    return 'pending'
+  }
+  job.updatedAt = stat.mtime
+  if (stat.type !== vscode.FileType.File) {
+    job.diagnostics = ['annotation path is not a file']
+    return 'invalid'
+  }
+  if (stat.mtime < job.submittedAt) {
+    job.diagnostics = ['artifact predates requested generation']
+    return 'pending'
+  }
+  const [sourceBytes, artifactBytes] = await Promise.all([
+    vscode.workspace.fs.readFile(safePath.sourceUri),
+    vscode.workspace.fs.readFile(safePath.annotationUri),
+  ])
+  const validation = validateAnnotationArtifactText(
+    readText(sourceBytes),
+    readText(artifactBytes),
+    safePath.relativePath,
+    { size: stat.size, updatedAt: stat.mtime },
+  )
+  job.validation = validation
+  job.diagnostics = validation.diagnostics
+  return validation.ok ? 'ready' : 'invalid'
+}
+
+function startAnnotationJobWatcher(
+  workspaceFolder: vscode.WorkspaceFolder,
+  safePath: SafeAnnotationPath,
+  job: AnnotationGenerationState,
+  client?: WsClient,
+): void {
+  const check = async (): Promise<void> => {
+    if (activeAnnotationJob?.generationId !== job.generationId || isTerminalAnnotationPhase(job.phase)) return
+    try {
+      const state = await evaluateAnnotationJob(workspaceFolder, safePath, job)
+      if (state === 'ready') {
+        job.phase = 'ready'
+        await recordAnnotationEvent(workspaceFolder, {
+          phase: 'extension.annotation.job.ready',
+          level: 'info',
+          requestId: job.requestId,
+          generationId: job.generationId,
+          path: job.relativePath,
+          artifactPath: job.annotationPath,
+          runLogPath: job.runLogPath,
+          target: job.target,
+          diagnostics: [],
+          data: { updatedAt: job.updatedAt ?? null },
+        })
+        broadcastAnnotationJob(client, job)
+        releaseAnnotationJob(job)
+      }
+    } catch (error) {
+      job.diagnostics = [error instanceof Error ? error.message : String(error)]
+    }
+  }
+
+  job.poll = setInterval(() => { void check() }, ANNOTATION_WATCH_INTERVAL_MS)
+  job.timeout = setTimeout(() => {
+    void (async () => {
+      if (activeAnnotationJob?.generationId !== job.generationId || isTerminalAnnotationPhase(job.phase)) return
+      const state = await evaluateAnnotationJob(workspaceFolder, safePath, job).catch(() => 'pending' as const)
+      job.phase = state === 'invalid' ? 'invalid' : 'failed'
+      if (!job.diagnostics?.length) {
+        job.diagnostics = job.phase === 'failed'
+          ? ['annotation did not produce a fresh valid artifact before timeout']
+          : ['annotation artifact is invalid']
+      }
+      await recordAnnotationEvent(workspaceFolder, {
+        phase: `extension.annotation.job.${job.phase}`,
+        level: job.phase === 'invalid' ? 'warn' : 'error',
+        requestId: job.requestId,
+        generationId: job.generationId,
+        path: job.relativePath,
+        artifactPath: job.annotationPath,
+        runLogPath: job.runLogPath,
+        target: job.target,
+        diagnostics: job.diagnostics,
+        data: { updatedAt: job.updatedAt ?? null },
+      })
+      broadcastAnnotationJob(client, job)
+      releaseAnnotationJob(job)
+    })()
+  }, ANNOTATION_JOB_TIMEOUT_MS)
+
+  void check()
 }
 
 export async function handleAnnotationGenerate(
   msg: WsMessage,
   sendResponse: (msg: WsMessage) => void,
+  client?: WsClient,
 ): Promise<void> {
   const requestId = msg.id
   const startedAt = Date.now()
@@ -541,6 +721,42 @@ export async function handleAnnotationGenerate(
     sendError(msg.type, msg.id, sendResponse, message.includes('not found') ? 'NOT_FOUND' : 'INVALID_REQUEST', message)
     return
   }
+
+  if (activeAnnotationJob && !isTerminalAnnotationPhase(activeAnnotationJob.phase)) {
+    const active = annotationJobSnapshot(activeAnnotationJob)
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'extension.annotation.generate.busy',
+      level: 'warn',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
+      diagnostics: [`annotation already running for ${active.path}`],
+      data: { activeJob: active },
+    })
+    sendError(
+      msg.type,
+      msg.id,
+      sendResponse,
+      'ANNOTATION_BUSY',
+      `Annotation is already running for ${active.path}`,
+    )
+    return
+  }
+
+  const job: AnnotationGenerationState = {
+    generationId,
+    requestId,
+    relativePath: safePath.relativePath,
+    annotationPath: safePath.annotationPath,
+    runLogPath,
+    submittedAt: Date.now(),
+    phase: 'submitted',
+  }
+  generationStates.set(safePath.relativePath, job)
+  activeAnnotationJob = job
+  broadcastAnnotationJob(client, job)
 
   try {
     const config = readAnnotationConfig()
@@ -618,16 +834,10 @@ export async function handleAnnotationGenerate(
       })
     }
     const submittedAt = Date.now()
-    generationStates.set(safePath.relativePath, {
-      generationId,
-      requestId,
-      relativePath: safePath.relativePath,
-      annotationPath: safePath.annotationPath,
-      runLogPath,
-      submittedAt,
-      status: 'pending',
-      target,
-    })
+    job.submittedAt = submittedAt
+    job.phase = 'running'
+    job.target = target
+    broadcastAnnotationJob(client, job)
     annotationDebug('generate.send.start', {
       requestId,
       generationId,
@@ -683,6 +893,7 @@ export async function handleAnnotationGenerate(
       target,
       submitted: true,
     }, msg.id))
+    startAnnotationJobWatcher(workspaceFolder, safePath, job, client)
     annotationDebug('generate.response.sent', {
       requestId,
       generationId,
@@ -691,6 +902,10 @@ export async function handleAnnotationGenerate(
       elapsedMs: Date.now() - startedAt,
     })
   } catch (error) {
+    job.phase = 'failed'
+    job.diagnostics = [error instanceof Error ? error.message : String(error)]
+    broadcastAnnotationJob(client, job)
+    releaseAnnotationJob(job)
     console.error('[CodeViewer][annotation] generate.adapter.failed', {
       requestId,
       generationId,
@@ -766,8 +981,10 @@ export async function handleAnnotationStatus(
     const snapshot = await getAnnotationStatusSnapshot(safePath, generationId, minUpdatedAt)
     const trackedGeneration = generationStates.get(safePath.relativePath)
     if (snapshot.generationId && trackedGeneration?.generationId === snapshot.generationId) {
-      trackedGeneration.status = snapshot.ready ? 'ready' : snapshot.state === 'invalid' ? 'invalid' : 'pending'
+      if (snapshot.ready) trackedGeneration.phase = 'ready'
       trackedGeneration.validation = snapshot.validation
+      trackedGeneration.updatedAt = snapshot.updatedAt
+      trackedGeneration.diagnostics = snapshot.validation?.diagnostics
     }
     annotationDebug('status.result', {
       requestId,

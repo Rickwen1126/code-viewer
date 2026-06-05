@@ -23,6 +23,7 @@ export type ErrorCode =
   | 'TIMEOUT'
   | 'NOT_FOUND'
   | 'INVALID_REQUEST'
+  | 'ANNOTATION_BUSY'
   | 'TOUR_RECORDING_EXISTS'
   | 'TOUR_SLUG_EXISTS'
   | 'TOUR_NOT_RECORDING'
@@ -65,6 +66,7 @@ export const MSG_ANNOTATION_GENERATE = 'annotation.generate' as const
 export const MSG_ANNOTATION_GENERATE_RESULT = 'annotation.generate.result' as const
 export const MSG_ANNOTATION_STATUS = 'annotation.status' as const
 export const MSG_ANNOTATION_STATUS_RESULT = 'annotation.status.result' as const
+export const MSG_ANNOTATION_CHANGED = 'annotation.changed' as const
 
 // File chat domain
 export const MSG_FILE_CHAT_SEND = 'fileChat.send' as const
@@ -320,6 +322,21 @@ export interface AnnotationGenerateResultPayload {
   submitted: true
 }
 
+export type AnnotationJobPhase = 'submitted' | 'running' | 'ready' | 'invalid' | 'failed'
+
+export interface AnnotationJobSnapshot {
+  path: string
+  annotationPath: string
+  runLogPath?: string
+  generationId: string
+  phase: AnnotationJobPhase
+  ready: boolean
+  submittedAt: number
+  updatedAt?: number
+  diagnostics?: string[]
+  target?: AnnotationGenerateResultPayload['target']
+}
+
 export interface AnnotationStatusPayload {
   path: string
   generationId?: string
@@ -347,6 +364,7 @@ export interface AnnotationStatusResultPayload {
   generationId?: string
   updatedAt?: number
   validation?: AnnotationArtifactValidation
+  activeJob?: AnnotationJobSnapshot
 }
 
 // File chat

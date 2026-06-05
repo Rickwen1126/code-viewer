@@ -12,6 +12,7 @@ import {
   MSG_ANNOTATION_GENERATE_RESULT,
   MSG_ANNOTATION_STATUS,
   MSG_ANNOTATION_STATUS_RESULT,
+  MSG_ANNOTATION_CHANGED,
   MSG_FILE_CHAT_SEND,
   MSG_FILE_CHAT_SEND_RESULT,
   MSG_FILE_CHAT_STATUS,
@@ -178,6 +179,7 @@ describe('ErrorPayload', () => {
       'TIMEOUT',
       'NOT_FOUND',
       'INVALID_REQUEST',
+      'ANNOTATION_BUSY',
     ]
     for (const code of codes) {
       const err: ErrorPayload = { code, message: `error: ${code}` }
@@ -234,6 +236,7 @@ describe('message type constants — annotation domain', () => {
     expect(MSG_ANNOTATION_GENERATE_RESULT).toBe('annotation.generate.result')
     expect(MSG_ANNOTATION_STATUS).toBe('annotation.status')
     expect(MSG_ANNOTATION_STATUS_RESULT).toBe('annotation.status.result')
+    expect(MSG_ANNOTATION_CHANGED).toBe('annotation.changed')
   })
 })
 
