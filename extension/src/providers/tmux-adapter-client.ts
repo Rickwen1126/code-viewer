@@ -34,6 +34,25 @@ export interface SendMessageOptions extends TmuxAdapterConfig {
   message: string
 }
 
+export interface SubscribeToEventsOptions extends TmuxAdapterConfig {
+  adapterId: string
+  subscriptionId: string
+  scope: string
+  eventTypes: string[]
+}
+
+export interface PollDeliveriesOptions extends TmuxAdapterConfig {
+  adapterId: string
+  subscriptionId?: string
+  eventTypes?: string[]
+  afterDeliveryId?: string
+  limit?: number
+}
+
+export interface AckDeliveryOptions extends TmuxAdapterConfig {
+  deliveryId: string
+}
+
 export interface DestroyTargetOptions extends TmuxAdapterConfig {
   bindingId: string
   cwd?: string
@@ -54,6 +73,49 @@ interface EnsureTargetStdout {
 
 interface SendStdout {
   sent?: unknown
+}
+
+interface SubscribeStdout {
+  subscription?: {
+    subscription_id?: unknown
+  }
+}
+
+interface DeliveriesStdout {
+  deliveries?: unknown
+  cursor?: unknown
+  cursor_status?: unknown
+  recovery_cursor?: unknown
+}
+
+interface DeliveryAckStdout {
+  delivery?: {
+    delivery_id?: unknown
+    status?: unknown
+  }
+}
+
+export interface TmuxAdapterEventDelivery {
+  deliveryId: string
+  eventId: string
+  adapterId: string
+  subscriptionId: string
+  eventType: string
+  createdAt?: string
+  source: Record<string, string>
+  event: Record<string, unknown>
+}
+
+export interface PollDeliveriesResult {
+  deliveries: TmuxAdapterEventDelivery[]
+  cursor: string
+  cursorStatus?: string
+  recoveryCursor?: string
+}
+
+export interface AckDeliveryResult {
+  deliveryId: string
+  status?: string
 }
 
 const DEFAULT_TMUX_ADAPTER_REPO = path.join(os.homedir(), 'code', 'tmux-adapter')
@@ -179,6 +241,22 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
+function asObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} is not an object`)
+  }
+  return value as Record<string, unknown>
+}
+
+function asStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, recordValue]) => typeof recordValue === 'string')
+      .map(([key, recordValue]) => [key, String(recordValue)]),
+  )
+}
+
 export function normalizeEnsureTargetOutput(data: Record<string, unknown>): TmuxAdapterTarget {
   const output = data as EnsureTargetStdout
   if (typeof output.binding_id !== 'string' || output.binding_id.length === 0) {
@@ -206,6 +284,66 @@ export function normalizeSendOutput(data: Record<string, unknown>): true {
     throw new Error('send response did not confirm sent: true')
   }
   return true
+}
+
+export function normalizeSubscribeOutput(data: Record<string, unknown>): { subscriptionId: string } {
+  const output = data as SubscribeStdout
+  const subscriptionId = output.subscription?.subscription_id
+  if (typeof subscriptionId !== 'string' || subscriptionId.length === 0) {
+    throw new Error('subscribe response missing subscription.subscription_id')
+  }
+  return { subscriptionId }
+}
+
+export function normalizeDeliveriesOutput(data: Record<string, unknown>): PollDeliveriesResult {
+  const output = data as DeliveriesStdout
+  if (!Array.isArray(output.deliveries)) {
+    throw new Error('deliveries response missing deliveries array')
+  }
+  const deliveries = output.deliveries.map((item, index) => {
+    const delivery = asObject(item, `deliveries[${index}]`)
+    const deliveryId = optionalString(delivery.delivery_id)
+    const eventId = optionalString(delivery.event_id)
+    const adapterId = optionalString(delivery.adapter_id)
+    const subscriptionId = optionalString(delivery.subscription_id)
+    if (!deliveryId || !eventId || !adapterId || !subscriptionId) {
+      throw new Error(`deliveries[${index}] is missing delivery identity fields`)
+    }
+    const event = asObject(delivery.event, `deliveries[${index}].event`)
+    const eventType = optionalString(event.event_type)
+    if (!eventType) {
+      throw new Error(`deliveries[${index}].event is missing event_type`)
+    }
+    return {
+      deliveryId,
+      eventId,
+      adapterId,
+      subscriptionId,
+      eventType,
+      createdAt: optionalString(event.created_at),
+      source: asStringRecord(event.source),
+      event,
+    }
+  })
+  return {
+    deliveries,
+    cursor: optionalString(output.cursor) ?? '',
+    cursorStatus: optionalString(output.cursor_status),
+    recoveryCursor: optionalString(output.recovery_cursor),
+  }
+}
+
+export function normalizeDeliveryAckOutput(data: Record<string, unknown>): AckDeliveryResult {
+  const output = data as DeliveryAckStdout
+  const delivery = asObject(output.delivery, 'delivery_ack response delivery')
+  const deliveryId = optionalString(delivery.delivery_id)
+  if (!deliveryId) {
+    throw new Error('delivery_ack response missing delivery.delivery_id')
+  }
+  return {
+    deliveryId,
+    status: optionalString(delivery.status),
+  }
 }
 
 export async function ensureTarget(options: EnsureTargetOptions): Promise<TmuxAdapterTarget> {
@@ -256,6 +394,43 @@ export async function sendMessage(options: SendMessageOptions): Promise<true> {
       // Best effort cleanup for a generated prompt file.
     }
   }
+}
+
+export async function subscribeToEvents(options: SubscribeToEventsOptions): Promise<{ subscriptionId: string }> {
+  const args = buildTmuxAdapterArgs(options.stateRoot, 'subscribe', [
+    '--adapter-id',
+    options.adapterId,
+    '--subscription-id',
+    options.subscriptionId,
+    '--scope',
+    options.scope,
+    ...options.eventTypes.flatMap((eventType) => ['--event-type', eventType]),
+  ])
+  const { stdout } = await execFileAsync(options.command, args)
+  return normalizeSubscribeOutput(parseJsonObject(stdout, 'tmux-adapter subscribe'))
+}
+
+export async function pollDeliveries(options: PollDeliveriesOptions): Promise<PollDeliveriesResult> {
+  const args = buildTmuxAdapterArgs(options.stateRoot, 'deliveries', [
+    '--adapter-id',
+    options.adapterId,
+    ...(options.subscriptionId ? ['--subscription-id', options.subscriptionId] : []),
+    ...((options.eventTypes ?? []).flatMap((eventType) => ['--event-type', eventType])),
+    ...(options.afterDeliveryId ? ['--after-delivery-id', options.afterDeliveryId] : []),
+    '--limit',
+    String(options.limit ?? 100),
+  ])
+  const { stdout } = await execFileAsync(options.command, args)
+  return normalizeDeliveriesOutput(parseJsonObject(stdout, 'tmux-adapter deliveries'))
+}
+
+export async function ackDelivery(options: AckDeliveryOptions): Promise<AckDeliveryResult> {
+  const args = buildTmuxAdapterArgs(options.stateRoot, 'delivery-ack', [
+    '--delivery-id',
+    options.deliveryId,
+  ])
+  const { stdout } = await execFileAsync(options.command, args)
+  return normalizeDeliveryAckOutput(parseJsonObject(stdout, 'tmux-adapter delivery-ack'))
 }
 
 export async function destroyTarget(options: DestroyTargetOptions): Promise<boolean> {

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   buildTmuxAdapterArgs,
   getFallbackTmuxAdapterCommandSpec,
+  normalizeDeliveryAckOutput,
+  normalizeDeliveriesOutput,
   normalizeEnsureTargetOutput,
   normalizeSendOutput,
+  normalizeSubscribeOutput,
   parseCommandSpec,
   submitDelaySecondsFor,
 } from '../providers/tmux-adapter-client'
@@ -106,6 +109,79 @@ describe('tmux-adapter client helpers', () => {
   it('requires send confirmation', () => {
     expect(normalizeSendOutput({ sent: true })).toBe(true)
     expect(() => normalizeSendOutput({ sent: false })).toThrow(/sent: true/)
+  })
+
+  it('normalizes subscribe output with a stable subscription id', () => {
+    expect(normalizeSubscribeOutput({
+      subscription: {
+        subscription_id: 'code-viewer-annotation-stop',
+      },
+    })).toEqual({ subscriptionId: 'code-viewer-annotation-stop' })
+  })
+
+  it('normalizes deliveries output and preserves source binding metadata', () => {
+    expect(normalizeDeliveriesOutput({
+      deliveries: [
+        {
+          delivery_id: 'event-1:code-viewer-annotation-stop',
+          event_id: 'event-1',
+          adapter_id: 'code-viewer-annotation',
+          subscription_id: 'code-viewer-annotation-stop',
+          event: {
+            event_type: 'agent.lifecycle.stop',
+            created_at: '2026-06-06T01:23:45Z',
+            source: {
+              provider_id: 'codex',
+              tool_name: 'codex',
+              binding_id: 'binding-1',
+            },
+          },
+        },
+      ],
+      cursor: 'event-1:code-viewer-annotation-stop',
+      cursor_status: 'ok',
+      recovery_cursor: '',
+    })).toEqual({
+      deliveries: [
+        {
+          deliveryId: 'event-1:code-viewer-annotation-stop',
+          eventId: 'event-1',
+          adapterId: 'code-viewer-annotation',
+          subscriptionId: 'code-viewer-annotation-stop',
+          eventType: 'agent.lifecycle.stop',
+          createdAt: '2026-06-06T01:23:45Z',
+          source: {
+            provider_id: 'codex',
+            tool_name: 'codex',
+            binding_id: 'binding-1',
+          },
+          event: {
+            event_type: 'agent.lifecycle.stop',
+            created_at: '2026-06-06T01:23:45Z',
+            source: {
+              provider_id: 'codex',
+              tool_name: 'codex',
+              binding_id: 'binding-1',
+            },
+          },
+        },
+      ],
+      cursor: 'event-1:code-viewer-annotation-stop',
+      cursorStatus: 'ok',
+      recoveryCursor: undefined,
+    })
+  })
+
+  it('normalizes delivery ack output', () => {
+    expect(normalizeDeliveryAckOutput({
+      delivery: {
+        delivery_id: 'event-1:code-viewer-annotation-stop',
+        status: 'delivered',
+      },
+    })).toEqual({
+      deliveryId: 'event-1:code-viewer-annotation-stop',
+      status: 'delivered',
+    })
   })
 
   it('uses a longer submit delay for large pasted prompts', () => {

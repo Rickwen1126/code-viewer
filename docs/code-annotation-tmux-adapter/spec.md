@@ -1,8 +1,8 @@
 # Code Annotation via tmux-adapter Spec
 
 Created: 2026-05-21 07:16
-Last Updated: 2026-05-21 20:20
-Status: implementation correction in progress: artifact format restored to source-language inline annotation
+Last Updated: 2026-06-06 14:24
+Status: implemented with stophook-gated completion and source-language inline annotation
 
 ## Purpose
 
@@ -24,6 +24,11 @@ Implemented in Code Viewer:
 - Extension provider that derives cwd from VS Code, validates workspace-relative
   paths, calls `tmux-adapter ensure-target + send`, and writes/reads artifacts
   under `.codeviewer/annotated/<relative path>`.
+- Extension completion gate now subscribes to tmux-adapter
+  `agent.lifecycle.stop` deliveries for `tool:codex` and only validates the
+  artifact after a matching stop event for the active binding arrives.
+- Artifact validation includes a TypeScript/JavaScript density floor so a
+  near-source copy with only a handful of comments does not count as ready.
 - Frontend original/annotated toggle, annotation ready/error/submitting/waiting
   status, generate action, and menu-level `Regen Annotation`.
 - Mobile visual verification on iPhone viewport 390x844: original view,
@@ -127,16 +132,22 @@ ensure-target
 3. Frontend sends `annotation.generate` with the selected relative file path.
 4. Extension derives workspace cwd from VS Code.
 5. Extension calls `tmux-adapter ensure-target`.
-6. Extension sends an annotation task to the returned binding.
-7. Codex writes the generated annotation artifact.
+6. Extension refreshes a deterministic stop subscription:
+   `adapter_id = code-viewer-annotation`,
+   `subscription_id = code-viewer-annotation-stop`,
+   `scope = tool:codex`,
+   `event_types = [agent.lifecycle.stop]`.
+7. Extension sends an annotation task to the returned binding.
 8. Frontend receives an immediate request result that includes the target
-   acquisition status and artifact path.
-9. Frontend can switch between original and annotated view once the artifact
-   exists.
-
-For V1, the response may be "task submitted" rather than "annotation fully
-completed" if Code Viewer does not yet subscribe to Codex completion events.
-The acceptance smoke must still prove the file artifact is actually produced.
+   acquisition status, artifact path, and submission timestamp.
+9. Codex writes the generated annotation artifact.
+10. Extension waits for the first stop delivery whose `source.binding_id`
+    matches the active annotation binding and whose `created_at` is not older
+    than `submittedAt`.
+11. Only after that stop delivery arrives does the extension validate the
+    artifact and mark the job `ready` or `invalid`.
+12. Frontend can switch to annotated view only when the extension reports
+    `ready`, not merely because a fresh-looking artifact file already exists.
 
 ### Artifact Location
 
@@ -508,20 +519,29 @@ Do not ask Codex to edit arbitrary project files in annotation mode.
 
 ### Completion Model
 
-V1 is submit-and-poll, but status is generation-aware:
+V1 remains submit-and-poll from the frontend point of view, but the extension
+side ready signal is stophook-gated:
 
 1. Frontend creates a `generationId` before calling `annotation.generate`.
 2. `annotation.generate` submits the task and returns `submitted: true`,
    `generationId`, and `submittedAt`.
-3. Frontend periodically calls `annotation.status` with `generationId` and
-   `minUpdatedAt = submittedAt`.
-4. `annotation.status` checks whether the artifact exists, was updated after
-   this generation was submitted, and passes artifact validation.
-5. Frontend enables annotated view only when `ready: true`, not merely when an
-   old artifact exists.
+3. The extension keeps one active annotation job per workspace and stores the
+   target `bindingId`, `submittedAt`, and the last processed stop-delivery
+   cursor.
+4. The extension polls tmux-adapter `deliveries` for
+   `agent.lifecycle.stop` and ignores any delivery whose `binding_id` does not
+   match the active annotation binding or whose `created_at` predates
+   `submittedAt`.
+5. The first matching stop delivery is the completion boundary for this run.
+   Only then does the extension validate the artifact.
+6. `annotation.status` reports `pending` while the active job is still waiting
+   for that stop delivery, even if the artifact file already exists and looks
+   fresh.
+7. Validation failure after the stop delivery marks the job `invalid`; waiting
+   for a matching stop delivery past timeout marks the job `failed`.
 
-Later versions can subscribe to tmux-adapter events or provider output, but V1
-should stay small and evidence-driven.
+This keeps tmux-adapter domain-neutral while making Code Viewer completion
+evidence stricter than "artifact appeared on disk".
 
 ## Backend Impact
 

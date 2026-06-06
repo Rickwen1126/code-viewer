@@ -1,7 +1,7 @@
 # Code Viewer — Canonical Spec
 
 Created: 2026-03-14
-Last Updated: 2026-05-31 14:56
+Last Updated: 2026-06-06 14:24
 Status: Active
 
 ## Purpose
@@ -49,7 +49,7 @@ pnpm monorepo: `packages/shared`, `backend`, `extension`, `frontend`
 | Desktop UI | `docs/desktop-ui/` | Implemented (spec draft) |
 | WS client singleton refactor | `docs/ws-client-singleton-refactor/` | Completed |
 | Desktop authority positioning | `docs/desktop-authority-mobile-viewer/` | Reference |
-| Code annotation via tmux-adapter | `docs/code-annotation-tmux-adapter/` | Ready for implementation |
+| Code annotation via tmux-adapter | `docs/code-annotation-tmux-adapter/` | Implemented (stophook-gated completion) |
 | HTML rendered toggle preview | `docs/html-rendered-toggle-preview/` | Planning |
 
 ## Learning Artifacts

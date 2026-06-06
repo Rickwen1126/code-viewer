@@ -14,13 +14,25 @@ import type {
 import { createMessage } from '../ws/client'
 import type { WsClient } from '../ws/client'
 import { debugLog } from '../utils/debug'
-import { ensureTarget, sendMessage } from './tmux-adapter-client'
+import {
+  ackDelivery,
+  ensureTarget,
+  pollDeliveries,
+  sendMessage,
+  subscribeToEvents,
+  type TmuxAdapterEventDelivery,
+} from './tmux-adapter-client'
 
 const ANNOTATION_ROOT = '.codeviewer/annotated'
 const ANNOTATION_RUN_ROOT = '.codeviewer/annotation-runs'
 const SPAWN_READY_DELAY_MS = 2500
 const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
 const EMPTY_VALIDATION: AnnotationArtifactValidation = { ok: false, diagnostics: [] }
+const ANNOTATION_STOP_ADAPTER_ID = 'code-viewer-annotation'
+const ANNOTATION_STOP_SUBSCRIPTION_ID = 'code-viewer-annotation-stop'
+const ANNOTATION_STOP_SCOPE = 'tool:codex'
+const ANNOTATION_STOP_EVENT_TYPE = 'agent.lifecycle.stop'
+const ANNOTATION_DELIVERY_LIMIT = 25
 
 interface SafeAnnotationPath {
   relativePath: string
@@ -43,6 +55,7 @@ interface AnnotationGenerationState {
   diagnostics?: string[]
   timeout?: ReturnType<typeof setTimeout>
   poll?: ReturnType<typeof setInterval>
+  stopDeliveryCursor?: string
 }
 
 interface AnnotationStatusSnapshot {
@@ -62,6 +75,7 @@ const generationStates = new Map<string, AnnotationGenerationState>()
 let activeAnnotationJob: AnnotationGenerationState | undefined
 const ANNOTATION_WATCH_INTERVAL_MS = 1500
 const ANNOTATION_JOB_TIMEOUT_MS = 120000
+let annotationStopDeliveryCursor = ''
 
 function sendError(
   requestType: string,
@@ -161,6 +175,31 @@ function commentPatternFor(relativePath: string): RegExp | undefined {
   return undefined
 }
 
+function commentLinePatternFor(relativePath: string): RegExp | undefined {
+  const ext = path.extname(relativePath).toLowerCase()
+  if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.css', '.scss', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp'].includes(ext)) {
+    return /^\s*(\/\/|\/\*|\*\/|\*)/
+  }
+  if (['.py', '.rb', '.sh', '.bash', '.zsh', '.yml', '.yaml', '.toml'].includes(ext)) {
+    return /^\s*#/
+  }
+  return undefined
+}
+
+function countMatchingLines(text: string, pattern: RegExp): number {
+  return text
+    .split(/\r?\n/)
+    .filter(line => pattern.test(line))
+    .length
+}
+
+function requiredAddedCommentLinesFor(relativePath: string, sourceLineCount: number): number | undefined {
+  const ext = path.extname(relativePath).toLowerCase()
+  if (!['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) return undefined
+  if (sourceLineCount < 15) return undefined
+  return Math.max(4, Math.ceil(sourceLineCount * 0.12))
+}
+
 export function validateAnnotationArtifactText(
   sourceText: string,
   artifactText: string,
@@ -190,6 +229,20 @@ export function validateAnnotationArtifactText(
   const commentPattern = commentPatternFor(relativePath)
   if (commentPattern && !commentPattern.test(artifactText)) {
     diagnostics.push('artifact has no source-language comment markers')
+  }
+
+  const commentLinePattern = commentLinePatternFor(relativePath)
+  const requiredAddedCommentLines = requiredAddedCommentLinesFor(relativePath, sourceLineCount)
+  if (commentLinePattern && typeof requiredAddedCommentLines === 'number') {
+    const addedCommentLines = Math.max(
+      0,
+      countMatchingLines(artifactText, commentLinePattern) - countMatchingLines(sourceText, commentLinePattern),
+    )
+    if (addedCommentLines < requiredAddedCommentLines) {
+      diagnostics.push(
+        `annotation density below required threshold: added ${addedCommentLines} comment lines, require ${requiredAddedCommentLines}`,
+      )
+    }
   }
 
   return {
@@ -427,6 +480,39 @@ function normalizeOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+function timestampFromIso(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+export function matchStopDeliveryForJob(
+  job: Pick<AnnotationGenerationState, 'submittedAt' | 'target'>,
+  delivery: Pick<TmuxAdapterEventDelivery, 'eventType' | 'createdAt' | 'source'>,
+): { matches: boolean; reason?: string } {
+  if (delivery.eventType !== ANNOTATION_STOP_EVENT_TYPE) {
+    return { matches: false, reason: `unexpected event type: ${delivery.eventType}` }
+  }
+  const bindingId = job.target?.bindingId
+  if (!bindingId) {
+    return { matches: false, reason: 'annotation job has no target binding id' }
+  }
+  if (delivery.source.binding_id !== bindingId) {
+    return {
+      matches: false,
+      reason: `binding mismatch: expected ${bindingId}, got ${delivery.source.binding_id || '<missing>'}`,
+    }
+  }
+  const createdAt = timestampFromIso(delivery.createdAt)
+  if (typeof createdAt !== 'number') {
+    return { matches: false, reason: 'delivery missing created_at' }
+  }
+  if (createdAt < job.submittedAt) {
+    return { matches: false, reason: 'delivery predates annotation submission' }
+  }
+  return { matches: true }
+}
+
 async function getAnnotationStatusSnapshot(
   safePath: SafeAnnotationPath,
   generationId?: string,
@@ -452,7 +538,7 @@ async function getAnnotationStatusSnapshot(
       updatedAt: activeAnnotationJob.updatedAt,
       validation: {
         ok: false,
-        diagnostics: activeAnnotationJob.diagnostics ?? ['annotation job is running'],
+        diagnostics: activeAnnotationJob.diagnostics ?? ['waiting for matching Codex stophook'],
         updatedAt: activeAnnotationJob.updatedAt,
       },
       activeJob,
@@ -584,28 +670,162 @@ function startAnnotationJobWatcher(
   workspaceFolder: vscode.WorkspaceFolder,
   safePath: SafeAnnotationPath,
   job: AnnotationGenerationState,
+  config: ReturnType<typeof readAnnotationConfig>,
   client?: WsClient,
 ): void {
   const check = async (): Promise<void> => {
     if (activeAnnotationJob?.generationId !== job.generationId || isTerminalAnnotationPhase(job.phase)) return
     try {
-      const state = await evaluateAnnotationJob(workspaceFolder, safePath, job)
-      if (state === 'ready') {
-        job.phase = 'ready'
+      const page = await pollDeliveries({
+        command: config.command,
+        stateRoot: config.stateRoot,
+        adapterId: ANNOTATION_STOP_ADAPTER_ID,
+        subscriptionId: ANNOTATION_STOP_SUBSCRIPTION_ID,
+        eventTypes: [ANNOTATION_STOP_EVENT_TYPE],
+        afterDeliveryId: job.stopDeliveryCursor,
+        limit: ANNOTATION_DELIVERY_LIMIT,
+      })
+
+      if (page.cursorStatus && page.cursorStatus !== 'ok') {
+        annotationDebug('stophook.cursor.recovered', {
+          requestId: job.requestId,
+          generationId: job.generationId,
+          bindingId: job.target?.bindingId ?? null,
+          cursorStatus: page.cursorStatus,
+          requestedCursor: job.stopDeliveryCursor ?? null,
+          recoveryCursor: page.recoveryCursor ?? null,
+        })
         await recordAnnotationEvent(workspaceFolder, {
-          phase: 'extension.annotation.job.ready',
-          level: 'info',
+          phase: 'extension.annotation.stop.cursor.recovered',
+          level: 'warn',
           requestId: job.requestId,
           generationId: job.generationId,
           path: job.relativePath,
           artifactPath: job.annotationPath,
           runLogPath: job.runLogPath,
           target: job.target,
-          diagnostics: [],
-          data: { updatedAt: job.updatedAt ?? null },
+          diagnostics: [
+            `delivery cursor recovered from ${page.cursorStatus}`,
+          ],
+          data: {
+            requestedCursor: job.stopDeliveryCursor ?? null,
+            recoveryCursor: page.recoveryCursor ?? null,
+          },
         })
+        if (page.recoveryCursor) {
+          job.stopDeliveryCursor = page.recoveryCursor
+          annotationStopDeliveryCursor = page.recoveryCursor
+        }
+      }
+
+      for (const delivery of page.deliveries) {
+        const match = matchStopDeliveryForJob(job, delivery)
+        annotationDebug('stophook.delivery', {
+          requestId: job.requestId,
+          generationId: job.generationId,
+          deliveryId: delivery.deliveryId,
+          bindingId: delivery.source.binding_id ?? null,
+          createdAt: delivery.createdAt ?? null,
+          matches: match.matches,
+          reason: match.reason ?? null,
+        })
+        job.stopDeliveryCursor = delivery.deliveryId
+        annotationStopDeliveryCursor = delivery.deliveryId
+
+        if (!match.matches) {
+          await ackDelivery({
+            command: config.command,
+            stateRoot: config.stateRoot,
+            deliveryId: delivery.deliveryId,
+          }).catch((error) => {
+            console.warn('[CodeViewer][annotation] stophook.ack.failed', {
+              requestId: job.requestId,
+              generationId: job.generationId,
+              deliveryId: delivery.deliveryId,
+              message: error instanceof Error ? error.message : String(error),
+            })
+          })
+          await recordAnnotationEvent(workspaceFolder, {
+            phase: 'extension.annotation.stop.ignored',
+            level: 'debug',
+            requestId: job.requestId,
+            generationId: job.generationId,
+            path: job.relativePath,
+            artifactPath: job.annotationPath,
+            runLogPath: job.runLogPath,
+            target: job.target,
+            diagnostics: match.reason ? [match.reason] : [],
+            data: {
+              deliveryId: delivery.deliveryId,
+              eventBindingId: delivery.source.binding_id ?? null,
+              eventCreatedAt: delivery.createdAt ?? null,
+            },
+          })
+          continue
+        }
+
+        const state = await evaluateAnnotationJob(workspaceFolder, safePath, job)
+        await ackDelivery({
+          command: config.command,
+          stateRoot: config.stateRoot,
+          deliveryId: delivery.deliveryId,
+        }).catch((error) => {
+          console.warn('[CodeViewer][annotation] stophook.ack.failed', {
+            requestId: job.requestId,
+            generationId: job.generationId,
+            deliveryId: delivery.deliveryId,
+            message: error instanceof Error ? error.message : String(error),
+          })
+        })
+        if (state === 'ready') {
+          job.phase = 'ready'
+          job.diagnostics = []
+          await recordAnnotationEvent(workspaceFolder, {
+            phase: 'extension.annotation.job.ready',
+            level: 'info',
+            requestId: job.requestId,
+            generationId: job.generationId,
+            path: job.relativePath,
+            artifactPath: job.annotationPath,
+            runLogPath: job.runLogPath,
+            target: job.target,
+            diagnostics: [],
+            data: {
+              updatedAt: job.updatedAt ?? null,
+              stopDeliveryId: delivery.deliveryId,
+              stopCreatedAt: delivery.createdAt ?? null,
+            },
+          })
+        } else {
+          job.phase = 'invalid'
+          if (!job.diagnostics?.length) {
+            job.diagnostics = ['annotation artifact is invalid after matching Codex stophook']
+          }
+          await recordAnnotationEvent(workspaceFolder, {
+            phase: 'extension.annotation.job.invalid',
+            level: 'warn',
+            requestId: job.requestId,
+            generationId: job.generationId,
+            path: job.relativePath,
+            artifactPath: job.annotationPath,
+            runLogPath: job.runLogPath,
+            target: job.target,
+            diagnostics: job.diagnostics,
+            data: {
+              updatedAt: job.updatedAt ?? null,
+              stopDeliveryId: delivery.deliveryId,
+              stopCreatedAt: delivery.createdAt ?? null,
+            },
+          })
+        }
         broadcastAnnotationJob(client, job)
         releaseAnnotationJob(job)
+        return
+      }
+
+      if (page.cursor) {
+        job.stopDeliveryCursor = page.cursor
+        annotationStopDeliveryCursor = page.cursor
       }
     } catch (error) {
       job.diagnostics = [error instanceof Error ? error.message : String(error)]
@@ -616,16 +836,13 @@ function startAnnotationJobWatcher(
   job.timeout = setTimeout(() => {
     void (async () => {
       if (activeAnnotationJob?.generationId !== job.generationId || isTerminalAnnotationPhase(job.phase)) return
-      const state = await evaluateAnnotationJob(workspaceFolder, safePath, job).catch(() => 'pending' as const)
-      job.phase = state === 'invalid' ? 'invalid' : 'failed'
+      job.phase = 'failed'
       if (!job.diagnostics?.length) {
-        job.diagnostics = job.phase === 'failed'
-          ? ['annotation did not produce a fresh valid artifact before timeout']
-          : ['annotation artifact is invalid']
+        job.diagnostics = ['waiting for matching Codex stophook timed out']
       }
       await recordAnnotationEvent(workspaceFolder, {
-        phase: `extension.annotation.job.${job.phase}`,
-        level: job.phase === 'invalid' ? 'warn' : 'error',
+        phase: 'extension.annotation.job.failed',
+        level: 'error',
         requestId: job.requestId,
         generationId: job.generationId,
         path: job.relativePath,
@@ -633,7 +850,10 @@ function startAnnotationJobWatcher(
         runLogPath: job.runLogPath,
         target: job.target,
         diagnostics: job.diagnostics,
-        data: { updatedAt: job.updatedAt ?? null },
+        data: {
+          updatedAt: job.updatedAt ?? null,
+          stopDeliveryCursor: job.stopDeliveryCursor ?? null,
+        },
       })
       broadcastAnnotationJob(client, job)
       releaseAnnotationJob(job)
@@ -753,6 +973,8 @@ export async function handleAnnotationGenerate(
     runLogPath,
     submittedAt: Date.now(),
     phase: 'submitted',
+    diagnostics: ['waiting for matching Codex stophook'],
+    stopDeliveryCursor: annotationStopDeliveryCursor,
   }
   generationStates.set(safePath.relativePath, job)
   activeAnnotationJob = job
@@ -805,6 +1027,38 @@ export async function handleAnnotationGenerate(
       runLogPath,
       target,
       elapsedMs: Date.now() - startedAt,
+    })
+    await subscribeToEvents({
+      command: config.command,
+      stateRoot: config.stateRoot,
+      adapterId: ANNOTATION_STOP_ADAPTER_ID,
+      subscriptionId: ANNOTATION_STOP_SUBSCRIPTION_ID,
+      scope: ANNOTATION_STOP_SCOPE,
+      eventTypes: [ANNOTATION_STOP_EVENT_TYPE],
+    })
+    annotationDebug('generate.stop-subscription.ready', {
+      requestId,
+      generationId,
+      adapterId: ANNOTATION_STOP_ADAPTER_ID,
+      subscriptionId: ANNOTATION_STOP_SUBSCRIPTION_ID,
+      bindingId: target.bindingId,
+    })
+    await recordAnnotationEvent(workspaceFolder, {
+      phase: 'extension.annotation.stop.subscription.ready',
+      level: 'info',
+      requestId,
+      generationId,
+      path: safePath.relativePath,
+      artifactPath: safePath.annotationPath,
+      runLogPath,
+      target,
+      elapsedMs: Date.now() - startedAt,
+      data: {
+        adapterId: ANNOTATION_STOP_ADAPTER_ID,
+        subscriptionId: ANNOTATION_STOP_SUBSCRIPTION_ID,
+        scope: ANNOTATION_STOP_SCOPE,
+        eventType: ANNOTATION_STOP_EVENT_TYPE,
+      },
     })
     if (target.acquired === 'spawned') {
       annotationDebug('generate.spawn-ready-delay.start', {
@@ -893,7 +1147,7 @@ export async function handleAnnotationGenerate(
       target,
       submitted: true,
     }, msg.id))
-    startAnnotationJobWatcher(workspaceFolder, safePath, job, client)
+    startAnnotationJobWatcher(workspaceFolder, safePath, job, config, client)
     annotationDebug('generate.response.sent', {
       requestId,
       generationId,

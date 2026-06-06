@@ -1133,6 +1133,7 @@ export function CodeViewerPage() {
     })
 
     if (job.phase === 'ready') {
+      annotationPollSeqRef.current += 1
       setAnnotationExists(true)
       setAnnotationPhase('ready')
       setAnnotationError(null)
@@ -1140,6 +1141,7 @@ export function CodeViewerPage() {
       void loadFileBackground(job.annotationPath)
       showToast('Annotation ready')
     } else if (job.phase === 'invalid' || job.phase === 'failed') {
+      annotationPollSeqRef.current += 1
       setAnnotationExists(false)
       setAnnotationPhase('error')
       setAnnotationError((job.diagnostics ?? []).join('; ') || 'Annotation job failed')
