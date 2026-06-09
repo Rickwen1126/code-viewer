@@ -85,11 +85,30 @@ export function normalizeRepoRelativePath(raw: string | null | undefined): strin
   return normalized
 }
 
+function parseIpv4(address: string): [number, number, number, number] | null {
+  const parts = address.split('.')
+  if (parts.length !== 4) return null
+  const octets = parts.map((part) => Number(part))
+  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return null
+  }
+  return octets as [number, number, number, number]
+}
+
+export function isTailscaleIp(address: string): boolean {
+  const octets = parseIpv4(address)
+  if (!octets) return false
+  const [a, b] = octets
+  return a === 100 && b >= 64 && b <= 127
+}
+
 export function getLanIp(): string | null {
   const nets = networkInterfaces()
   for (const name of Object.keys(nets)) {
     for (const net of nets[name] ?? []) {
-      if (net.family === 'IPv4' && !net.internal) return net.address
+      if (net.family === 'IPv4' && !net.internal && !isTailscaleIp(net.address)) {
+        return net.address
+      }
     }
   }
   return null
@@ -99,7 +118,7 @@ export function getTailscaleIp(): string | null {
   const nets = networkInterfaces()
   for (const name of Object.keys(nets)) {
     for (const net of nets[name] ?? []) {
-      if (net.family === 'IPv4' && !net.internal && /^100\./.test(net.address)) {
+      if (net.family === 'IPv4' && !net.internal && isTailscaleIp(net.address)) {
         return net.address
       }
     }

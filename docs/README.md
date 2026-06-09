@@ -17,10 +17,11 @@ This directory stores curated project documents that are meant to be read and re
 - `desktop-authority-mobile-viewer/`: positioning notes for why Code Viewer is a desktop-authority mobile companion.
 - `ws-client-singleton-refactor/`: investigation docs for WS client state machine rewrite. **Completed.**
 - `code-annotation-tmux-adapter/`: implementation handoff/spec for Code
-  Annotation MVP using `tmux-adapter ensure-target + send`. **Ready for
-  implementation.**
+  Annotation using `tmux-adapter ensure-target + send`. **Implemented.**
 - `html-rendered-toggle-preview/`: plan for explicit `Source / Rendered` HTML
   artifact viewing in `/files/*`, scoped to repo-local architecture diagrams.
+- `secretary-scan-follow-up/`: short decision logs for secretary scan findings
+  that need repo-local follow-up before implementation or prioritization.
 - `superpowers/`: historical design and implementation notes from the earlier MVP push. Treat as historical references.
 - `archive/`: old dated todo files and legacy docs, preserved for context.
 - `git-tour-origin-context/`: superseded by `semantic-location-history/`. Kept for historical context.

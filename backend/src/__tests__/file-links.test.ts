@@ -5,6 +5,7 @@ import {
   buildTourStepLinkResponse,
   getLanIp,
   getTailscaleIp,
+  isTailscaleIp,
   normalizeNonEmptyString,
   parseGitDiffStatus,
   normalizeRepoRelativePath,
@@ -199,9 +200,23 @@ describe('getLanIp', () => {
   })
 })
 
+describe('isTailscaleIp', () => {
+  it('matches only the Tailscale 100.64.0.0/10 CGNAT range', () => {
+    expect(isTailscaleIp('100.64.0.0')).toBe(true)
+    expect(isTailscaleIp('100.112.227.109')).toBe(true)
+    expect(isTailscaleIp('100.127.255.255')).toBe(true)
+
+    expect(isTailscaleIp('100.63.255.255')).toBe(false)
+    expect(isTailscaleIp('100.128.0.0')).toBe(false)
+    expect(isTailscaleIp('100.200.1.1')).toBe(false)
+    expect(isTailscaleIp('192.168.1.23')).toBe(false)
+    expect(isTailscaleIp('not-an-ip')).toBe(false)
+  })
+})
+
 describe('getTailscaleIp', () => {
   it('returns either a tailscale ip or null', () => {
     const value = getTailscaleIp()
-    expect(value === null || /^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)).toBe(true)
+    expect(value === null || isTailscaleIp(value)).toBe(true)
   })
 })
