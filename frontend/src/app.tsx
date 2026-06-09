@@ -11,7 +11,7 @@ import { ReviewProvider, ReviewContext } from './hooks/use-review'
 import { useWebSocket } from './hooks/use-websocket'
 import { useDocumentVisibility } from './hooks/use-visibility'
 import { debugLog } from './services/debug'
-import { buildFileRoutePath } from './services/file-location'
+import { buildFileRoutePath, decodeFileRoutePath } from './services/file-location'
 import { readCurrentFileForWorkspace } from './services/current-file'
 import { readStoredWorkspace } from './services/selected-workspace'
 import { readLastLocationForWorkspace, writeLastLocationForWorkspace } from './services/last-location'
@@ -66,13 +66,6 @@ function isTabRoot(pathname: string): boolean {
   // Matches exactly '/segment' — no further path parts
   const parts = pathname.split('/').filter(Boolean)
   return parts.length <= 1 && TAB_ROOTS.has('/' + (parts[0] ?? ''))
-}
-
-function decodeFileRoutePath(pathname: string): string | null {
-  if (!pathname.startsWith('/files/')) return null
-  const encoded = pathname.slice('/files/'.length)
-  if (!encoded) return null
-  return encoded.split('/').map(decodeURIComponent).join('/')
 }
 
 function WatchSyncController() {

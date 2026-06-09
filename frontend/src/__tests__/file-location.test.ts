@@ -3,6 +3,7 @@ import {
   buildFileRestoreKey,
   buildFileLocationUrl,
   buildFileRoutePath,
+  decodeFileRoutePath,
   oneBasedToZeroBasedLine,
   parseFileLocationQuery,
   zeroBasedToOneBasedLine,
@@ -11,6 +12,12 @@ import {
 describe('file-location helpers', () => {
   it('builds canonical file route paths with per-segment encoding', () => {
     expect(buildFileRoutePath('src/foo bar.ts')).toBe('/files/src/foo%20bar.ts')
+  })
+
+  it('decodes canonical file route paths back to repo-relative paths', () => {
+    expect(decodeFileRoutePath('/files/src/foo%20bar.ts')).toBe('src/foo bar.ts')
+    expect(decodeFileRoutePath('/files')).toBeNull()
+    expect(decodeFileRoutePath('/git/src/foo.ts')).toBeNull()
   })
 
   it('builds file location URLs with 1-based line query params', () => {

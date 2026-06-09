@@ -24,6 +24,13 @@ export function buildFileRoutePath(path: string): string {
   return `/files/${encoded}`
 }
 
+export function decodeFileRoutePath(pathname: string): string | null {
+  if (!pathname.startsWith('/files/')) return null
+  const encoded = pathname.slice('/files/'.length)
+  if (!encoded) return null
+  return encoded.split('/').map(decodeURIComponent).join('/')
+}
+
 export function buildFileLocationUrl(path: string, query: FileLocationQuery = {}): string {
   const line = normalizeOneBasedLine(query.line)
   const endLine = normalizeOneBasedLine(query.endLine)

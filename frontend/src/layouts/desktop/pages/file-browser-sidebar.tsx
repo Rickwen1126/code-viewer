@@ -3,10 +3,10 @@
  * Forked from pages/files/file-browser.tsx — same data logic, compact layout, no pull-to-refresh.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { useWebSocket } from '../../../hooks/use-websocket'
 import { cacheService } from '../../../services/cache'
-import { buildFileLocationUrl, buildFileRoutePath } from '../../../services/file-location'
+import { buildFileLocationUrl, buildFileRoutePath, decodeFileRoutePath } from '../../../services/file-location'
 import { readCurrentFileForWorkspace } from '../../../services/current-file'
 import { useWorkspace } from '../../../hooks/use-workspace'
 import { addRecentFile, getRecentFiles } from '../../../pages/files/file-browser'
@@ -131,6 +131,7 @@ export function FileBrowserSidebar() {
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -140,7 +141,7 @@ export function FileBrowserSidebar() {
   const [collapsedSnapshot, setCollapsedSnapshot] = useState<Set<string> | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const currentFile = readCurrentFileForWorkspace(workspace)
+  const currentFile = decodeFileRoutePath(location.pathname) ?? readCurrentFileForWorkspace(workspace)
 
   function handleToggle(path: string) {
     setExpandedDirs(prev => {

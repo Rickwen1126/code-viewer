@@ -19,6 +19,7 @@ import { appendFileSync, writeFileSync, mkdirSync } from 'fs'
 const BASE_URL = 'http://127.0.0.1:4801'
 const WORKSPACE_PATH = '/Users/rickwen/code/code-viewer'
 const RUN_ID = `${Date.now()}`
+const STALE_CURRENT_FILE = 'frontend/src/layouts/desktop/pages/file-browser-sidebar.tsx'
 
 const OUTPUT_DIR = '/private/tmp/claude-501'
 try { mkdirSync(OUTPUT_DIR, { recursive: true }) } catch {}
@@ -72,7 +73,7 @@ async function main() {
 
   // Pre-seed workspace in localStorage so the app auto-selects it on load.
   // WorkspaceProvider reads this, matches against live list, and calls selectWorkspace.
-  await page.addInitScript(({ ws }) => {
+  await page.addInitScript(({ ws, staleCurrentFile }) => {
     if (sessionStorage.getItem('code-viewer:e2e-desktop-init') === 'done') return
     sessionStorage.setItem('code-viewer:e2e-desktop-init', 'done')
     localStorage.setItem('code-viewer:debug', 'true')
@@ -91,7 +92,11 @@ async function main() {
       vscodeVersion: '0',
       extensionVersion: '0',
     }))
-  }, { ws: adminWorkspace })
+    // Seed stale current-file markers so the desktop sidebar must prefer the
+    // live route over storage-backed reopen hints.
+    localStorage.setItem(`code-viewer:current-file:${ws.workspaceKey}`, staleCurrentFile)
+    localStorage.setItem('code-viewer:current-file', staleCurrentFile)
+  }, { ws: adminWorkspace, staleCurrentFile: STALE_CURRENT_FILE })
 
   const result = {
     runId: RUN_ID,
@@ -186,12 +191,11 @@ async function main() {
     const codeText = await page.locator('[data-testid="shiki-container"]').first().textContent()
     assert(codeText && codeText.includes('BrowserRouter'), `Code content missing expected text "BrowserRouter"`)
 
-    // Wait for file tree to stabilize — sidebar needs ≥ 1 re-render after CodeViewerPage
-    // writes currentFile to localStorage. Tree load triggers that re-render.
+    // Wait for the file tree to load before checking the active row.
     await page.locator('text=code-viewer').first().waitFor({ state: 'visible', timeout: 15000 })
 
-    // Poll for active file highlight (sidebar re-renders async after tree load)
-    // Filter: must have non-empty text (ActivityBar icons also have blue border but no text)
+    // Poll for active file highlight. The tree loads asynchronously, but once
+    // it renders the active row must match the route even if storage was stale.
     let activeFileBtn = null
     for (let attempt = 0; attempt < 10; attempt++) {
       activeFileBtn = await page.evaluate(() => {
