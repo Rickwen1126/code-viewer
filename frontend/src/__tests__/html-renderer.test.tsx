@@ -9,7 +9,7 @@ describe('HtmlRenderer', () => {
     )
 
     expect(html).toContain('title="Rendered HTML preview"')
-    expect(html).toContain('sandbox=""')
+    expect(html).toContain('sandbox="allow-scripts"')
     expect(html).toContain('referrerPolicy="no-referrer"')
     expect(html).toContain('&lt;main&gt;&lt;h1&gt;Hello&lt;/h1&gt;')
   })

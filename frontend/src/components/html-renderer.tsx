@@ -6,7 +6,7 @@ export function HtmlRenderer({ content }: HtmlRendererProps) {
   return (
     <iframe
       title="Rendered HTML preview"
-      sandbox=""
+      sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       srcDoc={content}
       style={{
