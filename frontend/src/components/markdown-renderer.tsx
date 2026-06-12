@@ -14,7 +14,7 @@ export function MarkdownRenderer({ content, codeFontSize, wordWrap = false, padd
   const markdownFontSize = codeFontSize ?? 14
 
   return (
-    <div style={{ padding, lineHeight: 1.6, fontSize: markdownFontSize, color: '#d4d4d4', ...(wordWrap ? { overflowWrap: 'break-word', wordBreak: 'break-word' } : undefined) }}>
+    <div className="cv-markdown" style={{ padding, lineHeight: 1.6, fontSize: markdownFontSize, color: '#d4d4d4', ...(wordWrap ? { overflowWrap: 'break-word', wordBreak: 'break-word' } : undefined) }}>
       {tokens.map((token, i) => (
         <TokenRenderer key={i} token={token} fontSize={markdownFontSize} />
       ))}

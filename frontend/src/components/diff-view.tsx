@@ -1,10 +1,23 @@
 import type { DiffHunk, DiffChange } from '@code-viewer/shared'
+import { useTheme } from '../hooks/use-theme'
 
 interface DiffViewProps {
   hunks: DiffHunk[]
 }
 
-const COLORS = {
+interface DiffPalette {
+  addedBg: string
+  addedText: string
+  deletedBg: string
+  deletedText: string
+  normalBg: string
+  normalText: string
+  hunkHeaderBg: string
+  hunkHeaderText: string
+  deletedStrike: boolean
+}
+
+const COLORS: DiffPalette = {
   addedBg: '#1e3a1e',
   addedText: '#4ec9b0',
   deletedBg: '#3a1e1e',
@@ -13,26 +26,42 @@ const COLORS = {
   normalText: '#d4d4d4',
   hunkHeaderBg: '#2d2d2d',
   hunkHeaderText: '#888',
+  deletedStrike: false,
 }
 
-function DiffLine({ change }: { change: DiffChange }) {
+// Print convention on grayscale e-ink: additions get a light tint, deletions a strike-through.
+const EINK_COLORS: DiffPalette = {
+  addedBg: '#e2e2e2',
+  addedText: '#000000',
+  deletedBg: 'transparent',
+  deletedText: '#6e6e6e',
+  normalBg: 'transparent',
+  normalText: '#000000',
+  hunkHeaderBg: '#ffffff',
+  hunkHeaderText: '#000000',
+  deletedStrike: true,
+}
+
+function DiffLine({ change, palette }: { change: DiffChange; palette: DiffPalette }) {
   let bg: string
   let color: string
   let prefix: string
 
   if (change.type === 'add') {
-    bg = COLORS.addedBg
-    color = COLORS.addedText
+    bg = palette.addedBg
+    color = palette.addedText
     prefix = '+'
   } else if (change.type === 'delete') {
-    bg = COLORS.deletedBg
-    color = COLORS.deletedText
+    bg = palette.deletedBg
+    color = palette.deletedText
     prefix = '-'
   } else {
-    bg = COLORS.normalBg
-    color = COLORS.normalText
+    bg = palette.normalBg
+    color = palette.normalText
     prefix = ' '
   }
+
+  const strike = change.type === 'delete' && palette.deletedStrike
 
   const lineNum = change.type === 'add'
     ? change.newLineNumber
@@ -42,6 +71,7 @@ function DiffLine({ change }: { change: DiffChange }) {
 
   return (
     <div
+      className="cv-eink-keep"
       style={{
         display: 'flex',
         background: bg,
@@ -83,6 +113,7 @@ function DiffLine({ change }: { change: DiffChange }) {
           fontFamily: "'JetBrains Mono', monospace",
           lineHeight: '20px',
           whiteSpace: 'pre',
+          ...(strike ? { textDecoration: 'line-through', textDecorationColor: '#8a8a8a' } : undefined),
         }}
       >
         {change.content}
@@ -91,13 +122,14 @@ function DiffLine({ change }: { change: DiffChange }) {
   )
 }
 
-function HunkHeader({ hunk }: { hunk: DiffHunk }) {
+function HunkHeader({ hunk, palette }: { hunk: DiffHunk; palette: DiffPalette }) {
   const label = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`
   return (
     <div
+      className="cv-eink-keep"
       style={{
-        background: COLORS.hunkHeaderBg,
-        color: COLORS.hunkHeaderText,
+        background: palette.hunkHeaderBg,
+        color: palette.hunkHeaderText,
         fontSize: 11,
         fontFamily: "'JetBrains Mono', monospace",
         padding: '2px 8px',
@@ -110,6 +142,8 @@ function HunkHeader({ hunk }: { hunk: DiffHunk }) {
 }
 
 export function DiffView({ hunks }: DiffViewProps) {
+  const palette = useTheme() === 'eink' ? EINK_COLORS : COLORS
+
   if (hunks.length === 0) {
     return (
       <div style={{ padding: 16, color: '#888', fontSize: 13 }}>
@@ -130,9 +164,9 @@ export function DiffView({ hunks }: DiffViewProps) {
       <div style={{ display: 'inline-block', minWidth: '100%' }}>
         {hunks.map((hunk, i) => (
           <div key={i}>
-            <HunkHeader hunk={hunk} />
+            <HunkHeader hunk={hunk} palette={palette} />
             {hunk.changes.map((change, j) => (
-              <DiffLine key={j} change={change} />
+              <DiffLine key={j} change={change} palette={palette} />
             ))}
           </div>
         ))}

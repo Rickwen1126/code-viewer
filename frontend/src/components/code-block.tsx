@@ -2,6 +2,8 @@ import ShikiHighlighter from 'react-shiki'
 import { useState, useRef, useMemo } from 'react'
 import type { ReactElement } from 'react'
 import { wsClient } from '../services/ws-client'
+import { useTheme } from '../hooks/use-theme'
+import { einkShikiTheme } from '../services/eink-shiki-theme'
 
 interface SelectionRange {
   start: { line: number; character: number }
@@ -88,6 +90,8 @@ export function CodeBlock({
   fontSize,
 }: CodeBlockProps) {
   const safeCode = code ?? ''
+  const appTheme = useTheme()
+  const isEink = appTheme === 'eink'
   const [savedFontSize] = useState(() => {
     const saved = localStorage.getItem(CODE_FONT_SIZE_STORAGE_KEY)
     const parsed = Number(saved)
@@ -126,9 +130,11 @@ export function CodeBlock({
   try {
     renderedCode = (
       <ShikiHighlighter
-        key={wordWrap && showLineNumbers ? `${mappedLanguage}:${startLine}:${bookmarkSignature}` : undefined}
+        // appTheme is part of the key: react-shiki 0.3.0 only re-highlights on
+        // code/language changes, so a theme switch must remount the highlighter.
+        key={wordWrap && showLineNumbers ? `${appTheme}:${mappedLanguage}:${startLine}:${bookmarkSignature}` : appTheme}
         language={mappedLanguage}
-        theme="dark-plus"
+        theme={isEink ? einkShikiTheme : 'dark-plus'}
         showLanguage={false}
         addDefaultStyles={false}
         as="div"
@@ -159,7 +165,7 @@ export function CodeBlock({
     }
 
     renderedCode = (
-      <pre style={{ margin: 0, padding: '0.5em', whiteSpace: 'pre', overflow: 'auto', color: '#d4d4d4' }}>
+      <pre style={{ margin: 0, padding: '0.5em', whiteSpace: 'pre', overflow: 'auto', color: isEink ? '#000' : '#d4d4d4' }}>
         <code>{safeCode}</code>
       </pre>
     )
@@ -179,14 +185,16 @@ export function CodeBlock({
       {showLineNumbers && !wordWrap && (
         <div
           aria-hidden
+          // cv-eink-keep: gutter colors are theme-aware here in JS; opt out of the eink.css blanket
+          className="cv-eink-keep"
           style={{
             width: `${gutterWidth}em`,
             flexShrink: 0,
             textAlign: 'right',
             paddingRight: '0.5em',
-            color: '#858585',
+            color: isEink ? '#6e6e6e' : '#858585',
             userSelect: 'none',
-            borderRight: '1px solid #333',
+            borderRight: isEink ? '1px solid #999' : '1px solid #333',
             paddingTop: '0.5em',
           }}
         >
@@ -198,7 +206,7 @@ export function CodeBlock({
                 key={i}
                 onClick={onLineNumberClick ? (e) => { e.stopPropagation(); onLineNumberClick(lineNum) } : undefined}
                 style={{
-                  ...(isBookmarked ? { color: '#e2b93d' } : undefined),
+                  ...(isBookmarked ? { color: isEink ? '#000' : '#e2b93d' } : undefined),
                   ...(onLineNumberClick ? { cursor: 'pointer', WebkitTapHighlightColor: 'transparent' } : undefined),
                 }}
               >
@@ -240,14 +248,14 @@ export function CodeBlock({
       {highlightLine != null && highlightLine >= 0 && (
         <style>{`
           .line:nth-child(${highlightLine + 1}) {
-            background: rgba(86, 156, 214, 0.2) !important;
-            outline: 1px solid rgba(86, 156, 214, 0.4);
+            background: ${isEink ? 'rgba(0, 0, 0, 0.12)' : 'rgba(86, 156, 214, 0.2)'} !important;
+            outline: 1px solid ${isEink ? 'rgba(0, 0, 0, 0.6)' : 'rgba(86, 156, 214, 0.4)'};
             border-radius: 2px;
             animation: highlight-fade 3s ease-out forwards;
           }
           @keyframes highlight-fade {
-            0% { background: rgba(86, 156, 214, 0.3); }
-            70% { background: rgba(86, 156, 214, 0.15); }
+            0% { background: ${isEink ? 'rgba(0, 0, 0, 0.12)' : 'rgba(86, 156, 214, 0.3)'}; }
+            70% { background: ${isEink ? 'rgba(0, 0, 0, 0.1)' : 'rgba(86, 156, 214, 0.15)'}; }
             100% { background: transparent; outline-color: transparent; }
           }
         `}</style>
@@ -260,7 +268,7 @@ export function CodeBlock({
         const rules: string[] = []
         for (let idx = startIdx; idx <= endIdx; idx++) {
           if (idx < 1 || idx > lineCount) continue
-          rules.push(`.line:nth-child(${idx}) { background: rgba(86, 156, 214, 0.15) !important; }`)
+          rules.push(`.line:nth-child(${idx}) { background: ${isEink ? 'rgba(0, 0, 0, 0.09)' : 'rgba(86, 156, 214, 0.15)'} !important; }`)
         }
         return rules.length > 0 ? <style>{rules.join('\n')}</style> : null
       })()}

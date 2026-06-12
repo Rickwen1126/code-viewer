@@ -1,0 +1,172 @@
+/*
+ * E-Ink theme — activated by <html data-theme="eink"> (see services/theme.ts).
+ *
+ * Print-on-paper design for e-ink panels: pure white paper, true black ink,
+ * a quantized gray ramp (e-ink renders ~16 levels), strong borders instead of
+ * shadows, black/white inversion instead of color highlights, and zero motion
+ * (every repaint ghosts on e-ink).
+ *
+ * The app hardcodes dark-theme colors as React inline styles, so this sheet
+ * works in three layers:
+ *   1. A low-specificity blanket (via :where) flattens every surface to
+ *      black-on-white with !important (which beats inline styles).
+ *   2. Attribute selectors on the serialized style attribute (React reflects
+ *      `background: '#333'` as `background: rgb(51, 51, 51)`) restore the
+ *      known state-highlight colors as print-style inversions.
+ *   3. Escape hatches: `pre.shiki` (CodeBlock swaps to a grayscale Shiki
+ *      theme in JS) and `.cv-eink-keep` (components that pick their own
+ *      e-ink colors via useTheme, e.g. DiffView) are excluded from the
+ *      blanket entirely.
+ */
+
+/* ---- 1. Motion & depth: e-ink panels ghost on every repaint ---- */
+html[data-theme='eink'] *,
+html[data-theme='eink'] *::before,
+html[data-theme='eink'] *::after {
+  animation: none !important;
+  transition: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-theme='eink']::view-transition-old(root),
+html[data-theme='eink']::view-transition-new(root) {
+  animation: none !important;
+}
+
+/* ---- 2. Paper base ---- */
+html[data-theme='eink'],
+html[data-theme='eink'] body {
+  background: #ffffff !important;
+  color: #000000 !important;
+  /* Subpixel antialiasing thins glyphs; e-ink wants full-weight strokes. */
+  -webkit-font-smoothing: auto;
+}
+
+/* ---- 3. Blanket: flatten every surface to ink on paper ---- */
+html[data-theme='eink'] *:where(:not(pre.shiki, pre.shiki *, .cv-eink-keep, .cv-eink-keep *)) {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: #000000 !important;
+}
+
+/* ---- 4. Gray hierarchy: map dark-theme dim grays onto a print gray ramp ---- */
+/* #888 secondary text */
+html[data-theme='eink'] [style*='color: rgb(136, 136, 136)'] { color: #454545 !important; }
+/* #666 tertiary text */
+html[data-theme='eink'] [style*='color: rgb(102, 102, 102)'] { color: #6b6b6b !important; }
+/* #858585 line-number gutter */
+html[data-theme='eink'] [style*='color: rgb(133, 133, 133)'] { color: #6e6e6e !important; }
+/* #569cd6 accent text (active tab, links, filenames): color is gone, weight carries it */
+html[data-theme='eink'] [style*='color: rgb(86, 156, 214)'] { font-weight: 600; }
+
+/* ---- 5. State highlights: invert to white-on-black (classic e-ink selection) ---- */
+/* #2a2d2e current tree file / #333 active toggle / #264f78 active tour step /
+   #1a2a3a selected item / #569cd6 + #3b82f6 primary buttons / #e74c3c badge */
+html[data-theme='eink'] [style*='background: rgb(42, 45, 46)'],
+html[data-theme='eink'] [style*='background-color: rgb(42, 45, 46)'],
+html[data-theme='eink'] [style*='background: rgb(51, 51, 51)'],
+html[data-theme='eink'] [style*='background-color: rgb(51, 51, 51)'],
+html[data-theme='eink'] [style*='background: rgb(38, 79, 120)'],
+html[data-theme='eink'] [style*='background-color: rgb(38, 79, 120)'],
+html[data-theme='eink'] [style*='background: rgb(26, 42, 58)'],
+html[data-theme='eink'] [style*='background-color: rgb(26, 42, 58)'],
+html[data-theme='eink'] [style*='background: rgb(86, 156, 214)'],
+html[data-theme='eink'] [style*='background-color: rgb(86, 156, 214)'],
+html[data-theme='eink'] [style*='background: rgb(59, 130, 246)'],
+html[data-theme='eink'] [style*='background-color: rgb(59, 130, 246)'],
+html[data-theme='eink'] [style*='background: rgb(231, 76, 60)'],
+html[data-theme='eink'] [style*='background-color: rgb(231, 76, 60)'] {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme='eink'] [style*='background: rgb(42, 45, 46)'] *,
+html[data-theme='eink'] [style*='background-color: rgb(42, 45, 46)'] *,
+html[data-theme='eink'] [style*='background: rgb(51, 51, 51)'] *,
+html[data-theme='eink'] [style*='background-color: rgb(51, 51, 51)'] *,
+html[data-theme='eink'] [style*='background: rgb(38, 79, 120)'] *,
+html[data-theme='eink'] [style*='background-color: rgb(38, 79, 120)'] *,
+html[data-theme='eink'] [style*='background: rgb(26, 42, 58)'] *,
+html[data-theme='eink'] [style*='background-color: rgb(26, 42, 58)'] *,
+html[data-theme='eink'] [style*='background: rgb(86, 156, 214)'] *,
+html[data-theme='eink'] [style*='background-color: rgb(86, 156, 214)'] *,
+html[data-theme='eink'] [style*='background: rgb(59, 130, 246)'] *,
+html[data-theme='eink'] [style*='background-color: rgb(59, 130, 246)'] *,
+html[data-theme='eink'] [style*='background: rgb(231, 76, 60)'] *,
+html[data-theme='eink'] [style*='background-color: rgb(231, 76, 60)'] * {
+  background-color: transparent !important;
+  color: #ffffff !important;
+}
+
+/* ---- 6. Status surfaces (toasts, git ahead/behind chips, approve/skip buttons):
+   paper chip with an ink outline instead of a tinted fill ---- */
+html[data-theme='eink'] [style*='background: rgb(30, 58, 30)'],   /* #1e3a1e */
+html[data-theme='eink'] [style*='background: rgb(58, 30, 30)'],   /* #3a1e1e */
+html[data-theme='eink'] [style*='background: rgb(90, 48, 48)'],   /* #5a3030 */
+html[data-theme='eink'] [style*='background: rgb(45, 106, 45)'],  /* #2d6a2d */
+html[data-theme='eink'] [style*='background: rgb(26, 92, 26)'],   /* #1a5c1a */
+html[data-theme='eink'] [style*='background: rgb(74, 61, 46)'],   /* #4a3d2e */
+html[data-theme='eink'] [style*='background: rgb(58, 58, 26)'],   /* #3a3a1a */
+html[data-theme='eink'] [style*='background: rgb(22, 59, 47)'],   /* #163b2f */
+html[data-theme='eink'] [style*='background: rgb(30, 58, 95)'],   /* #1e3a5f */
+html[data-theme='eink'] [style*='background: rgb(60, 60, 0)']     /* #3c3c00 */ {
+  outline: 1px solid #000000;
+  outline-offset: -1px;
+}
+
+/* ---- 7. Modal overlay keeps dimming so sheets still read as a layer ---- */
+html[data-theme='eink'] [style*='background: rgba(0, 0, 0, 0.5)'] {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
+
+/* ---- 8. Scrollbars & form controls ---- */
+html[data-theme='eink'] * {
+  scrollbar-color: #8a8a8a transparent;
+}
+
+html[data-theme='eink'] *::-webkit-scrollbar-thumb {
+  background: #8a8a8a;
+}
+
+html[data-theme='eink'] *::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+html[data-theme='eink'] input[type='checkbox'] {
+  accent-color: #000000 !important;
+}
+
+/* ---- 9. Code chrome: line numbers and bookmarks in ink ---- */
+html[data-theme='eink'] .code-line-numbers.code-wrap-mode .line::before {
+  color: #6e6e6e;
+  border-right-color: #999999;
+}
+
+html[data-theme='eink'] .code-line-numbers.code-wrap-mode .line.bookmarked::before,
+html[data-theme='eink'] .code-line-numbers.code-wrap-mode .line.bookmarked::after {
+  color: #000000;
+}
+
+/* ---- 10. Markdown: book typography on paper ---- */
+html[data-theme='eink'] .cv-markdown {
+  font-family: Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+}
+
+html[data-theme='eink'] .cv-markdown code {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Inline code keeps its pill via a border now that the tinted fill is gone */
+html[data-theme='eink'] .cv-markdown code:not(pre code) {
+  border: 1px solid #b0b0b0;
+}
+
+html[data-theme='eink'] .cv-markdown th {
+  border-bottom: 2px solid #000000 !important;
+}
+
+html[data-theme='eink'] .cv-markdown blockquote {
+  border-left-color: #000000 !important;
+}

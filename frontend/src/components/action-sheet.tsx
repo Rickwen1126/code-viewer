@@ -26,6 +26,7 @@ export function ActionSheet({ isOpen, onClose, actions }: ActionSheetProps) {
           left: 0,
           right: 0,
           background: '#252526',
+          borderTop: '1px solid #3c3c3c',
           borderTopLeftRadius: 12,
           borderTopRightRadius: 12,
           padding: '8px 0',

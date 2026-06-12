@@ -1,11 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { Settings, Check } from 'lucide-react'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { cacheService } from '../../services/cache'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../services/file-location'
 import { readCurrentFileForWorkspace } from '../../services/current-file'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { PullToRefresh } from '../../components/pull-to-refresh'
+import { ActionSheet } from '../../components/action-sheet'
+import { useTheme } from '../../hooks/use-theme'
+import { setTheme, type ThemeName } from '../../services/theme'
 import { getBookmarks, type Bookmark } from '../../services/bookmarks'
 import { ancestorDirs, treeNodeSelector } from '../../services/reveal-file'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
@@ -51,6 +55,11 @@ function fuzzyMatch(query: string, target: string): boolean {
   }
   return qi === q.length
 }
+
+const THEME_OPTIONS: Array<{ value: ThemeName; label: string }> = [
+  { value: 'vscode', label: 'Theme: VS Code Dark' },
+  { value: 'eink', label: 'Theme: E-Ink' },
+]
 
 const EXPANDED_KEY = 'code-viewer:expanded-dirs'
 
@@ -152,7 +161,9 @@ export function FileBrowserPage() {
   const [showRecent, setShowRecent] = useState(false)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => getExpandedDirs())
   const [collapsedSnapshot, setCollapsedSnapshot] = useState<Set<string> | null>(null)
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const theme = useTheme()
 
   const currentFile = readCurrentFileForWorkspace(workspace)
 
@@ -488,6 +499,21 @@ export function FileBrowserPage() {
                     Collapse All
                   </button>
                 )}
+                <button
+                  onClick={() => setThemeSheetOpen(true)}
+                  aria-label="Display settings"
+                  style={{
+                    padding: '6px 12px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#888',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Settings size={14} />
+                </button>
               </div>
             </div>
             {(nodes ?? []).map((node) => (
@@ -495,6 +521,18 @@ export function FileBrowserPage() {
             ))}
           </>
         )}
+
+        <ActionSheet
+          isOpen={themeSheetOpen}
+          onClose={() => setThemeSheetOpen(false)}
+          actions={THEME_OPTIONS.map(({ value, label }) => ({
+            label,
+            icon: theme === value
+              ? <Check size={16} />
+              : <span style={{ width: 16, display: 'inline-block' }} />,
+            onClick: () => setTheme(value),
+          }))}
+        />
       </div>
     </PullToRefresh>
   )

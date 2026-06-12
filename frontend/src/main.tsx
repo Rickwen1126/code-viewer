@@ -1,8 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './eink.css'
 import App from './app'
 import { wsClient } from './services/ws-client'
+import { applyThemeToDocument } from './services/theme'
+
+// Apply persisted theme (code-viewer:theme) before first paint.
+applyThemeToDocument()
 
 // Auto-derive WS URL from current page host so mobile devices work over LAN.
 // In dev mode, use same-origin WebSocket (proxied by Vite to :4800).
