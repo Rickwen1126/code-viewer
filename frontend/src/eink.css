@@ -44,11 +44,30 @@ html[data-theme='eink'] body {
   -webkit-font-smoothing: auto;
 }
 
+/* ---- 2b. Ink weight: e-ink strokes render thin, so thicken every glyph.
+   Inherited 500 raises the base without flattening bold (700) hierarchy;
+   the hairline text-stroke thickens all weights uniformly (currentColor
+   keeps it correct on inverted white-on-black rows). ---- */
+html[data-theme='eink'] body {
+  font-weight: 500;
+}
+
+html[data-theme='eink'] *:where(:not(svg, svg *)) {
+  -webkit-text-stroke: 0.2px currentColor;
+}
+
 /* ---- 3. Blanket: flatten every surface to ink on paper ---- */
+/* Text turns to ink everywhere... */
 html[data-theme='eink'] *:where(:not(pre.shiki, pre.shiki *, .cv-eink-keep, .cv-eink-keep *)) {
+  color: #000000 !important;
+}
+
+/* ...but only elements that explicitly paint a background get papered over.
+   Elements without an inline background (e.g. transparent full-screen
+   tap-to-dismiss layers) must stay transparent or they whitewash the UI. */
+html[data-theme='eink'] [style*='background']:where(:not(pre.shiki, pre.shiki *, .cv-eink-keep, .cv-eink-keep *)) {
   background-color: #ffffff !important;
   background-image: none !important;
-  color: #000000 !important;
 }
 
 /* ---- 4. Gray hierarchy: map dark-theme dim grays onto a print gray ramp ---- */
@@ -59,7 +78,7 @@ html[data-theme='eink'] [style*='color: rgb(102, 102, 102)'] { color: #6b6b6b !i
 /* #858585 line-number gutter */
 html[data-theme='eink'] [style*='color: rgb(133, 133, 133)'] { color: #6e6e6e !important; }
 /* #569cd6 accent text (active tab, links, filenames): color is gone, weight carries it */
-html[data-theme='eink'] [style*='color: rgb(86, 156, 214)'] { font-weight: 600; }
+html[data-theme='eink'] [style*='color: rgb(86, 156, 214)'] { font-weight: 700; }
 
 /* ---- 5. State highlights: invert to white-on-black (classic e-ink selection) ---- */
 /* #2a2d2e current tree file / #333 active toggle / #264f78 active tour step /
