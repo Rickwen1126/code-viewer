@@ -27,6 +27,7 @@ import {
   CODE_FONT_SIZE_MIN,
   CODE_FONT_SIZE_STORAGE_KEY,
 } from '../../components/code-block'
+import { HtmlRenderer } from '../../components/html-renderer'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { InFileSearch } from '../../components/in-file-search'
 import {
@@ -317,7 +318,7 @@ export function CodeViewerPage() {
       : CODE_FONT_SIZE_DEFAULT
   })
   const [highlightLine, setHighlightLine] = useState<number | null>(null)
-  const [mdRendered, setMdRendered] = useState(() =>
+  const [renderedView, setRenderedView] = useState(() =>
     localStorage.getItem('code-viewer:md-view-mode') !== 'raw',
   )
   // Markdown DOM search state
@@ -364,6 +365,8 @@ export function CodeViewerPage() {
     : path
   const isAnnotationView = activeFilePath !== path
   const isMarkdown = file?.languageId === 'markdown'
+  const isHtml = file?.languageId === 'html'
+  const isRenderableText = isMarkdown || isHtml
   const desktopFileChatPanelHeight = Math.min(620, Math.max(320, window.innerHeight - 36))
   const normalizedFileChatSearch = fileChatSearch.trim().toLowerCase()
   const visibleFileChatMessages = normalizedFileChatSearch
@@ -2094,17 +2097,17 @@ export function CodeViewerPage() {
               {annotationBusy ? '...' : 'Annotate'}
             </button>
           )}
-          {isMarkdown && (
+          {isRenderableText && (
             <button
-              onClick={() => setMdRendered((v) => {
+              onClick={() => setRenderedView((v) => {
                 const next = !v
                 localStorage.setItem('code-viewer:md-view-mode', next ? 'rendered' : 'raw')
                 return next
               })}
               style={{
-                background: mdRendered ? '#333' : 'none',
+                background: renderedView ? '#333' : 'none',
                 border: '1px solid #444',
-                color: mdRendered ? '#d4d4d4' : '#888',
+                color: renderedView ? '#d4d4d4' : '#888',
                 fontSize: 11,
                 padding: '0 8px',
                 height: 24,
@@ -2112,7 +2115,7 @@ export function CodeViewerPage() {
                 cursor: 'pointer',
               }}
             >
-              {mdRendered ? 'Rendered' : 'Raw'}
+              {renderedView ? 'Rendered' : 'Raw'}
             </button>
           )}
           <button
@@ -2372,10 +2375,12 @@ export function CodeViewerPage() {
       <div
         ref={scrollContainerRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
-        onClick={isAnnotationView || (isMarkdown && mdRendered) ? undefined : handleCodeClick}
+        onClick={isAnnotationView || (isRenderableText && renderedView) ? undefined : handleCodeClick}
       >
-        {isMarkdown && mdRendered ? (
+        {isMarkdown && renderedView ? (
           <MarkdownRenderer content={file.content} codeFontSize={codeFontSize} wordWrap={wordWrap} />
+        ) : isHtml && renderedView ? (
+          <HtmlRenderer content={file.content} />
         ) : (
           <div ref={codeContainerRef}>
             <CodeBlock
