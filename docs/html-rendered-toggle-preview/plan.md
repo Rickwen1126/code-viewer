@@ -1,8 +1,8 @@
 # HTML Rendered Toggle Preview — Implementation Plan
 
 Created: 2026-05-31 14:56
-Last Updated: 2026-06-12 10:56
-Status: Draft
+Last Updated: 2026-06-12 14:52
+Status: Implemented frontend-only; asset proxy remains future work
 
 ## Goal
 
@@ -34,8 +34,9 @@ docs/architecture/**/*.html
 2. 現有 `file.preview` pipeline 只支援 `image | video`。
 3. `/files/*` 本來就把細節狀態放在 query string，`LastLocationTracker` 也會保留 `pathname + search`，所以 `view=rendered` 這種狀態天然能參與 history / refresh / restore。
 4. `diagram-html` 目前輸出單檔自含 HTML，不需要另外起 local static server。
-5. Commit `dfe8be4 feat(files): render html previews` 已先提供 frontend-only HTML render：File View 對 `languageId === 'html'` 顯示既有 `Rendered` / `Raw` 按鈕，rendered mode 以 sandboxed `iframe srcDoc` 顯示目前檔案內容。
-6. 目前 frontend-only renderer 不會解析 repo-local 相對資源；例如 `<link href="./style.css">`、`<img src="./asset.png">`、`<script src="./app.js">` 仍缺少 backend asset proxy 才能完整顯示。
+5. Commit `dfe8be4 feat(files): render html previews` 已提供 frontend-only HTML render：File View 對 `languageId === 'html'` 顯示既有 `Rendered` / `Raw` 按鈕，rendered mode 以 sandboxed `iframe srcDoc` 顯示目前檔案內容。
+6. Commit `f4d509c fix(files): allow scripts in html render sandbox` 讓 iframe 使用 `sandbox="allow-scripts"` 但仍不給 `allow-same-origin`，所以單檔 script-driven diagram HTML 可以執行自己的初始化程式，同時不能取得 Code Viewer app origin。
+7. 目前 frontend-only renderer 不會解析 repo-local 相對資源；例如 `<link href="./style.css">`、`<img src="./asset.png">`、`<script src="./app.js">` 仍缺少 backend asset proxy 才能完整顯示。
 
 ## Product Contract
 
@@ -391,11 +392,11 @@ E2E:
 - traversal attempt like `../../.ssh/id_rsa` fails
 - frontend Raw/Rendered toggle still works after refresh and back/forward
 
-### Open design questions before implementation
+### Open design questions before asset proxy implementation
 
 1. Should JS be allowed?
-   - If yes, iframe needs `allow-scripts`, but still not `allow-same-origin`.
-   - If no, CSS/image/font support is safer and enough for diagram inspection.
+   - Answer for frontend-only `srcDoc`: yes, iframe uses `allow-scripts` but still not `allow-same-origin`.
+   - Still decide separately whether a future backend asset proxy should allow repo-local external JS files.
 2. Should generic `.html` be supported, or only artifact directories?
    - The current shipped frontend toggle supports generic HTML by languageId.
    - Asset proxy increases risk enough that route-level allowlist may still start with `docs/architecture/` or generator-marked artifacts.

@@ -1,5 +1,33 @@
 # Code Viewer — Completed Todo Archive
 
+## Completed: HTML Rendered Toggle Preview @2026-06-12-1452
+
+Section source:
+
+- Plan: [docs/html-rendered-toggle-preview/plan.md](./html-rendered-toggle-preview/plan.md)
+- Code/Surface: `frontend/src/pages/files/code-viewer.tsx`,
+  `frontend/src/components/html-renderer.tsx`,
+  `frontend/src/__tests__/html-renderer.test.tsx`
+- Commits: `dfe8be4 feat(files): render html previews`,
+  `f4d509c fix(files): allow scripts in html render sandbox`
+- Handoff: `.progress/progress.md` baseline
+  `codeviewer-html-file-render-20260612-1044`
+- Secretary watch: future multi-file asset proxy remains an optional backlog
+  item in `docs/todo.md`.
+
+- [x] Added the File View Raw/Rendered toggle for HTML files using the same
+  user-facing control pattern as Markdown.
+- [x] Added `HtmlRenderer`, which renders file content through an iframe
+  `srcDoc` boundary.
+- [x] Kept the HTML preview frontend-only for Phase 1; backend `file.preview`
+  and extension file protocols were not broadened.
+- [x] Updated the sandbox to `allow-scripts` without `allow-same-origin` so
+  single-file script-driven architecture diagrams can render while staying
+  isolated from the Code Viewer app origin.
+- [x] Verification recorded in handoff: frontend typecheck, focused renderer
+  test, ESLint for touched frontend files, frontend build, and Playwright
+  smoke against the rendered HTML iframe.
+
 ## Completed: File-Aware Chat Foundation @2026-06-01-2315
 
 Section source:

@@ -18,8 +18,9 @@ This directory stores curated project documents that are meant to be read and re
 - `ws-client-singleton-refactor/`: investigation docs for WS client state machine rewrite. **Completed.**
 - `code-annotation-tmux-adapter/`: implementation handoff/spec for Code
   Annotation using `tmux-adapter ensure-target + send`. **Implemented.**
-- `html-rendered-toggle-preview/`: plan for explicit `Source / Rendered` HTML
-  artifact viewing in `/files/*`, scoped to repo-local architecture diagrams.
+- `html-rendered-toggle-preview/`: implemented frontend-only Raw/Rendered HTML
+  file viewing in `/files/*`; also records the optional future asset proxy for
+  multi-file HTML previews with repo-local relative resources.
 - `secretary-scan-follow-up/`: short decision logs for secretary scan findings
   that need repo-local follow-up before implementation or prioritization.
 - `superpowers/`: historical design and implementation notes from the earlier MVP push. Treat as historical references.

@@ -22,20 +22,12 @@ Section source:
 - [ ] Production reverse proxy 設定
   - Source: migrated from legacy todo; original source refs were not recorded
 
-## P1: HTML Rendered Toggle Preview @2026-05-31-1456
-
-Section source:
-
-- Plan: `docs/html-rendered-toggle-preview/plan.md`
-- Code/Surface: `frontend/src/services/file-location.ts`, `frontend/src/pages/open/open-file.tsx`, `frontend/src/pages/files/code-viewer.tsx`, `packages/shared/src/file-preview.ts`, `extension/src/providers/file-provider.ts`
-
-- [ ] Add explicit `Source / Rendered` toggle for eligible HTML architecture artifacts under `/files/*`
-  - Plan: `docs/html-rendered-toggle-preview/plan.md`
-  - Code: `frontend/src/services/file-location.ts`, `frontend/src/pages/open/open-file.tsx`, `frontend/src/pages/files/code-viewer.tsx`
-  - Follow-up: Phase 1 stays frontend-only; do not broaden shared `file.preview` protocol unless generic HTML preview becomes a separate requirement
-
 ## Backlog @2026-05-12-1635
 
 - [ ] Extension Copy Mobile Link command
   - Source: `docs/archive/2026-04-13.md` — deferred, backend/CLI deep-link surface 已可用
   - Follow-up: reconcile this item into the relevant spec/plan before implementation
+- [ ] Optional HTML asset proxy for multi-file previews
+  - Plan: `docs/html-rendered-toggle-preview/plan.md`
+  - Code/Surface: backend asset HTTP route, shared/extension `file.asset` protocol, `frontend/src/components/html-renderer.tsx`
+  - Source: follow-up from shipped frontend-only HTML render; only needed when HTML previews must resolve repo-local relative CSS/images/scripts
