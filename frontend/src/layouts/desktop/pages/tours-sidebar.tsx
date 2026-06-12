@@ -9,6 +9,7 @@ import { useWebSocket } from '../../../hooks/use-websocket'
 import { useWorkspace } from '../../../hooks/use-workspace'
 import { useTourEdit } from '../../../hooks/use-tour-edit'
 import { buildTourStepUrl } from '../../../services/semantic-navigation'
+import { getResumeTourStep } from '../../../pages/tours/tour-progress'
 import type { TourListResultPayload, TourGetStepsResultPayload, TourCreateResultPayload } from '@code-viewer/shared'
 
 type TourSummary = TourListResultPayload['tours'][number]
@@ -92,12 +93,25 @@ export function ToursSidebar() {
     }
   }
 
+  function handleTourRowClick(tour: TourSummary) {
+    if (activeTourId && activeTourId !== tour.id) {
+      setExpandedTourId(tour.id)
+      if (!tourSteps[tour.id]) {
+        void loadTourSteps(tour.id)
+      }
+      navigate(buildTourStepUrl(tour.id, getResumeTourStep(workspace, tour.id, tour.stepCount)))
+      return
+    }
+
+    void handleToggleTour(tour.id)
+  }
+
   function handleStepClick(tourId: string, stepIndex: number) {
     navigate(buildTourStepUrl(tourId, stepIndex + 1))
   }
 
   function handleTourClick(tour: TourSummary) {
-    navigate(buildTourStepUrl(tour.id, 1))
+    navigate(buildTourStepUrl(tour.id, getResumeTourStep(workspace, tour.id, tour.stepCount)))
   }
 
   async function handleCreateTour() {
@@ -216,7 +230,7 @@ export function ToursSidebar() {
             <div key={tour.id}>
               {/* Tour row */}
               <button
-                onClick={() => handleToggleTour(tour.id)}
+                onClick={() => handleTourRowClick(tour)}
                 onDoubleClick={() => handleTourClick(tour)}
                 style={{
                   display: 'flex',

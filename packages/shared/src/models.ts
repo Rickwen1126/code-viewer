@@ -118,6 +118,7 @@ export interface CodeTour {
   description?: string
   steps: TourStep[]
   stepCount: number
+  createdAt?: number
   ref?: string
   status?: 'recording'
 }

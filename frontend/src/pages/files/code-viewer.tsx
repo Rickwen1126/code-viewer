@@ -634,6 +634,12 @@ export function CodeViewerPage() {
       .map(lineNum => `L${lineNum}: ${lines[lineNum - 1] ?? ''}`)
   }
 
+  function copyCurrentFileContent(): void {
+    if (!file) return
+    copyToClipboard(file.content)
+    showToast('Current file content copied')
+  }
+
   function markedReferencePayload(): Array<{ line: number; content: string }> {
     if (!file) return []
     const lines = file.content.split('\n')
@@ -2200,6 +2206,24 @@ export function CodeViewerPage() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                 >
                   Copy Absolute Path
+                </button>
+                <button
+                  onClick={() => {
+                    copyCurrentFileContent()
+                    setMenuOpen(false)
+                  }}
+                  disabled={!file}
+                  style={{
+                    ...menuItemStyle,
+                    opacity: file ? 1 : 0.45,
+                    cursor: file ? 'pointer' : 'default',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (file) (e.currentTarget as HTMLElement).style.background = '#2a2d2e'
+                  }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+                >
+                  Copy Current File Content
                 </button>
                 <div style={{ borderTop: '1px solid #333' }} />
                 <button

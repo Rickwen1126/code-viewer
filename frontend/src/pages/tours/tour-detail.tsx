@@ -49,6 +49,54 @@ function extractLines(content: string, startLine: number, endLine?: number): str
   return lines.slice(start, end).join('\n')
 }
 
+function copyTextToClipboard(text: string): void {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
+  } else {
+    fallbackCopy(text)
+  }
+}
+
+function fallbackCopy(text: string): void {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  document.execCommand('copy')
+  document.body.removeChild(ta)
+}
+
+function formatTourStepForCopy(
+  tourData: TourData,
+  step: TourStep,
+  stepIndex: number,
+  code: string | null,
+): string {
+  const lines = [
+    `Tour: ${tourData.tour.title}`,
+    `Step: ${stepIndex + 1} / ${tourData.steps.length}`,
+  ]
+
+  if (step.title) lines.push(`Title: ${step.title}`)
+  if (tourData.tour.ref) lines.push(`Ref: ${tourData.tour.ref}`)
+  if (step.file) {
+    const range = step.endLine !== undefined && step.endLine !== step.line
+      ? `${step.line}-${step.endLine}`
+      : String(step.line)
+    lines.push(`Location: ${step.file}:${range}`)
+  }
+
+  lines.push('', step.description)
+
+  if (code !== null) {
+    lines.push('', '```', code, '```')
+  }
+
+  return lines.join('\n')
+}
+
 
 export function TourDetailPage() {
   const { tourId: rawTourId } = useParams<{ tourId: string }>()
@@ -264,6 +312,14 @@ export function TourDetailPage() {
     navigate('/files')
   }
 
+  function handleCopyCurrentStep() {
+    if (!tourData) return
+    const step = tourData.steps[currentStep]
+    if (!step) return
+    copyTextToClipboard(formatTourStepForCopy(tourData, step, currentStep, loadingCode ? null : stepCode))
+    showToast('Tour step copied')
+  }
+
   function goTo(index: number) {
     if (!tourData) return
     const clamped = Math.max(0, Math.min(index, tourData.steps.length - 1))
@@ -367,6 +423,9 @@ export function TourDetailPage() {
         flexWrap: 'wrap',
         flexShrink: 0,
       }}>
+        <button onClick={handleCopyCurrentStep} style={actionBtnStyle}>
+          Copy
+        </button>
         <button onClick={startEditStep} style={actionBtnStyle}>
           Edit
         </button>

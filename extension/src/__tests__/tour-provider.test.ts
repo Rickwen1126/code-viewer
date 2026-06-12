@@ -146,6 +146,7 @@ describe('handleTourCreate', () => {
     expect(written.ref).toBe('main')
     expect(written.status).toBe('recording')
     expect(written.steps).toEqual([])
+    expect(written.createdAt).toEqual(expect.any(Number))
     expect(written.$schema).toBe('https://aka.ms/codetour-schema')
 
     expect(send).toHaveBeenCalledWith(
@@ -269,10 +270,12 @@ describe('handleTourList', () => {
 
   it('returns tour list with ref and status fields', async () => {
     mockFs.readDirectory.mockResolvedValue([['my-tour.tour', 1]])
+    mockFs.stat.mockResolvedValue({ type: 1, ctime: 1000 })
     mockFs.readFile.mockResolvedValue(
       new TextEncoder().encode(JSON.stringify({
         title: 'My Tour',
         description: 'desc',
+        createdAt: 2000,
         ref: 'main',
         status: 'recording',
         steps: [{ file: 'a.ts', line: 1, description: 'step' }],
@@ -292,6 +295,7 @@ describe('handleTourList', () => {
               title: 'My Tour',
               description: 'desc',
               stepCount: 1,
+              createdAt: 2000,
               ref: 'main',
               status: 'recording',
             }),
@@ -299,6 +303,63 @@ describe('handleTourList', () => {
         },
       }),
     )
+  })
+
+  it('sorts tours newest first by default and falls back to file ctime for legacy tours', async () => {
+    mockFs.readDirectory.mockResolvedValue([
+      ['old-tour.tour', 1],
+      ['new-tour.tour', 1],
+      ['legacy-tour.tour', 1],
+    ])
+    mockFs.readFile.mockImplementation(async (uri: { fsPath: string }) => {
+      const fileName = uri.fsPath.split('/').pop()
+      const tours: Record<string, unknown> = {
+        'old-tour.tour': { title: 'Old Tour', createdAt: 1000, steps: [] },
+        'new-tour.tour': { title: 'New Tour', createdAt: 3000, steps: [] },
+        'legacy-tour.tour': { title: 'Legacy Tour', steps: [] },
+      }
+      return new TextEncoder().encode(JSON.stringify(tours[fileName ?? '']))
+    })
+    mockFs.stat.mockImplementation(async (uri: { fsPath: string }) => {
+      const fileName = uri.fsPath.split('/').pop()
+      return { type: 1, ctime: fileName === 'legacy-tour.tour' ? 2000 : 0 }
+    })
+
+    const send = vi.fn()
+    await handleTourList(makeMsg(), send)
+
+    const response = send.mock.calls[0][0]
+    expect(response.payload.tours.map((tour: { id: string }) => tour.id)).toEqual([
+      'new-tour',
+      'legacy-tour',
+      'old-tour',
+    ])
+    expect(response.payload.tours.find((tour: { id: string }) => tour.id === 'legacy-tour').createdAt).toBe(2000)
+  })
+
+  it('keeps sort direction configurable for future UI controls', async () => {
+    mockFs.readDirectory.mockResolvedValue([
+      ['old-tour.tour', 1],
+      ['new-tour.tour', 1],
+    ])
+    mockFs.readFile.mockImplementation(async (uri: { fsPath: string }) => {
+      const fileName = uri.fsPath.split('/').pop()
+      const tours: Record<string, unknown> = {
+        'old-tour.tour': { title: 'Old Tour', createdAt: 1000, steps: [] },
+        'new-tour.tour': { title: 'New Tour', createdAt: 3000, steps: [] },
+      }
+      return new TextEncoder().encode(JSON.stringify(tours[fileName ?? '']))
+    })
+    mockFs.stat.mockResolvedValue({ type: 1, ctime: 0 })
+
+    const send = vi.fn()
+    await handleTourList(makeMsg({ sort: { key: 'createdAt', direction: 'asc' } }), send)
+
+    const response = send.mock.calls[0][0]
+    expect(response.payload.tours.map((tour: { id: string }) => tour.id)).toEqual([
+      'old-tour',
+      'new-tour',
+    ])
   })
 })
 

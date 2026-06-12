@@ -609,12 +609,23 @@ export interface ReviewPendingEditsChangedPayload {
 }
 
 // Tour
+export type TourListSortKey = 'createdAt'
+export type TourListSortDirection = 'asc' | 'desc'
+
+export interface TourListPayload {
+  sort?: {
+    key?: TourListSortKey
+    direction?: TourListSortDirection
+  }
+}
+
 export interface TourListResultPayload {
   tours: Array<{
     id: string
     title: string
     description?: string
     stepCount: number
+    createdAt: number
     ref?: string
     status?: 'recording'
   }>

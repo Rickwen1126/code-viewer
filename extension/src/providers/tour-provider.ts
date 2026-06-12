@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import { execFileSync } from 'child_process'
 import * as path from 'path'
-import type { WsMessage, TourCreatePayload, TourAddStepPayload, TourDeleteStepPayload, TourFinalizePayload, TourDeletePayload, TourGetFileAtRefPayload } from '@code-viewer/shared'
+import type { WsMessage, TourCreatePayload, TourAddStepPayload, TourDeleteStepPayload, TourFinalizePayload, TourDeletePayload, TourGetFileAtRefPayload, TourListPayload, TourListResultPayload, TourListSortKey, TourListSortDirection } from '@code-viewer/shared'
 import { createMessage } from '../ws/client'
 import { getWorkspaceRepo } from './git-provider'
 import { validatePath } from '../utils/validate-path'
@@ -46,6 +46,37 @@ async function saveTourJson(uri: vscode.Uri, data: any): Promise<void> {
   await vscode.workspace.fs.writeFile(uri, bytes)
 }
 
+type TourListItem = TourListResultPayload['tours'][number]
+
+interface TourListSortOption {
+  key: TourListSortKey
+  direction: TourListSortDirection
+}
+
+const DEFAULT_TOUR_LIST_SORT: TourListSortOption = {
+  key: 'createdAt',
+  direction: 'desc',
+}
+
+function normalizeTourListSort(payload: TourListPayload | undefined): TourListSortOption {
+  return {
+    key: payload?.sort?.key ?? DEFAULT_TOUR_LIST_SORT.key,
+    direction: payload?.sort?.direction ?? DEFAULT_TOUR_LIST_SORT.direction,
+  }
+}
+
+function compareTourListItems(a: TourListItem, b: TourListItem, sort: TourListSortOption): number {
+  let result = 0
+  if (sort.key === 'createdAt') {
+    result = a.createdAt - b.createdAt
+  }
+
+  if (sort.direction === 'desc') result *= -1
+  if (result !== 0) return result
+
+  return a.title.localeCompare(b.title) || a.id.localeCompare(b.id)
+}
+
 // ── Handlers ───────────────────────────────────────────────────────────────
 
 // tour.list — list all tours in .tours/ directory
@@ -59,24 +90,27 @@ export async function handleTourList(msg: WsMessage, sendResponse: (msg: WsMessa
   try {
     const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
     const entries = await vscode.workspace.fs.readDirectory(toursUri)
-    const tours = []
+    const sort = normalizeTourListSort(msg.payload as TourListPayload | undefined)
+    const tours: TourListItem[] = []
 
     for (const [name, type] of entries) {
       if (type !== vscode.FileType.File || !name.endsWith('.tour')) continue
 
       // Only process tour files with safe characters in their names
       const baseName = name.slice(0, -'.tour'.length)
-      if (!/^[\w\-]+$/.test(baseName)) continue
+      if (!/^[\w-]+$/.test(baseName)) continue
 
       try {
         const fileUri = vscode.Uri.joinPath(toursUri, name)
         const raw = await vscode.workspace.fs.readFile(fileUri)
+        const stat = await vscode.workspace.fs.stat(fileUri)
         const tour = JSON.parse(new TextDecoder().decode(raw))
         tours.push({
           id: name.replace('.tour', ''),
           title: tour.title || name,
           description: tour.description,
           stepCount: Array.isArray(tour.steps) ? tour.steps.length : 0,
+          createdAt: typeof tour.createdAt === 'number' ? tour.createdAt : stat.ctime,
           ref: tour.ref,
           status: tour.status,
         })
@@ -85,6 +119,7 @@ export async function handleTourList(msg: WsMessage, sendResponse: (msg: WsMessa
       }
     }
 
+    tours.sort((a, b) => compareTourListItems(a, b, sort))
     sendResponse(createMessage('tour.list.result', { tours }, msg.id))
   } catch {
     // .tours/ directory doesn't exist
@@ -96,7 +131,7 @@ export async function handleTourList(msg: WsMessage, sendResponse: (msg: WsMessa
 export async function handleTourGetSteps(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const { tourId } = msg.payload as { tourId: string }
 
-  if (!/^[\w\-]+$/.test(tourId)) {
+  if (!/^[\w-]+$/.test(tourId)) {
     sendResponse(createMessage('tour.getSteps.error',
       { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id))
     return
@@ -174,6 +209,7 @@ export async function handleTourCreate(
   const tourData: any = {
     $schema: 'https://aka.ms/codetour-schema',
     title,
+    createdAt: Date.now(),
     ...(resolvedRef ? { ref: resolvedRef } : {}),
     status: 'recording',
     steps: [],
@@ -192,7 +228,7 @@ export async function handleTourAddStep(msg: WsMessage, send: (m: WsMessage) => 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
   if (!workspaceFolder) { send(createMessage('tour.addStep.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
 
-  if (!/^[\w\-]+$/.test(payload.tourId)) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+  if (!/^[\w-]+$/.test(payload.tourId)) { send(createMessage('tour.addStep.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
 
   const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
   let tour: any
@@ -229,7 +265,7 @@ export async function handleTourDeleteStep(msg: WsMessage, send: (m: WsMessage) 
   const { tourId, stepIndex } = msg.payload as TourDeleteStepPayload
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
   if (!workspaceFolder) { send(createMessage('tour.deleteStep.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
-  if (!/^[\w\-]+$/.test(tourId)) { send(createMessage('tour.deleteStep.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+  if (!/^[\w-]+$/.test(tourId)) { send(createMessage('tour.deleteStep.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
 
   const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
   let tour: any
@@ -250,7 +286,7 @@ export async function handleTourFinalize(msg: WsMessage, send: (m: WsMessage) =>
   const { tourId } = msg.payload as TourFinalizePayload
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
   if (!workspaceFolder) { send(createMessage('tour.finalize.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
-  if (!/^[\w\-]+$/.test(tourId)) { send(createMessage('tour.finalize.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+  if (!/^[\w-]+$/.test(tourId)) { send(createMessage('tour.finalize.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
 
   const toursUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours')
   let tour: any
@@ -269,7 +305,7 @@ export async function handleTourDelete(msg: WsMessage, send: (m: WsMessage) => v
   const { tourId } = msg.payload as TourDeletePayload
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
   if (!workspaceFolder) { send(createMessage('tour.delete.error', { code: 'NOT_FOUND', message: 'No workspace open' }, msg.id)); return }
-  if (!/^[\w\-]+$/.test(tourId)) { send(createMessage('tour.delete.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
+  if (!/^[\w-]+$/.test(tourId)) { send(createMessage('tour.delete.error', { code: 'INVALID_REQUEST', message: 'Invalid tour ID' }, msg.id)); return }
 
   const tourUri = vscode.Uri.joinPath(workspaceFolder.uri, '.tours', `${tourId}.tour`)
   try { await vscode.workspace.fs.stat(tourUri) }
