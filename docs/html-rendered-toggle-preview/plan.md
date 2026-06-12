@@ -1,7 +1,7 @@
 # HTML Rendered Toggle Preview — Implementation Plan
 
 Created: 2026-05-31 14:56
-Last Updated: 2026-05-31 14:56
+Last Updated: 2026-06-12 10:56
 Status: Draft
 
 ## Goal
@@ -34,6 +34,8 @@ docs/architecture/**/*.html
 2. 現有 `file.preview` pipeline 只支援 `image | video`。
 3. `/files/*` 本來就把細節狀態放在 query string，`LastLocationTracker` 也會保留 `pathname + search`，所以 `view=rendered` 這種狀態天然能參與 history / refresh / restore。
 4. `diagram-html` 目前輸出單檔自含 HTML，不需要另外起 local static server。
+5. Commit `dfe8be4 feat(files): render html previews` 已先提供 frontend-only HTML render：File View 對 `languageId === 'html'` 顯示既有 `Rendered` / `Raw` 按鈕，rendered mode 以 sandboxed `iframe srcDoc` 顯示目前檔案內容。
+6. 目前 frontend-only renderer 不會解析 repo-local 相對資源；例如 `<link href="./style.css">`、`<img src="./asset.png">`、`<script src="./app.js">` 仍缺少 backend asset proxy 才能完整顯示。
 
 ## Product Contract
 
@@ -228,6 +230,181 @@ image | video
 
 - `file.preview.html`
 - 或新的 rendered artifact protocol
+
+## Backend Asset Proxy Design
+
+### Why it is needed
+
+`iframe srcDoc` 的 HTML 是一個沒有實體 URL 的文件。瀏覽器看到相對路徑時，沒有辦法自然知道 `./style.css` 應該回到 repo 裡跟目前 HTML 同資料夾的檔案。
+
+所以 asset proxy 的工作不是「再 render 一次 HTML」，而是提供一個受控 HTTP surface，讓 iframe 裡的資源 request 能被轉成：
+
+```text
+iframe URL request -> backend route -> selected workspace extension -> validated file read -> HTTP response
+```
+
+### Recommended shape
+
+新增 backend HTTP route，形式可以是：
+
+```text
+GET /api/workspaces/:workspaceRef/assets/*path
+```
+
+或 query 版：
+
+```text
+GET /api/assets?workspace=<workspaceRef>&path=<repo-relative-path>
+```
+
+建議優先用 path route，因為它可以讓 iframe 裡的相對路徑比較像真實網站：
+
+```text
+/api/workspaces/ws_x/assets/docs/architecture/diagram.html
+/api/workspaces/ws_x/assets/docs/architecture/style.css
+/api/workspaces/ws_x/assets/docs/architecture/image.png
+```
+
+HTML rendered mode 不再只用 `srcDoc`，而是建立一個 iframe URL：
+
+```text
+iframe.src = backendAssetUrl(workspaceKey, htmlPath)
+```
+
+backend 收到 HTML request 後回傳 `text/html`，並且用同一路由服務同資料夾下的 CSS/image/font 等資源。
+
+### Backend request flow
+
+現有 frontend request flow 是：
+
+```text
+frontend WS -> backend relay -> selected extension -> backend relay -> frontend WS
+```
+
+asset proxy 是 HTTP route，不屬於某個 frontend WebSocket pending request。因此 backend 需要一個新的 internal helper：
+
+```text
+requestExtension(extensionId, msg, timeoutMs) -> Promise<WsMessage>
+```
+
+這個 helper 應該和 `relayFrontendToExtension()` 使用相同的概念：
+
+- 產生 request id
+- 發送 message 到 extension ws
+- 用 `replyTo` 等待 extension response
+- timeout 後 reject
+- response/error 都要清掉 pending entry
+
+但它不應該假裝自己是 frontend，也不該把 response route 給 frontend ws。
+
+### Extension protocol options
+
+有兩個可行方向：
+
+1. Reuse `file.preview` for known binary media and `file.read` for text assets.
+   - Pros: shared protocol 幾乎不用擴。
+   - Cons: HTTP route 要自己根據副檔名決定讀法與 MIME；目前 `file.preview` 只支援 image/video，font、wasm、pdf、css/js 都不完整。
+2. Add a dedicated `file.asset` protocol.
+   - Payload: `{ path: string; maxBytes?: number }`
+   - Result: `{ path, mimeType, encoding: 'base64' | 'utf-8', data, size, etag? }`
+   - Pros: asset proxy 邏輯清楚，MIME/size/caching 可集中處理。
+   - Cons: shared types + extension provider + backend route 都要加一條 protocol。
+
+Recommendation: 用 dedicated `file.asset`。Asset proxy 是 HTTP serving concern，不應該把 `file.preview` 從 image/video 拉成萬用檔案讀取 API。
+
+### Security requirements
+
+1. Workspace boundary
+   - 必須沿用 extension 端 `validatePath()`，避免 `../` 讀出 workspace 外檔案。
+   - Backend 自己也要 normalize path，拒絕空 path、absolute path、含 NUL byte 的 path。
+2. Workspace identity
+   - route 必須帶 `workspaceRef`，並用 `manager.findWorkspaceByReference()` 找 connected workspace。
+   - stale/offline workspace 回 `409` 或 `404`，不要 fallback 到其他 workspace。
+3. MIME allowlist
+   - 第一版只允許 HTML 常見閱讀資源：
+     - `text/html`
+     - `text/css`
+     - `text/javascript` / `application/javascript`
+     - image MIME
+     - font MIME
+     - `application/json`
+     - maybe `image/svg+xml`
+   - 不要直接 serve 任意檔案成 `application/octet-stream`，避免 asset proxy 變成任意檔案下載入口。
+4. Size limit
+   - CSS/JS/HTML/font/image 都要有 byte limit。
+   - 第一版可用單一上限，例如 10MB；video 不納入 asset proxy，繼續走既有 media preview。
+5. Sandbox interaction
+   - iframe 若要執行 repo-local JS，必須考慮是否從 `sandbox=""` 升到 `sandbox="allow-scripts"`。
+   - 不建議加 `allow-same-origin`，否則 iframe 內容會更接近同源 app，隔離會變弱。
+6. Auth / secret
+   - 如果 `CODE_VIEWER_SECRET` 啟用，asset route 也要遵守同一套授權。
+   - 但 iframe 的子資源 request 不容易手動帶 secret query；若要支援 secret，建議用短效 signed asset token，而不是把 long-lived secret 寫進每個 iframe URL。
+
+### Correctness requirements
+
+1. Relative URL resolution
+   - `diagram.html` 裡的 `./style.css` 要 resolve 成同資料夾下的 `style.css`。
+   - `../shared/theme.css` 也應 resolve，但仍不能逃出 workspace。
+2. Base URL
+   - 用 iframe `src` 指向 backend asset HTML route，比 `srcDoc + <base>` 更自然。
+   - 若保留 `srcDoc`，就必須 inject `<base href="/api/workspaces/ws_x/assets/<dir>/">`，但這會改寫 HTML 且容易踩 `<head>` 缺失/重複 base 的問題。
+3. Cache behavior
+   - 第一版可 `Cache-Control: no-cache`，確保 VS Code dirty/read changes 不被瀏覽器長期快取吃掉。
+   - 後續可加 ETag，但必須處理 extension 端 dirty buffer 與 filesystem stat 的差異。
+4. Dirty buffer
+   - HTML 主檔如果在 VS Code 開著且 dirty，`file.asset` 是否要回 dirty buffer？
+   - 建議主 HTML 和 text assets 都優先讀 open document dirty content；binary assets 讀 filesystem。
+5. Content rewriting
+   - 第一版不要 rewrite HTML/CSS/JS URL，先靠 route base URL 解相對路徑。
+   - 只有在遇到 absolute-root path (`/assets/app.css`) 時，再考慮是否提供 workspace-root base semantics。
+
+### Product requirements
+
+1. Keep source-first affordance
+   - 使用者仍能回 Raw/Source 看原始 HTML。
+2. Make asset support visible
+   - 如果 asset load 失敗，iframe 內可能只顯示 broken image；Code Viewer 外層至少要能在 debug mode 提供最近 asset request failures。
+3. Do not break markdown
+   - Markdown renderer 不應走 asset proxy。
+4. Mobile constraints
+   - HTML iframe 必須在 mobile viewport 內可 scroll，不要被 outer File View scroll 和 iframe inner scroll 互相卡住。
+
+### Testing requirements
+
+Unit:
+
+- backend route rejects missing workspace, stale workspace, unsafe path, unsupported MIME, oversized file
+- path resolver handles `./`, `../`, URL-encoded spaces, and rejects traversal outside workspace
+- `file.asset` MIME detection maps CSS/JS/image/font/SVG/HTML correctly
+
+Integration:
+
+- backend HTTP asset route sends request to extension and returns bytes with correct `Content-Type`
+- timeout from extension returns `504`
+- extension error maps to `404`/`400` instead of hanging
+
+E2E:
+
+- HTML file with `./style.css` changes visible styling in iframe
+- HTML file with `./image.png` renders image
+- HTML file with `../shared/theme.css` works inside workspace
+- traversal attempt like `../../.ssh/id_rsa` fails
+- frontend Raw/Rendered toggle still works after refresh and back/forward
+
+### Open design questions before implementation
+
+1. Should JS be allowed?
+   - If yes, iframe needs `allow-scripts`, but still not `allow-same-origin`.
+   - If no, CSS/image/font support is safer and enough for diagram inspection.
+2. Should generic `.html` be supported, or only artifact directories?
+   - The current shipped frontend toggle supports generic HTML by languageId.
+   - Asset proxy increases risk enough that route-level allowlist may still start with `docs/architecture/` or generator-marked artifacts.
+3. How should `CODE_VIEWER_SECRET` work with iframe subresources?
+   - Simple no-secret local mode is easy.
+   - Secret-enabled mode likely needs signed short-lived asset URLs.
+4. Is dirty-buffer support required for linked CSS/JS?
+   - Main HTML dirty buffer is valuable.
+   - Dirty linked assets require extension to look up open documents by resolved path for every text asset.
 
 ## Open Questions
 
