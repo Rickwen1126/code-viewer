@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { useWebSocket } from '../../hooks/use-websocket'
 import { cacheService } from '../../services/cache'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../services/file-location'
@@ -7,6 +7,7 @@ import { readCurrentFileForWorkspace } from '../../services/current-file'
 import { useWorkspace } from '../../hooks/use-workspace'
 import { PullToRefresh } from '../../components/pull-to-refresh'
 import { getBookmarks, type Bookmark } from '../../services/bookmarks'
+import { ancestorDirs, treeNodeSelector } from '../../services/reveal-file'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
 
 const RECENT_FILES_PREFIX = 'code-viewer:recent-files'
@@ -116,6 +117,7 @@ function TreeNode({
   return (
     <button
       onClick={() => onFileClick(node.path)}
+      data-tree-path={node.path}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -143,6 +145,7 @@ export function FileBrowserPage() {
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
   const navigate = useNavigate()
+  const location = useLocation()
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -152,6 +155,23 @@ export function FileBrowserPage() {
   const searchRef = useRef<HTMLInputElement>(null)
 
   const currentFile = readCurrentFileForWorkspace(workspace)
+
+  // Reveal intent from the file view header (navigate('/files', { state: { revealFile } })).
+  const revealFile = (location.state as { revealFile?: string } | null)?.revealFile ?? null
+
+  // Re-expand ancestors of the reveal target even if the user collapsed them.
+  useEffect(() => {
+    if (!revealFile) return
+    setExpandedDirs(prev => {
+      const next = new Set(prev)
+      let changed = false
+      for (const dir of ancestorDirs(revealFile)) {
+        if (!next.has(dir)) { next.add(dir); changed = true }
+      }
+      if (changed) saveExpandedDirs(next)
+      return changed ? next : prev
+    })
+  }, [revealFile])
 
   function handleToggle(path: string) {
     setExpandedDirs(prev => {
@@ -275,6 +295,7 @@ export function FileBrowserPage() {
       onRefresh={loadTree}
       scrollKey="/files"
       restoreKey={`${nodes.length}`}
+      anchorSelector={revealFile ? treeNodeSelector(revealFile) : undefined}
     >
       <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         {/* Search bar */}

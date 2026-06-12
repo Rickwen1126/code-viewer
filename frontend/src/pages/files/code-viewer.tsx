@@ -18,7 +18,9 @@ import {
   unwindToDetourAnchor,
 } from '../../services/semantic-navigation'
 import { useWorkspace } from '../../hooks/use-workspace'
+import { useIsDesktop } from '../../hooks/use-is-desktop'
 import { useDocumentVisibility } from '../../hooks/use-visibility'
+import { requestRevealFileInTree } from '../../services/reveal-file'
 import { debugLog } from '../../services/debug'
 import {
   CodeBlock,
@@ -293,6 +295,38 @@ function mergeFileReturnState(
   }
 }
 
+// Header title: filename + dimmed relative dir; click reveals the file in the tree.
+function FileTitleButton({ path, fileName, onClick }: { path: string; fileName: string; onClick: () => void }) {
+  const dir = path.split('/').slice(0, -1).join('/')
+  return (
+    <button
+      onClick={onClick}
+      title={`Reveal in file tree: ${path}`}
+      aria-label={`Reveal ${path} in file tree`}
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 6,
+        minWidth: 0,
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      <span style={{ fontSize: 13, color: '#d4d4d4', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '70vw' }}>
+        {fileName}
+      </span>
+      {dir && (
+        <span style={{ fontSize: 11, color: '#777', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          {dir}
+        </span>
+      )}
+    </button>
+  )
+}
+
 export function CodeViewerPage() {
   const { '*': rawPath } = useParams()
   const path = rawPath ? decodeURIComponent(rawPath) : ''
@@ -301,6 +335,7 @@ export function CodeViewerPage() {
   const [searchParams] = useSearchParams()
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
+  const isDesktop = useIsDesktop()
   const visibility = useDocumentVisibility()
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
   const [preview, setPreview] = useState<FilePreviewResultPayload | null>(null)
@@ -1773,6 +1808,17 @@ export function CodeViewerPage() {
   }
 
   const fileName = path.split('/').pop() ?? path
+
+  // Desktop: sidebar tree is always mounted — signal it to expand + scroll.
+  // Mobile: tree is a separate route — navigate there with reveal intent.
+  function revealInFileTree() {
+    if (!path) return
+    if (isDesktop) {
+      requestRevealFileInTree(path)
+    } else {
+      navigate('/files', { state: { revealFile: path } })
+    }
+  }
   const activeAnnotationBusy = isActiveAnnotationJob(activeAnnotationJob)
   const activeAnnotationForCurrentFile = activeAnnotationBusy && activeAnnotationJob.path === path
   const activeAnnotationForOtherFile = activeAnnotationBusy && activeAnnotationJob.path !== path
@@ -1825,9 +1871,7 @@ export function CodeViewerPage() {
                 {detourAnchor.label}
               </button>
             )}
-            <div style={{ fontSize: 13, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-              {fileName}
-            </div>
+            <FileTitleButton path={path} fileName={fileName} onClick={revealInFileTree} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: '#888' }}>{preview?.mimeType ?? previewKind}</span>
@@ -1973,9 +2017,7 @@ export function CodeViewerPage() {
               {detourAnchor.label}
             </button>
           )}
-          <div style={{ fontSize: 13, color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-            {fileName}
-          </div>
+          <FileTitleButton path={path} fileName={fileName} onClick={revealInFileTree} />
         </div>
         {/* Row 2: metadata + buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>

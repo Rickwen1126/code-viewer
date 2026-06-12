@@ -11,6 +11,7 @@ import { readCurrentFileForWorkspace } from '../../../services/current-file'
 import { useWorkspace } from '../../../hooks/use-workspace'
 import { addRecentFile, getRecentFiles } from '../../../pages/files/file-browser'
 import { getBookmarks, type Bookmark } from '../../../services/bookmarks'
+import { REVEAL_FILE_EVENT, ancestorDirs, revealEventPath, treeNodeSelector } from '../../../services/reveal-file'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
 
 function flattenFiles(nodes: FileTreeNode[]): { path: string; name: string }[] {
@@ -102,6 +103,7 @@ function TreeNode({
   return (
     <button
       onClick={() => onFileClick(node.path)}
+      data-tree-path={node.path}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -139,9 +141,45 @@ export function FileBrowserSidebar() {
   const [showRecent, setShowRecent] = useState(false)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => getExpandedDirs())
   const [collapsedSnapshot, setCollapsedSnapshot] = useState<Set<string> | null>(null)
+  const [revealTarget, setRevealTarget] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const treeContainerRef = useRef<HTMLDivElement>(null)
 
   const currentFile = decodeFileRoutePath(location.pathname) ?? readCurrentFileForWorkspace(workspace)
+
+  // Reveal-in-tree signal from the file view header: re-expand ancestors
+  // (the auto-expand effect won't re-fire if the user collapsed them) and
+  // scroll the node into view once it is rendered.
+  useEffect(() => {
+    function onReveal(event: Event) {
+      const path = revealEventPath(event)
+      if (!path) return
+      setSearchQuery('')
+      setShowRecent(false)
+      setExpandedDirs(prev => {
+        const next = new Set(prev)
+        for (const dir of ancestorDirs(path)) next.add(dir)
+        saveExpandedDirs(next)
+        return next
+      })
+      setRevealTarget(path)
+    }
+    window.addEventListener(REVEAL_FILE_EVENT, onReveal)
+    return () => window.removeEventListener(REVEAL_FILE_EVENT, onReveal)
+  }, [])
+
+  useEffect(() => {
+    if (!revealTarget) return
+    const frame = requestAnimationFrame(() => {
+      const node = treeContainerRef.current?.querySelector<HTMLElement>(treeNodeSelector(revealTarget))
+      if (node) {
+        node.scrollIntoView({ block: 'center' })
+        setRevealTarget(null)
+      }
+      // Not rendered yet (tree still loading) — retry when nodes/expandedDirs update.
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [revealTarget, nodes, expandedDirs])
 
   function handleToggle(path: string) {
     setExpandedDirs(prev => {
@@ -302,7 +340,7 @@ export function FileBrowserSidebar() {
       </div>
 
       {/* Content area — scrollable */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div ref={treeContainerRef} style={{ flex: 1, overflow: 'auto' }}>
         {/* Bookmarks dropdown (shown on focus when no query) */}
         {showRecent && !isSearching && bookmarks.length > 0 && (
           <div style={{ borderBottom: '1px solid #333' }}>
