@@ -1,5 +1,47 @@
 # Code Viewer — Completed Todo Archive
 
+## Completed: E-Ink Frontend Theme @2026-06-12-2250
+
+Section source:
+
+- User request: frontend must support an e-ink mode for the best reading
+  experience on e-ink devices; settings gear hidden at the top-right of the
+  workspace view; themes `vscode` (default) and `eink`; persisted in
+  localStorage. Design assisted by the `frontend-design` skill
+  (print-on-paper direction).
+- Code/Surface: `frontend/src/services/theme.ts` (theme store,
+  `code-viewer:theme`), `frontend/src/hooks/use-theme.ts`,
+  `frontend/src/eink.css` (3-layer override: blanket flatten → state
+  inversions → `pre.shiki` / `.cv-eink-keep` escape hatches),
+  `frontend/src/services/eink-shiki-theme.ts` (grayscale Shiki theme),
+  `frontend/src/components/{code-block,diff-view,markdown-renderer,action-sheet}.tsx`,
+  `frontend/src/pages/files/file-browser.tsx` (gear + ActionSheet picker),
+  `frontend/src/__tests__/theme.test.ts`
+- Commits: `7010e0e feat(frontend): add e-ink theme with settings picker`
+- Verification: `pnpm -r typecheck`, 340/340 vitest unit tests, Playwright
+  iPhone 390x844 against a production build on a temp port (4899): theme
+  switch round-trip, localStorage + `data-theme` + meta theme-color
+  data-level checks, reload persistence, screenshots of file tree / code
+  view / markdown / git diff in e-ink.
+- Learning notes: react-shiki 0.3.0 only re-highlights on code/language
+  change — theme switches must remount via `key`. React reflects inline
+  styles into the `style` attribute as serialized `rgb()` strings, which
+  makes `[style*="background: rgb(...)"]` a viable bridge for theming
+  hardcoded inline styles without refactoring every component.
+- Known gap (watch): dev Vite on :4801 had a dead file watcher during this
+  session (served stale modules; `?t=` cache-bust returned fresh) — needs a
+  user-side dev server restart; not restarted per reserved-port rule.
+
+- [x] Theme service with localStorage persistence and `data-theme` on
+  `<html>`, applied before first paint in `main.tsx`.
+- [x] Settings gear at the top-right of the file browser workspace row;
+  ActionSheet picker with VS Code Dark / E-Ink and a checkmark on the
+  active theme.
+- [x] E-ink print design: white paper, black ink, quantized gray ramp,
+  inversion for active states, outlined chips for status surfaces, no
+  animations/shadows, serif markdown body, grayscale bold/italic code
+  highlighting, light-gray-add / strike-through-delete diffs.
+
 ## Completed: HTML Rendered Toggle Preview @2026-06-12-1452
 
 Section source:
