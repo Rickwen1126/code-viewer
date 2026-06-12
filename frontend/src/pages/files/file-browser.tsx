@@ -56,7 +56,7 @@ function fuzzyMatch(query: string, target: string): boolean {
   return qi === q.length
 }
 
-const THEME_OPTIONS: Array<{ value: ThemeName; label: string }> = [
+export const THEME_OPTIONS: Array<{ value: ThemeName; label: string }> = [
   { value: 'vscode', label: 'Theme: VS Code Dark' },
   { value: 'eink', label: 'Theme: E-Ink' },
 ]

@@ -71,6 +71,7 @@ TypeScript 5.x across all 3 packages. Follow existing conventions.
 - **Extension VSIX 驗證**: 不可只看 `code --list-extensions`。要再用 backend `/admin/workspaces` 或 VS Code `exthost.log` 驗證 extension 真的成功 activation；曾發生 VSIX 安裝成功但 runtime 因 `Cannot find module 'ws'` 失敗。
 - **Backend restart**: `tsx watch` 通常自動 reload，但有時需手動 stop/start。
 - **Frontend HMR**: Vite HMR 自動更新，但跨 Tailscale 的手機可能收不到，需手動刷新。
+- **Vite watcher 看不到 agent 寫入**: Claude Code（sandbox 寫檔）改動 frontend source 時，:4801 dev Vite 的 file watcher 可能完全收不到（serve 舊 module；`?t=` cache-bust 可拿到新內容），restart dev server 也一樣。Agent 驗證改走 `pnpm build && vite preview --port 4899`（臨時 port，不可動 4800/4801）；使用者要看新 code 需自己重啟 dev frontend。
 - **Safari iCloud 私密轉送**: 必須關閉，否則 WebSocket 連線失敗。
 - **舊 port 殘留**: `lsof -i :4800` 檢查，`kill` 清掉。
 - **`code` CLI env vars 不傳遞**: `code` CLI 開新視窗時 env vars 不傳（走 IPC）。改用 workspace setting 控制。

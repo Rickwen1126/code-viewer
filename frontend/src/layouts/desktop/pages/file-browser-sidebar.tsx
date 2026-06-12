@@ -4,12 +4,16 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { Settings, Check } from 'lucide-react'
 import { useWebSocket } from '../../../hooks/use-websocket'
 import { cacheService } from '../../../services/cache'
 import { buildFileLocationUrl, buildFileRoutePath, decodeFileRoutePath } from '../../../services/file-location'
 import { readCurrentFileForWorkspace } from '../../../services/current-file'
 import { useWorkspace } from '../../../hooks/use-workspace'
-import { addRecentFile, getRecentFiles } from '../../../pages/files/file-browser'
+import { addRecentFile, getRecentFiles, THEME_OPTIONS } from '../../../pages/files/file-browser'
+import { ActionSheet } from '../../../components/action-sheet'
+import { useTheme } from '../../../hooks/use-theme'
+import { setTheme } from '../../../services/theme'
 import { getBookmarks, type Bookmark } from '../../../services/bookmarks'
 import { REVEAL_FILE_EVENT, ancestorDirs, revealEventPath, treeNodeSelector } from '../../../services/reveal-file'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
@@ -141,6 +145,8 @@ export function FileBrowserSidebar() {
   const [showRecent, setShowRecent] = useState(false)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => getExpandedDirs())
   const [collapsedSnapshot, setCollapsedSnapshot] = useState<Set<string> | null>(null)
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false)
+  const theme = useTheme()
   const [revealTarget, setRevealTarget] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const treeContainerRef = useRef<HTMLDivElement>(null)
@@ -480,6 +486,13 @@ export function FileBrowserSidebar() {
                     Collapse
                   </button>
                 )}
+                <button
+                  onClick={() => setThemeSheetOpen(true)}
+                  aria-label="Display settings"
+                  style={{ padding: '4px 8px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                >
+                  <Settings size={12} />
+                </button>
               </div>
             </div>
 
@@ -557,6 +570,18 @@ export function FileBrowserSidebar() {
             )}
           </>
         )}
+
+        <ActionSheet
+          isOpen={themeSheetOpen}
+          onClose={() => setThemeSheetOpen(false)}
+          actions={THEME_OPTIONS.map(({ value, label }) => ({
+            label,
+            icon: theme === value
+              ? <Check size={16} />
+              : <span style={{ width: 16, display: 'inline-block' }} />,
+            onClick: () => setTheme(value),
+          }))}
+        />
       </div>
     </div>
   )

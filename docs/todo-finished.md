@@ -16,8 +16,11 @@ Section source:
   `frontend/src/services/eink-shiki-theme.ts` (grayscale Shiki theme),
   `frontend/src/components/{code-block,diff-view,markdown-renderer,action-sheet}.tsx`,
   `frontend/src/pages/files/file-browser.tsx` (gear + ActionSheet picker),
+  `frontend/src/layouts/desktop/pages/file-browser-sidebar.tsx` (desktop gear
+  — e-ink tablets in landscape can hit the desktop breakpoint),
   `frontend/src/__tests__/theme.test.ts`
-- Commits: `7010e0e feat(frontend): add e-ink theme with settings picker`
+- Commits: `7010e0e feat(frontend): add e-ink theme with settings picker`,
+  plus desktop-sidebar gear follow-up commit
 - Verification: `pnpm -r typecheck`, 340/340 vitest unit tests, Playwright
   iPhone 390x844 against a production build on a temp port (4899): theme
   switch round-trip, localStorage + `data-theme` + meta theme-color
