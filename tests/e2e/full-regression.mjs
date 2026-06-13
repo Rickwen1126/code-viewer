@@ -9,6 +9,7 @@ const suite = [
   { id: 'media-preview', cmd: ['node', 'tests/e2e/media-preview.mjs', WORKSPACE_PATH] },
   { id: 'git-media-preview', cmd: ['node', 'tests/e2e/git-media-preview.mjs', WORKSPACE_PATH] },
   { id: 'desktop-layout', cmd: ['node', 'tests/e2e/desktop-layout.mjs'] },
+  { id: 'theme-round-trip', cmd: ['node', 'tests/e2e/theme-round-trip.mjs'] },
 ]
 
 function runOne({ id, cmd }) {
