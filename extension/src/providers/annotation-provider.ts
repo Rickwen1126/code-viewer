@@ -22,10 +22,11 @@ import {
   subscribeToEvents,
   type TmuxAdapterEventDelivery,
 } from './tmux-adapter-client'
+import { waitForSpawnReady } from './spawn-readiness'
 
 const ANNOTATION_ROOT = '.codeviewer/annotated'
 const ANNOTATION_RUN_ROOT = '.codeviewer/annotation-runs'
-const SPAWN_READY_DELAY_MS = 2500
+const SPAWN_READY_TIMEOUT_MS = 15000
 const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
 const EMPTY_VALIDATION: AnnotationArtifactValidation = { ok: false, diagnostics: [] }
 const ANNOTATION_STOP_ADAPTER_ID = 'code-viewer-annotation'
@@ -140,10 +141,6 @@ function safeRunSegment(value: string): string {
 
 export function annotationRunLogPathFor(generationId: string): string {
   return `${ANNOTATION_RUN_ROOT}/${safeRunSegment(generationId)}/run.jsonl`
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function readText(bytes: Uint8Array): string {
@@ -1061,22 +1058,26 @@ export async function handleAnnotationGenerate(
       },
     })
     if (target.acquired === 'spawned') {
-      annotationDebug('generate.spawn-ready-delay.start', {
-        requestId,
-        generationId,
-        delayMs: SPAWN_READY_DELAY_MS,
-        bindingId: target.bindingId,
+      const readiness = await waitForSpawnReady({
+        command: config.command,
+        stateRoot: config.stateRoot,
+        target,
+        spawnedAt: Date.now(),
+        timeoutMs: SPAWN_READY_TIMEOUT_MS,
+        feature: 'annotation',
       })
-      await delay(SPAWN_READY_DELAY_MS)
-      annotationDebug('generate.spawn-ready-delay.done', {
+      annotationDebug('generate.spawn-ready', {
         requestId,
         generationId,
         bindingId: target.bindingId,
-        elapsedMs: Date.now() - startedAt,
+        ready: readiness.ready,
+        timedOut: readiness.timedOut,
+        elapsedMs: readiness.elapsedMs,
+        deliveryId: readiness.delivery?.deliveryId ?? null,
       })
       await recordAnnotationEvent(workspaceFolder, {
-        phase: 'tmux.spawnReadyDelay.done',
-        level: 'debug',
+        phase: readiness.ready ? 'tmux.spawnReady.done' : 'tmux.spawnReady.timeout',
+        level: readiness.ready ? 'info' : 'error',
         requestId,
         generationId,
         path: safePath.relativePath,
@@ -1084,8 +1085,19 @@ export async function handleAnnotationGenerate(
         runLogPath,
         target,
         elapsedMs: Date.now() - startedAt,
-        data: { delayMs: SPAWN_READY_DELAY_MS },
+        data: {
+          ready: readiness.ready,
+          timedOut: readiness.timedOut,
+          readinessElapsedMs: readiness.elapsedMs,
+          deliveryId: readiness.delivery?.deliveryId ?? null,
+        },
       })
+      if (!readiness.ready) {
+        job.phase = 'failed'
+        job.diagnostics = [readiness.error ?? 'Codex session did not start in time']
+        broadcastAnnotationJob(client, job)
+        return
+      }
     }
     const submittedAt = Date.now()
     job.submittedAt = submittedAt

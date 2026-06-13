@@ -12,6 +12,7 @@ import type {
 import { createMessage } from '../ws/client'
 import { debugLog } from '../utils/debug'
 import { destroyTarget, ensureTarget, sendMessage } from './tmux-adapter-client'
+import { waitForSpawnReady } from './spawn-readiness'
 
 const CHAT_ROOT = '.codeviewer/chat-runs/current'
 const CHAT_ARCHIVE_ROOT = '.codeviewer/chat-runs/archive'
@@ -20,7 +21,7 @@ const CHAT_MANIFEST_PATH = `${CHAT_ROOT}/manifest.json`
 const CHAT_THREAD_PATH = `${CHAT_ROOT}/thread.md`
 const CHAT_RUN_LOG_PATH = `${CHAT_ROOT}/run.jsonl`
 const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
-const SPAWN_READY_DELAY_MS = 2500
+const SPAWN_READY_TIMEOUT_MS = 15000
 
 interface SafeFileChatPath {
   relativePath: string
@@ -231,10 +232,6 @@ async function recordFileChatEvent(
       message: error instanceof Error ? error.message : String(error),
     })
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function formatMarkedLines(markedLines: FileChatMarkedLine[]): string {
@@ -543,16 +540,31 @@ export async function handleFileChatSend(
       elapsedMs: Date.now() - startedAt,
     })
     if (target.acquired === 'spawned') {
-      await delay(SPAWN_READY_DELAY_MS)
+      const readiness = await waitForSpawnReady({
+        command: config.command,
+        stateRoot: config.stateRoot,
+        target,
+        spawnedAt: Date.now(),
+        timeoutMs: SPAWN_READY_TIMEOUT_MS,
+        feature: 'fileChat',
+      })
       await recordFileChatEvent(workspaceFolder, {
-        phase: 'tmux.spawnReadyDelay.done',
-        level: 'debug',
+        phase: readiness.ready ? 'tmux.spawnReady.done' : 'tmux.spawnReady.timeout',
+        level: readiness.ready ? 'info' : 'error',
         requestId,
         path: safePath.relativePath,
         target,
         elapsedMs: Date.now() - startedAt,
-        data: { delayMs: SPAWN_READY_DELAY_MS },
+        data: {
+          ready: readiness.ready,
+          timedOut: readiness.timedOut,
+          readinessElapsedMs: readiness.elapsedMs,
+          deliveryId: readiness.delivery?.deliveryId ?? null,
+        },
       })
+      if (!readiness.ready) {
+        throw new Error(readiness.error ?? 'Codex session did not start in time')
+      }
     }
 
     await recordFileChatEvent(workspaceFolder, {
