@@ -2125,18 +2125,24 @@ export function CodeViewerPage() {
             <button
               onClick={generateAnnotation}
               disabled={annotationBusy}
+              title={annotationBusy ? 'Generating annotation…' : 'Annotate'}
               style={{
                 background: annotationBusy ? '#333' : 'none',
-                border: '1px solid #444',
-                color: annotationBusy ? '#888' : '#d4d4d4',
-                fontSize: 11,
-                padding: '0 8px',
+                border: 'none',
+                color: annotationBusy ? '#555' : '#888',
+                padding: '0 5px',
                 height: 24,
                 borderRadius: 4,
                 cursor: annotationBusy ? 'default' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
               }}
             >
-              {annotationBusy ? '...' : 'Annotate'}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+                <path d="M14 2v6h6" />
+                <path d="M8 13h8M8 17h5" />
+              </svg>
             </button>
           )}
           {isRenderableText && (
@@ -2161,19 +2167,47 @@ export function CodeViewerPage() {
             </button>
           )}
           <button
+            onClick={() => {
+              copyCurrentFileContent()
+            }}
+            disabled={!file}
+            title="Copy file content"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: file ? '#888' : '#555',
+              padding: '0 5px',
+              height: 24,
+              borderRadius: 4,
+              cursor: file ? 'pointer' : 'default',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          </button>
+          <button
             onClick={() => setSearchOpen(v => !v)}
+            title="Search in file"
             style={{
               background: searchOpen ? '#333' : 'none',
-              border: '1px solid #444',
+              border: 'none',
               color: searchOpen ? '#d4d4d4' : '#888',
-              fontSize: 13,
-              padding: '0 8px',
+              padding: '0 5px',
               height: 24,
               borderRadius: 4,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
             }}
           >
-            &#x1F50D;
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
           </button>
           {tourEdit && (
             <button
@@ -2203,17 +2237,22 @@ export function CodeViewerPage() {
               onClick={() => setMenuOpen(v => !v)}
               style={{
                 background: menuOpen ? '#333' : 'none',
-                border: '1px solid #444',
+                border: 'none',
                 color: menuOpen ? '#d4d4d4' : '#888',
-                fontSize: 13,
-                padding: '0 8px',
+                padding: '0 5px',
                 height: 24,
                 borderRadius: 4,
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
               }}
               title="More actions"
             >
-              &#x22EF;
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="5" cy="12" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="19" cy="12" r="2" />
+              </svg>
             </button>
             {menuOpen && (
               <div style={{
@@ -2252,25 +2291,6 @@ export function CodeViewerPage() {
                 >
                   Copy Absolute Path
                 </button>
-                <button
-                  onClick={() => {
-                    copyCurrentFileContent()
-                    setMenuOpen(false)
-                  }}
-                  disabled={!file}
-                  style={{
-                    ...menuItemStyle,
-                    opacity: file ? 1 : 0.45,
-                    cursor: file ? 'pointer' : 'default',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (file) (e.currentTarget as HTMLElement).style.background = '#2a2d2e'
-                  }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
-                >
-                  Copy Current File Content
-                </button>
-                <div style={{ borderTop: '1px solid #333' }} />
                 <button
                   onClick={() => {
                     toggleFileBookmark()
