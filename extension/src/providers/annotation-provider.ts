@@ -26,7 +26,7 @@ import { waitForSpawnReady } from './spawn-readiness'
 
 const ANNOTATION_ROOT = '.codeviewer/annotated'
 const ANNOTATION_RUN_ROOT = '.codeviewer/annotation-runs'
-const SPAWN_READY_TIMEOUT_MS = 15000
+const SPAWN_READY_TIMEOUT_MS = 30000
 const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
 const EMPTY_VALIDATION: AnnotationArtifactValidation = { ok: false, diagnostics: [] }
 const ANNOTATION_STOP_ADAPTER_ID = 'code-viewer-annotation'

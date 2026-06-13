@@ -1614,7 +1614,7 @@ export function CodeViewerPage() {
       const res = await request<FileChatSendPayload, FileChatSendResultPayload>(
         'fileChat.send',
         { path, question, requestId, markedLines },
-        30000,
+        45000,
       )
       setFileChatPhase('waiting')
       setFileChatRunInfo({

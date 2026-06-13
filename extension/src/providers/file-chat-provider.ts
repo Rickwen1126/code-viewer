@@ -21,7 +21,7 @@ const CHAT_MANIFEST_PATH = `${CHAT_ROOT}/manifest.json`
 const CHAT_THREAD_PATH = `${CHAT_ROOT}/thread.md`
 const CHAT_RUN_LOG_PATH = `${CHAT_ROOT}/run.jsonl`
 const DEFAULT_TMUX_ADAPTER_STATE_ROOT = path.join(os.homedir(), '.local', 'state', 'tmux-adapter-code-viewer')
-const SPAWN_READY_TIMEOUT_MS = 15000
+const SPAWN_READY_TIMEOUT_MS = 30000
 
 interface SafeFileChatPath {
   relativePath: string
