@@ -1059,10 +1059,7 @@ export async function handleAnnotationGenerate(
     })
     if (target.acquired === 'spawned') {
       const readiness = await waitForSpawnReady({
-        command: config.command,
-        stateRoot: config.stateRoot,
         target,
-        spawnedAt: Date.now(),
         timeoutMs: SPAWN_READY_TIMEOUT_MS,
         feature: 'annotation',
       })
@@ -1073,7 +1070,6 @@ export async function handleAnnotationGenerate(
         ready: readiness.ready,
         timedOut: readiness.timedOut,
         elapsedMs: readiness.elapsedMs,
-        deliveryId: readiness.delivery?.deliveryId ?? null,
       })
       await recordAnnotationEvent(workspaceFolder, {
         phase: readiness.ready ? 'tmux.spawnReady.done' : 'tmux.spawnReady.timeout',
@@ -1089,7 +1085,7 @@ export async function handleAnnotationGenerate(
           ready: readiness.ready,
           timedOut: readiness.timedOut,
           readinessElapsedMs: readiness.elapsedMs,
-          deliveryId: readiness.delivery?.deliveryId ?? null,
+          method: readiness.method ?? null,
         },
       })
       if (!readiness.ready) {

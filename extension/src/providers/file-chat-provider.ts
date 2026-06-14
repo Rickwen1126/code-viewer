@@ -541,10 +541,7 @@ export async function handleFileChatSend(
     })
     if (target.acquired === 'spawned') {
       const readiness = await waitForSpawnReady({
-        command: config.command,
-        stateRoot: config.stateRoot,
         target,
-        spawnedAt: Date.now(),
         timeoutMs: SPAWN_READY_TIMEOUT_MS,
         feature: 'fileChat',
       })
@@ -559,7 +556,7 @@ export async function handleFileChatSend(
           ready: readiness.ready,
           timedOut: readiness.timedOut,
           readinessElapsedMs: readiness.elapsedMs,
-          deliveryId: readiness.delivery?.deliveryId ?? null,
+          method: readiness.method ?? null,
         },
       })
       if (!readiness.ready) {
