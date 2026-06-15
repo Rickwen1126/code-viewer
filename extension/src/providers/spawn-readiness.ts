@@ -3,12 +3,14 @@ import type { TmuxAdapterTarget } from './tmux-adapter-client'
 import { debugLog } from '../utils/debug'
 
 const POLL_INTERVAL_MS = 800
-const CODEX_PROMPT_PATTERN = /›/
+const TAIL_LINES = 5
+const DEFAULT_PROMPT_PATTERN = /^[\s]*[›>]\s/m
 
 export interface WaitForSpawnReadyOptions {
   target: TmuxAdapterTarget
   timeoutMs?: number
   feature: string
+  promptPattern?: RegExp
 }
 
 export interface SpawnReadyResult {
@@ -35,9 +37,15 @@ function capturePaneContent(paneId: string): Promise<string> {
   })
 }
 
+export function paneTail(content: string, lines: number): string {
+  const nonEmpty = content.split('\n').filter(line => line.trim().length > 0)
+  return nonEmpty.slice(-lines).join('\n')
+}
+
 export async function waitForSpawnReady(options: WaitForSpawnReadyOptions): Promise<SpawnReadyResult> {
   const { target, feature } = options
   const timeoutMs = options.timeoutMs ?? 30000
+  const promptPattern = options.promptPattern ?? DEFAULT_PROMPT_PATTERN
   const startedAt = Date.now()
   const deadline = startedAt + timeoutMs
   const paneId = target.paneId || target.paneTarget || ''
@@ -56,6 +64,7 @@ export async function waitForSpawnReady(options: WaitForSpawnReadyOptions): Prom
     bindingId: target.bindingId,
     paneId,
     timeoutMs,
+    promptPattern: promptPattern.source,
   })
 
   for (let attempt = 0; Date.now() < deadline; attempt += 1) {
@@ -66,7 +75,8 @@ export async function waitForSpawnReady(options: WaitForSpawnReadyOptions): Prom
 
     try {
       const content = await capturePaneContent(paneId)
-      const hasPrompt = CODEX_PROMPT_PATTERN.test(content)
+      const tail = paneTail(content, TAIL_LINES)
+      const hasPrompt = promptPattern.test(tail)
 
       if (hasPrompt) {
         const result: SpawnReadyResult = {
@@ -105,7 +115,7 @@ export async function waitForSpawnReady(options: WaitForSpawnReadyOptions): Prom
     ready: false,
     elapsedMs: Date.now() - startedAt,
     timedOut: true,
-    error: `Codex did not show its prompt within ${Math.round(timeoutMs / 1000)}s — the session may have failed to start. Try again or check the tmux pane.`,
+    error: `Agent did not show its prompt within ${Math.round(timeoutMs / 1000)}s — the session may have failed to start. Try again or check the tmux pane.`,
   }
   spawnDebug('wait.timeout', {
     feature,

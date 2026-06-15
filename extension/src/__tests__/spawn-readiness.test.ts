@@ -9,7 +9,7 @@ vi.mock('../utils/debug', () => ({
   debugLog: vi.fn(),
 }))
 
-import { waitForSpawnReady } from '../providers/spawn-readiness'
+import { waitForSpawnReady, paneTail } from '../providers/spawn-readiness'
 
 const mockExecFile = vi.mocked(execFile)
 
@@ -20,16 +20,24 @@ const MOCK_TARGET = {
   paneTarget: 'codeview:1.0',
 }
 
-const CODEX_PROMPT_OUTPUT = `╭───────────────────────────────────────────────────────╮
+const CODEX_PANE = `╭───────────────────────────────────────────────────────╮
 │ >_ OpenAI Codex (v0.139.0)                            │
 │ model:     gpt-5.3-codex-spark low                    │
 │ directory: ~/code/copilot-sdk                         │
 ╰───────────────────────────────────────────────────────╯
-› Find and fix a bug in @filename
+› Find and fix a bug
   gpt-5.3-codex-spark low · main · Context 0% used`
 
-const LOADING_OUTPUT = `Starting codex...
-Loading model...`
+const CLAUDE_PANE = `
+╭────────────────────────────────────────╮
+│ ✻ Welcome to Claude Code              │
+╰────────────────────────────────────────╯
+> What would you like to do?
+`
+
+const LOADING_PANE = `Starting codex...
+Loading model...
+Connecting to API...`
 
 function simulateCapture(output: string): void {
   mockExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
@@ -52,111 +60,160 @@ function simulateCaptureSequence(outputs: string[]): void {
   })
 }
 
-describe('spawn-readiness', () => {
+describe('paneTail', () => {
+  it('should return last N non-empty lines', () => {
+    const content = 'line1\nline2\n\nline3\n\nline4\nline5\n\n'
+    expect(paneTail(content, 3)).toBe('line3\nline4\nline5')
+  })
+
+  it('should return all lines when fewer than N', () => {
+    expect(paneTail('a\nb', 5)).toBe('a\nb')
+  })
+
+  it('should handle empty content', () => {
+    expect(paneTail('', 5)).toBe('')
+    expect(paneTail('\n\n\n', 5)).toBe('')
+  })
+})
+
+describe('waitForSpawnReady', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  describe('waitForSpawnReady', () => {
-    it('should return ready when Codex prompt is detected on first probe', async () => {
-      simulateCapture(CODEX_PROMPT_OUTPUT)
+  it('should detect Codex › prompt', async () => {
+    simulateCapture(CODEX_PANE)
 
-      const result = await waitForSpawnReady({
-        target: MOCK_TARGET,
-        timeoutMs: 5000,
-        feature: 'fileChat',
-      })
-
-      expect(result.ready).toBe(true)
-      expect(result.timedOut).toBe(false)
-      expect(result.method).toBe('pane-probe')
-      expect(mockExecFile).toHaveBeenCalledWith(
-        'tmux',
-        ['capture-pane', '-t', '%42', '-p'],
-        expect.objectContaining({ timeout: 5000 }),
-        expect.any(Function),
-      )
+    const result = await waitForSpawnReady({
+      target: MOCK_TARGET,
+      timeoutMs: 5000,
+      feature: 'fileChat',
     })
 
-    it('should poll until prompt appears', async () => {
-      simulateCaptureSequence([LOADING_OUTPUT, LOADING_OUTPUT, CODEX_PROMPT_OUTPUT])
+    expect(result.ready).toBe(true)
+    expect(result.method).toBe('pane-probe')
+  })
 
-      const result = await waitForSpawnReady({
-        target: MOCK_TARGET,
-        timeoutMs: 10000,
-        feature: 'annotation',
-      })
+  it('should detect Claude > prompt', async () => {
+    simulateCapture(CLAUDE_PANE)
 
-      expect(result.ready).toBe(true)
-      expect(mockExecFile).toHaveBeenCalledTimes(3)
+    const result = await waitForSpawnReady({
+      target: MOCK_TARGET,
+      timeoutMs: 5000,
+      feature: 'fileChat',
     })
 
-    it('should timeout when prompt never appears', async () => {
-      simulateCapture(LOADING_OUTPUT)
+    expect(result.ready).toBe(true)
+  })
 
-      const result = await waitForSpawnReady({
-        target: MOCK_TARGET,
-        timeoutMs: 2000,
-        feature: 'fileChat',
-      })
+  it('should not match > inside code/output (only checks tail)', async () => {
+    const paneWithCodeOutput = `some output line
+const x = arr.filter(a > b)
+more output
+Loading...
+Still loading...`
+    simulateCapture(paneWithCodeOutput)
 
-      expect(result.ready).toBe(false)
-      expect(result.timedOut).toBe(true)
-      expect(result.error).toContain('did not show its prompt')
+    const result = await waitForSpawnReady({
+      target: MOCK_TARGET,
+      timeoutMs: 1500,
+      feature: 'fileChat',
     })
 
-    it('should fail immediately when no pane ID is available', async () => {
-      const result = await waitForSpawnReady({
-        target: { ...MOCK_TARGET, paneId: undefined, paneTarget: undefined },
-        timeoutMs: 5000,
-        feature: 'fileChat',
-      })
+    expect(result.ready).toBe(false)
+  })
 
-      expect(result.ready).toBe(false)
-      expect(result.error).toContain('No pane ID')
-      expect(mockExecFile).not.toHaveBeenCalled()
+  it('should poll until prompt appears', async () => {
+    simulateCaptureSequence([LOADING_PANE, LOADING_PANE, CODEX_PANE])
+
+    const result = await waitForSpawnReady({
+      target: MOCK_TARGET,
+      timeoutMs: 10000,
+      feature: 'annotation',
     })
 
-    it('should handle tmux capture-pane errors gracefully', async () => {
-      simulateCaptureSequence([]) // no outputs set
-      mockExecFile
-        .mockImplementationOnce((_cmd, _args, _opts, callback) => {
-          if (typeof callback === 'function') {
-            callback(new Error('pane not found'), '', '')
-          }
-          return {} as ReturnType<typeof execFile>
-        })
-        .mockImplementation((_cmd, _args, _opts, callback) => {
-          if (typeof callback === 'function') {
-            callback(null, CODEX_PROMPT_OUTPUT, '')
-          }
-          return {} as ReturnType<typeof execFile>
-        })
+    expect(result.ready).toBe(true)
+    expect(mockExecFile).toHaveBeenCalledTimes(3)
+  })
 
-      const result = await waitForSpawnReady({
-        target: MOCK_TARGET,
-        timeoutMs: 5000,
-        feature: 'annotation',
-      })
+  it('should timeout when prompt never appears', async () => {
+    simulateCapture(LOADING_PANE)
 
-      expect(result.ready).toBe(true)
+    const result = await waitForSpawnReady({
+      target: MOCK_TARGET,
+      timeoutMs: 2000,
+      feature: 'fileChat',
     })
 
-    it('should use paneTarget when paneId is not available', async () => {
-      simulateCapture(CODEX_PROMPT_OUTPUT)
+    expect(result.ready).toBe(false)
+    expect(result.timedOut).toBe(true)
+    expect(result.error).toContain('did not show its prompt')
+  })
 
-      await waitForSpawnReady({
-        target: { ...MOCK_TARGET, paneId: undefined },
-        timeoutMs: 5000,
-        feature: 'fileChat',
+  it('should accept custom prompt pattern', async () => {
+    const customPane = `My Custom Tool v1.0\n$$$ ready\n`
+    simulateCapture(customPane)
+
+    const result = await waitForSpawnReady({
+      target: MOCK_TARGET,
+      timeoutMs: 5000,
+      feature: 'fileChat',
+      promptPattern: /\$\$\$\s/,
+    })
+
+    expect(result.ready).toBe(true)
+  })
+
+  it('should fail immediately when no pane ID is available', async () => {
+    const result = await waitForSpawnReady({
+      target: { ...MOCK_TARGET, paneId: undefined, paneTarget: undefined },
+      timeoutMs: 5000,
+      feature: 'fileChat',
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.error).toContain('No pane ID')
+    expect(mockExecFile).not.toHaveBeenCalled()
+  })
+
+  it('should handle tmux errors gracefully and keep probing', async () => {
+    mockExecFile
+      .mockImplementationOnce((_cmd, _args, _opts, callback) => {
+        if (typeof callback === 'function') {
+          callback(new Error('pane not found'), '', '')
+        }
+        return {} as ReturnType<typeof execFile>
+      })
+      .mockImplementation((_cmd, _args, _opts, callback) => {
+        if (typeof callback === 'function') {
+          callback(null, CODEX_PANE, '')
+        }
+        return {} as ReturnType<typeof execFile>
       })
 
-      expect(mockExecFile).toHaveBeenCalledWith(
-        'tmux',
-        ['capture-pane', '-t', 'codeview:1.0', '-p'],
-        expect.any(Object),
-        expect.any(Function),
-      )
+    const result = await waitForSpawnReady({
+      target: MOCK_TARGET,
+      timeoutMs: 5000,
+      feature: 'annotation',
     })
+
+    expect(result.ready).toBe(true)
+  })
+
+  it('should use paneTarget when paneId is not available', async () => {
+    simulateCapture(CODEX_PANE)
+
+    await waitForSpawnReady({
+      target: { ...MOCK_TARGET, paneId: undefined },
+      timeoutMs: 5000,
+      feature: 'fileChat',
+    })
+
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'tmux',
+      ['capture-pane', '-t', 'codeview:1.0', '-p'],
+      expect.any(Object),
+      expect.any(Function),
+    )
   })
 })
