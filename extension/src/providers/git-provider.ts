@@ -22,6 +22,15 @@ export function getWorkspaceRepo() {
   return match ?? git.repositories[0]
 }
 
+async function refreshRepoState(repo: any, reason: string): Promise<void> {
+  if (typeof repo.status !== 'function') return
+  try {
+    await repo.status()
+  } catch (err) {
+    debugLog('git.status.refreshFailed', { reason, message: String(err) })
+  }
+}
+
 export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMessage) => void): Promise<void> {
   const repo = getWorkspaceRepo()
   if (!repo) {
@@ -30,6 +39,7 @@ export async function handleGitStatus(msg: WsMessage, sendResponse: (msg: WsMess
     }, msg.id))
     return
   }
+  await refreshRepoState(repo, 'request')
   const branch = repo.state.HEAD?.name ?? ''
   const commitHash = repo.state.HEAD?.commit ?? ''
   const ahead = repo.state.HEAD?.ahead ?? 0
@@ -228,8 +238,8 @@ export function startGitStatusWatch(sendEvent: (msg: WsMessage) => void): vscode
   const scheduleEmit = (source: 'repo' | 'fs' | 'fs-settle', delayMs: number) => {
     const timer = setTimeout(() => {
       void (async () => {
-        if (source === 'fs-settle' && typeof repo.status === 'function') {
-          await repo.status()
+        if (source === 'fs-settle') {
+          await refreshRepoState(repo, source)
         }
         const branch = repo.state.HEAD?.name ?? ''
         const changedFileCount = repo.state.workingTreeChanges.length + repo.state.indexChanges.length

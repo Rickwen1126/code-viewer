@@ -11,10 +11,11 @@ import { ReviewProvider, ReviewContext } from './hooks/use-review'
 import { useWebSocket } from './hooks/use-websocket'
 import { useDocumentVisibility } from './hooks/use-visibility'
 import { debugLog } from './services/debug'
-import { buildFileRoutePath, decodeFileRoutePath } from './services/file-location'
+import { buildFileRoutePath } from './services/file-location'
 import { readCurrentFileForWorkspace } from './services/current-file'
 import { readStoredWorkspace } from './services/selected-workspace'
 import { readLastLocationForWorkspace, writeLastLocationForWorkspace } from './services/last-location'
+import { getRouteWatches } from './services/watch-routes'
 import type { WatchDescriptor, WatchSyncPayload, WatchSyncResultPayload } from '@code-viewer/shared'
 import { WorkspacesPage } from './pages/workspaces'
 import { FileBrowserPage } from './pages/files/file-browser'
@@ -77,16 +78,7 @@ function WatchSyncController() {
   const watches = useMemo<WatchDescriptor[]>(() => {
     if (!workspace || !workspaceReady || visibility !== 'visible') return []
 
-    const filePath = decodeFileRoutePath(location.pathname)
-    if (filePath) {
-      return [{ topic: 'file.content', path: filePath }]
-    }
-
-    if (location.pathname === '/git') {
-      return [{ topic: 'git.status', scope: 'workspace' }]
-    }
-
-    return []
+    return getRouteWatches(location.pathname)
   }, [location.pathname, visibility, workspace, workspaceReady])
 
   useEffect(() => {
