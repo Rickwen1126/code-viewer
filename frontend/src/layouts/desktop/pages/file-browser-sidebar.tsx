@@ -14,7 +14,8 @@ import { addRecentFile, getRecentFiles, THEME_OPTIONS } from '../../../pages/fil
 import { ActionSheet } from '../../../components/action-sheet'
 import { useTheme } from '../../../hooks/use-theme'
 import { setTheme } from '../../../services/theme'
-import { getBookmarks, type Bookmark } from '../../../services/bookmarks'
+import { useBookmarks } from '../../../hooks/use-bookmarks'
+import type { Bookmark } from '@code-viewer/shared'
 import { REVEAL_FILE_EVENT, ancestorDirs, revealEventPath, treeNodeSelector } from '../../../services/reveal-file'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
 
@@ -136,6 +137,7 @@ function TreeNode({
 export function FileBrowserSidebar() {
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
+  const { bookmarks } = useBookmarks()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -238,10 +240,6 @@ export function FileBrowserSidebar() {
   }, [searchQuery, allFiles])
 
   const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [nodes, workspace, showRecent])
-  const bookmarks = useMemo(
-    () => workspace ? getBookmarks(workspace.extensionId) : [],
-    [workspace, showRecent],
-  )
 
 
   useEffect(() => {

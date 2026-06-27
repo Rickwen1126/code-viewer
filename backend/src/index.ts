@@ -1,9 +1,15 @@
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { createNodeWebSocket } from '@hono/node-ws'
 import type { UpgradeWebSocket } from 'hono/ws'
 import { backendVersion, registerRoutes } from './app.js'
 import { manager } from './ws/manager.js'
+import { BookmarkStore } from './storage/bookmarks.js'
+import { setBookmarkStore } from './ws/handler.js'
+
+const bookmarkStore = new BookmarkStore(join(homedir(), '.code-viewer', 'bookmarks'))
 
 const app = new Hono()
 const wsHelper = createNodeWebSocket({ app })
@@ -21,7 +27,9 @@ const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
 // CRITICAL: injectWebSocket MUST be called AFTER serve()
 injectWebSocket(server)
 
-// Start heartbeat after server is up
+// Initialize bookmark store and start heartbeat after server is up
+await bookmarkStore.init()
+setBookmarkStore(bookmarkStore)
 manager.startHeartbeat()
 
 if (process.env.CODE_VIEWER_SECRET) {

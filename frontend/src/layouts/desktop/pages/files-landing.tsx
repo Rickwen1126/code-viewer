@@ -2,19 +2,17 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { buildFileLocationUrl, buildFileRoutePath } from '../../../services/file-location'
 import { useWorkspace } from '../../../hooks/use-workspace'
-import { getBookmarks, type Bookmark } from '../../../services/bookmarks'
+import { useBookmarks } from '../../../hooks/use-bookmarks'
 import { getRecentFiles } from '../../../pages/files/file-browser'
+import type { Bookmark } from '@code-viewer/shared'
 
 /** Landing page for /files on desktop — shows recent files and bookmarks in the main content area. */
 export function FilesLandingPage() {
   const navigate = useNavigate()
   const { workspace } = useWorkspace()
+  const { bookmarks } = useBookmarks()
 
   const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [workspace])
-  const bookmarks = useMemo(
-    () => workspace ? getBookmarks(workspace.extensionId) : [],
-    [workspace],
-  )
 
   return (
     <div style={{ padding: 32, maxWidth: 600, margin: '0 auto' }}>

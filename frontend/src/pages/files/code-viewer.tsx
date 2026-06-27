@@ -32,11 +32,7 @@ import {
 import { HtmlRenderer } from '../../components/html-renderer'
 import { MarkdownRenderer } from '../../components/markdown-renderer'
 import { InFileSearch } from '../../components/in-file-search'
-import {
-  addFileBookmark,
-  isFileBookmarked,
-  removeFileBookmark,
-} from '../../services/bookmarks'
+import { useBookmarks } from '../../hooks/use-bookmarks'
 import { addRecentFile } from './file-browser'
 import { ReferencesList } from '../../components/references-list'
 import { SymbolOutline } from '../../components/symbol-outline'
@@ -335,6 +331,7 @@ export function CodeViewerPage() {
   const [searchParams] = useSearchParams()
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
+  const { isFileBookmarked, addBookmark, removeBookmark: removeBookmarkById } = useBookmarks()
   const isDesktop = useIsDesktop()
   const visibility = useDocumentVisibility()
   const [file, setFile] = useState<FileReadResultPayload | null>(null)
@@ -590,8 +587,7 @@ export function CodeViewerPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // File bookmark + file-chat reference markers
-  const [fileBookmarked, setFileBookmarked] = useState(false)
+  // File-chat reference markers (temporary per-session, not persisted)
   const [markedReferenceLines, setMarkedReferenceLines] = useState<Set<number>>(new Set())
 
   // Close overflow menu on click outside
@@ -614,12 +610,10 @@ export function CodeViewerPage() {
     })
   }
 
-  // Load file-level bookmark when file changes. Line stars are temporary file-chat reference marks.
+  // Clear reference marks when file changes
   useEffect(() => {
-    if (!workspace || !path) return
-    setFileBookmarked(isFileBookmarked(workspace.extensionId, path))
     setMarkedReferenceLines(new Set())
-  }, [workspace, path])
+  }, [path])
 
   function clearMarkedReferenceLines(): void {
     setMarkedReferenceLines(new Set())
@@ -651,15 +645,15 @@ export function CodeViewerPage() {
     if (navigator.vibrate) navigator.vibrate(50)
   }, [workspace, path, file, tourEdit, stepModeActive, isAnnotationView])
 
+  const fileBookmarked = path ? isFileBookmarked(path) : false
+
   function toggleFileBookmark(): void {
     if (!workspace || !path) return
     if (fileBookmarked) {
-      removeFileBookmark(workspace.extensionId, path)
-      setFileBookmarked(false)
+      removeBookmarkById(`${path}:file`)
       showToast('File bookmark removed')
     } else {
-      addFileBookmark(workspace.extensionId, path)
-      setFileBookmarked(true)
+      addBookmark(path, undefined, path.split('/').pop() ?? path)
       showToast('File bookmarked')
     }
   }

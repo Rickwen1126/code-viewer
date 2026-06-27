@@ -1,4 +1,4 @@
-import type { FileContent, FilePreview, GitStatus, ChatSession } from './models.js'
+import type { FileContent, FilePreview, GitStatus, ChatSession, Bookmark } from './models.js'
 
 // ── WsMessage envelope ──────────────────────────────────────────────
 
@@ -146,6 +146,17 @@ export const MSG_TOUR_DELETE_STEP_ERROR = 'tour.deleteStep.error' as const
 export const MSG_TOUR_FINALIZE_ERROR = 'tour.finalize.error' as const
 export const MSG_TOUR_DELETE_ERROR = 'tour.delete.error' as const
 export const MSG_TOUR_GET_FILE_AT_REF_ERROR = 'tour.getFileAtRef.error' as const
+
+// Bookmark domain
+export const MSG_BOOKMARK_LIST = 'bookmark.list' as const
+export const MSG_BOOKMARK_LIST_RESULT = 'bookmark.list.result' as const
+export const MSG_BOOKMARK_ADD = 'bookmark.add' as const
+export const MSG_BOOKMARK_ADD_RESULT = 'bookmark.add.result' as const
+export const MSG_BOOKMARK_REMOVE = 'bookmark.remove' as const
+export const MSG_BOOKMARK_REMOVE_RESULT = 'bookmark.remove.result' as const
+export const MSG_BOOKMARK_IMPORT = 'bookmark.import' as const
+export const MSG_BOOKMARK_IMPORT_RESULT = 'bookmark.import.result' as const
+export const MSG_BOOKMARK_CHANGED = 'bookmark.changed' as const
 
 // ── Payload types per message ───────────────────────────────────────
 
@@ -673,3 +684,14 @@ export interface TourDeletePayload { tourId: string }
 export interface TourDeleteResultPayload { ok: true }
 export interface TourGetFileAtRefPayload { ref: string | null; path: string }
 export interface TourGetFileAtRefResultPayload { content: string; languageId: string; ref: string | null }
+
+// Bookmark
+export interface BookmarkListPayload { workspaceKey: string }
+export interface BookmarkListResultPayload { bookmarks: Bookmark[] }
+export interface BookmarkAddPayload { workspaceKey: string; path: string; line?: number; preview: string }
+export interface BookmarkAddResultPayload { bookmark: Bookmark }
+export interface BookmarkRemovePayload { workspaceKey: string; bookmarkId: string }
+export interface BookmarkRemoveResultPayload { ok: true }
+export interface BookmarkImportPayload { workspaceKey: string; bookmarks: Array<{ path: string; line?: number; preview: string; createdAt?: number }> }
+export interface BookmarkImportResultPayload { bookmarks: Bookmark[] }
+export interface BookmarkChangedPayload { workspaceKey: string; bookmarks: Bookmark[] }

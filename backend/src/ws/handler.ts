@@ -12,6 +12,15 @@ import type {
   WatchSyncPayload,
   WatchSyncResultPayload,
   WatchSetPayload,
+  BookmarkListPayload,
+  BookmarkListResultPayload,
+  BookmarkAddPayload,
+  BookmarkAddResultPayload,
+  BookmarkRemovePayload,
+  BookmarkRemoveResultPayload,
+  BookmarkImportPayload,
+  BookmarkImportResultPayload,
+  BookmarkChangedPayload,
 } from '@code-viewer/shared'
 import {
   MSG_CONNECTION_WELCOME,
@@ -27,6 +36,15 @@ import {
   MSG_WATCH_SYNC,
   MSG_WATCH_SYNC_RESULT,
   MSG_WATCH_SET,
+  MSG_BOOKMARK_LIST,
+  MSG_BOOKMARK_LIST_RESULT,
+  MSG_BOOKMARK_ADD,
+  MSG_BOOKMARK_ADD_RESULT,
+  MSG_BOOKMARK_REMOVE,
+  MSG_BOOKMARK_REMOVE_RESULT,
+  MSG_BOOKMARK_IMPORT,
+  MSG_BOOKMARK_IMPORT_RESULT,
+  MSG_BOOKMARK_CHANGED,
 } from '@code-viewer/shared'
 import { manager } from './manager.js'
 import {
@@ -35,6 +53,13 @@ import {
   broadcastExtensionEvent,
 } from './relay.js'
 import { cache } from '../cache/session.js'
+import type { BookmarkStore } from '../storage/bookmarks.js'
+
+let bookmarkStore: BookmarkStore | null = null
+
+export function setBookmarkStore(store: BookmarkStore): void {
+  bookmarkStore = store
+}
 
 const WS_SECRET = process.env.CODE_VIEWER_SECRET ?? ''
 const DEBUG = process.env.CODE_VIEWER_DEBUG === 'true'
@@ -329,6 +354,12 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
           return
         }
 
+        // Handle bookmark.* messages locally (no extension relay)
+        if (msg.type.startsWith('bookmark.') && bookmarkStore) {
+          void handleBookmarkMessage(frontendId, msg, ws)
+          return
+        }
+
         // All other messages → relay to the selected extension
         relayFrontendToExtension(frontendId, msg)
       },
@@ -341,4 +372,60 @@ export function createFrontendHandler(upgradeWebSocket: UpgradeWsFn) {
       },
     }
   })
+}
+
+function broadcastBookmarkChanged(workspaceKey: string, bookmarks: import('@code-viewer/shared').Bookmark[]): void {
+  const msg = makeMessage<BookmarkChangedPayload>(MSG_BOOKMARK_CHANGED, { workspaceKey, bookmarks })
+  for (const frontend of manager.getFrontendsForWorkspaceKey(workspaceKey)) {
+    sendJson(frontend.ws, msg)
+  }
+}
+
+async function handleBookmarkMessage(frontendId: string, msg: WsMessage, ws: { send: (data: string) => void }): Promise<void> {
+  if (!bookmarkStore) return
+
+  try {
+    switch (msg.type) {
+      case MSG_BOOKMARK_LIST: {
+        const { workspaceKey } = msg.payload as BookmarkListPayload
+        const bookmarks = await bookmarkStore.list(workspaceKey)
+        sendJson(ws, makeMessage<BookmarkListResultPayload>(MSG_BOOKMARK_LIST_RESULT, { bookmarks }, msg.id))
+        break
+      }
+      case MSG_BOOKMARK_ADD: {
+        const { workspaceKey, path, line, preview } = msg.payload as BookmarkAddPayload
+        const bookmark = await bookmarkStore.add(workspaceKey, { path, line, preview })
+        sendJson(ws, makeMessage<BookmarkAddResultPayload>(MSG_BOOKMARK_ADD_RESULT, { bookmark }, msg.id))
+        const all = await bookmarkStore.list(workspaceKey)
+        broadcastBookmarkChanged(workspaceKey, all)
+        break
+      }
+      case MSG_BOOKMARK_REMOVE: {
+        const { workspaceKey, bookmarkId } = msg.payload as BookmarkRemovePayload
+        await bookmarkStore.remove(workspaceKey, bookmarkId)
+        sendJson(ws, makeMessage<BookmarkRemoveResultPayload>(MSG_BOOKMARK_REMOVE_RESULT, { ok: true }, msg.id))
+        const all = await bookmarkStore.list(workspaceKey)
+        broadcastBookmarkChanged(workspaceKey, all)
+        break
+      }
+      case MSG_BOOKMARK_IMPORT: {
+        const { workspaceKey, bookmarks: incoming } = msg.payload as BookmarkImportPayload
+        const bookmarks = await bookmarkStore.import(workspaceKey, incoming)
+        sendJson(ws, makeMessage<BookmarkImportResultPayload>(MSG_BOOKMARK_IMPORT_RESULT, { bookmarks }, msg.id))
+        broadcastBookmarkChanged(workspaceKey, bookmarks)
+        break
+      }
+      default:
+        console.warn(`[bookmarks] Unknown bookmark message type: ${msg.type}`)
+    }
+  } catch (err) {
+    console.error(`[bookmarks] Error handling ${msg.type}:`, err)
+    sendJson(ws, {
+      type: 'error',
+      id: crypto.randomUUID(),
+      replyTo: msg.id,
+      payload: { code: 'INVALID_REQUEST', message: 'Bookmark operation failed' },
+      timestamp: Date.now(),
+    })
+  }
 }

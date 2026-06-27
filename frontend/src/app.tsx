@@ -8,6 +8,7 @@ import { DesktopLayout } from './layouts/desktop/desktop-layout'
 import { WorkspaceProvider, useWorkspace } from './hooks/use-workspace'
 import { TourEditProvider } from './hooks/use-tour-edit'
 import { ReviewProvider, ReviewContext } from './hooks/use-review'
+import { BookmarkProvider } from './hooks/use-bookmarks'
 import { useWebSocket } from './hooks/use-websocket'
 import { useDocumentVisibility } from './hooks/use-visibility'
 import { debugLog } from './services/debug'
@@ -269,6 +270,7 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <WorkspaceProvider>
+          <BookmarkProvider>
           <TourEditProvider>
             <ReviewProvider>
               <Routes>
@@ -276,6 +278,7 @@ export default function App() {
               </Routes>
             </ReviewProvider>
           </TourEditProvider>
+          </BookmarkProvider>
         </WorkspaceProvider>
       </BrowserRouter>
     </ErrorBoundary>

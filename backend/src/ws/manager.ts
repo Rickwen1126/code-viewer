@@ -261,6 +261,22 @@ class ConnectionManager {
     return result
   }
 
+  getFrontendsForWorkspaceKey(workspaceKey: string): FrontendEntry[] {
+    const extensionIds = new Set<string>()
+    for (const [extensionId, entry] of this.extensions) {
+      if (entry.workspace.workspaceKey === workspaceKey) {
+        extensionIds.add(extensionId)
+      }
+    }
+    const result: FrontendEntry[] = []
+    for (const entry of this.frontends.values()) {
+      if (entry.selectedExtensionId && extensionIds.has(entry.selectedExtensionId)) {
+        result.push(entry)
+      }
+    }
+    return result
+  }
+
   updateHeartbeat(extensionId: string): void {
     const entry = this.extensions.get(extensionId)
     if (entry) {

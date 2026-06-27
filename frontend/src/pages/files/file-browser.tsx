@@ -10,7 +10,8 @@ import { PullToRefresh } from '../../components/pull-to-refresh'
 import { ActionSheet } from '../../components/action-sheet'
 import { useTheme } from '../../hooks/use-theme'
 import { setTheme, type ThemeName } from '../../services/theme'
-import { getBookmarks, type Bookmark } from '../../services/bookmarks'
+import { useBookmarks } from '../../hooks/use-bookmarks'
+import type { Bookmark } from '@code-viewer/shared'
 import { ancestorDirs, treeNodeSelector } from '../../services/reveal-file'
 import type { FileTreeNode, FileTreeResultPayload } from '@code-viewer/shared'
 
@@ -153,6 +154,7 @@ function TreeNode({
 export function FileBrowserPage() {
   const { request, connectionState } = useWebSocket()
   const { workspace, workspaceReady } = useWorkspace()
+  const { bookmarks } = useBookmarks()
   const navigate = useNavigate()
   const location = useLocation()
   const [nodes, setNodes] = useState<FileTreeNode[]>([])
@@ -236,11 +238,6 @@ export function FileBrowserPage() {
   }, [searchQuery, allFiles])
 
   const recentFiles = useMemo(() => getRecentFiles(workspace?.extensionId), [nodes, workspace, showRecent]) // re-read when dropdown opens
-  const bookmarks = useMemo(
-    () => workspace ? getBookmarks(workspace.extensionId) : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workspace, showRecent], // re-read when dropdown opens
-  )
 
   // Redirect to workspace selection if no workspace ever selected
   useEffect(() => {

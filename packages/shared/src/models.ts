@@ -132,6 +132,16 @@ export interface TourStep {
   selection?: { start: { line: number; character: number }; end: { line: number; character: number } }
 }
 
+// ── Bookmark ───────────────────────────────────────────────────────
+
+export interface Bookmark {
+  id: string         // deterministic: `${path}:${line ?? 'file'}`
+  path: string       // relative file path
+  line?: number      // 1-based line number; omitted means file-level bookmark
+  preview: string    // first ~60 chars of the line content
+  createdAt: number  // timestamp
+}
+
 // ── Connection ──────────────────────────────────────────────────────
 
 export interface Workspace {
